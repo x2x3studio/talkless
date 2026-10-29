@@ -30,6 +30,17 @@ final class DictationController: ObservableObject {
     @Published private(set) var lastTranscript = ""
     @Published private(set) var previewText = ""
     private var context: AppContext?
+    var onModelSetupRequested: (() -> Void)?
+    private var changingModel = false
+
+    func prepareForModelChange() async throws {
+        guard state == .idle, !changingModel else {
+            throw TalklessError.message("Finish dictation before changing or deleting a model.")
+        }
+        changingModel = true
+        defer { changingModel = false }
+        await QwenTranscriptionSession.unloadModel()
+    }
 
     /// Releasing before this threshold counts as a tap and enters hands-free mode.
     private let tapThreshold: TimeInterval = 0.3
@@ -130,6 +141,20 @@ final class DictationController: ObservableObject {
     // MARK: - Recording
 
     private func startRecording() {
+        guard !changingModel else { return }
+        if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
+            hud.show(.error("Wait for the model operation to finish before starting dictation."))
+            return
+        }
+        var qwenDirectory: URL?
+        if settings.asrEngine == .qwen {
+            do { qwenDirectory = try settings.resolvedQwenModelDirectory() }
+            catch {
+                hud.show(.error(error.localizedDescription))
+                onModelSetupRequested?()
+                return
+            }
+        }
         switch Self.microphoneStatus {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
@@ -158,8 +183,9 @@ final class DictationController: ObservableObject {
         let session: any TranscriptionSession
         switch settings.asrEngine {
         case .qwen:
+            guard let qwenDirectory else { return }
             session = QwenTranscriptionSession(
-                modelDirectory: URL(fileURLWithPath: (settings.qwenModelDirectory as NSString).expandingTildeInPath),
+                modelDirectory: qwenDirectory,
                 language: nil,
                 onStatus: { [weak self] status in
                     guard let self, self.generation == generation else { return }
@@ -326,7 +352,7 @@ final class DictationController: ObservableObject {
     }
 
     func runAudioTest(url: URL) async throws -> String {
-        guard state == .idle else { throw TalklessError.message("Dictation is already in progress") }
+        guard state == .idle, !changingModel else { throw TalklessError.message("Dictation or a model change is already in progress") }
         let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard file.processingFormat.sampleRate == AudioRecorder.sampleRate,
               file.processingFormat.channelCount == 1, file.length > 0,
@@ -337,13 +363,20 @@ final class DictationController: ObservableObject {
         try file.read(into: audio)
         guard let source = audio.floatChannelData?[0] else { throw TalklessError.message("Cannot read test audio") }
         let samples = Array(UnsafeBufferPointer(start: source, count: Int(audio.frameLength)))
+        while ModelManager.shared.isChecking {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard ModelManager.shared.operationModelID == nil else {
+            throw TalklessError.message("Wait for the model operation to finish before testing dictation.")
+        }
+        let modelDirectory = try settings.resolvedQwenModelDirectory()
         generation += 1
         let generation = self.generation
         previewText = ""
         hud.model.preview = ""
         state = .recording
         let session = QwenTranscriptionSession(
-            modelDirectory: URL(fileURLWithPath: (settings.qwenModelDirectory as NSString).expandingTildeInPath),
+            modelDirectory: modelDirectory,
             language: nil,
             onStatus: { [weak self] status in
                 guard let self, self.generation == generation else { return }

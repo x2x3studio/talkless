@@ -32,6 +32,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ModelManager.shared.beforeModelChange = { [weak self] _ in
+            guard let self else { return }
+            try await self.controller.prepareForModelChange()
+        }
+        controller.onModelSetupRequested = { [weak self] in
+            self?.openSettings()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Notification.Name("TalklessShowModels"), object: nil)
+            }
+        }
         if CommandLine.arguments.contains("--test-audio") {
             launchAudioTest()
             return
@@ -228,9 +238,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let hosting = NSHostingController(rootView: SettingsView(controller: controller, updateController: updateController))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Talkless Settings"
-            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
-            window.setContentSize(NSSize(width: 620, height: 520))
+            window.setContentSize(NSSize(width: 900, height: 660))
+            window.minSize = NSSize(width: 820, height: 600)
             window.center()
             settingsWindow = window
         }

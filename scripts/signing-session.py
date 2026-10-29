@@ -132,7 +132,7 @@ class SigningSession:
         require(ref.startswith("op://"), "Secret references must start with op://.")
         return run(["op", "read", "--no-newline", ref], env=self.env, sensitive=True).encode()
 
-    def prepare(self, config: dict[str, str]) -> None:
+    def prepare(self, config: dict[str, str], *, notarization: bool = True) -> None:
         if not self.env.get("OP_SERVICE_ACCOUNT_TOKEN"):
             self.env["OP_SERVICE_ACCOUNT_TOKEN"] = run([
                 "/bin/zsh", "-f", "-c",
@@ -140,17 +140,19 @@ class SigningSession:
                 'set +x; print -rn -- "${OP_SERVICE_ACCOUNT_TOKEN:-}"',
             ], env=self.env, sensitive=True)
         require(bool(self.env.get("OP_SERVICE_ACCOUNT_TOKEN")), "1Password service account token is unavailable.")
-        refs = {name: self.env.get(name, "") for name in SECRET_REFS}
+        ref_names = SECRET_REFS if notarization else SECRET_REFS[:2]
+        refs = {name: self.env.get(name, "") for name in ref_names}
         require(all(value.startswith("op://") for value in refs.values()),
-                "Configure op:// references for " + ", ".join(SECRET_REFS) + ".")
+                "Configure op:// references for " + ", ".join(ref_names) + ".")
         certificate = self.directory / "certificate.p12"
         encoded = self.read_secret(refs["SIGNING_CERTIFICATE_REF"])
         certificate.write_bytes(base64.b64decode(b"".join(encoded.split()), validate=True))
         password = self.read_secret(refs["SIGNING_PASSWORD_REF"]).decode()
-        self.notary_key = self.directory / "AuthKey.p8"
-        self.notary_key.write_bytes(self.read_secret(refs["NOTARY_KEY_REF"]))
-        self.notary_key_id = self.read_secret(refs["NOTARY_KEY_ID_REF"]).decode()
-        self.notary_issuer = self.read_secret(refs["NOTARY_ISSUER_REF"]).decode()
+        if notarization:
+            self.notary_key = self.directory / "AuthKey.p8"
+            self.notary_key.write_bytes(self.read_secret(refs["NOTARY_KEY_REF"]))
+            self.notary_key_id = self.read_secret(refs["NOTARY_KEY_ID_REF"]).decode()
+            self.notary_issuer = self.read_secret(refs["NOTARY_ISSUER_REF"]).decode()
         if config:
             (self.directory / "sparkle-key").write_bytes(self.read_secret(config["TALKLESS_SPARKLE_KEY_REF"]))
         self.env.pop("OP_SERVICE_ACCOUNT_TOKEN", None)
@@ -326,6 +328,139 @@ def release(version: str, build: str) -> None:
     print(f"Release artifacts: {destination}\nNothing was published.")
 
 
+def local_app_info(app: Path) -> dict:
+    require(app.is_dir() and not app.is_symlink(), f"Expected a real Talkless app directory: {app}")
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    require(info.get("CFBundleIdentifier") == "com.x2x3studio.talkless"
+            and info.get("CFBundleExecutable") == "Talkless",
+            f"Refusing to replace an unrelated app: {app}")
+    return info
+
+
+def require_talkless_stopped() -> None:
+    result = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "Talkless"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    require(result.returncode == 1,
+            "Quit Talkless before installing (the installer never terminates apps or resets permissions).")
+
+
+def local_install(no_updater: bool = False) -> None:
+    """Build a dirty checkout with the release identity, then replace only the known local app."""
+    require(sys.platform == "darwin" and os.uname().machine == "arm64",
+            "Local installation requires an Apple Silicon Mac.")
+    for tool in ("op", "security", "codesign", "swift", "ditto", "pgrep"):
+        require(shutil.which(tool) is not None, f"Required tool is unavailable: {tool}")
+    applications = Path("/Applications")
+    target = applications / "Talkless.app"
+    require(applications.is_dir() and not applications.is_symlink()
+            and os.access(applications, os.W_OK | os.X_OK),
+            "/Applications must be writable by this user; this installer does not use sudo.")
+    require_talkless_stopped()
+    existing = local_app_info(target) if os.path.lexists(target) else None
+    original_stat = target.stat() if existing else None
+    # Keep the installed release's update ordering; never mint a future release build number.
+    source = existing or plistlib.loads((ROOT / "Resources/Info.plist").read_bytes())
+    version, build = source["CFBundleShortVersionString"], source["CFBundleVersion"]
+    validate_version(version, build)
+    env = os.environ.copy()
+    names = list(SECRET_REFS[:2])
+    public_names = ("UPDATE_FEED_URL", "BETA_UPDATE_FEED_URL", "SPARKLE_PUBLIC_KEY")
+    if not no_updater:
+        names.extend(public_names)
+    for name in names:
+        if not env.get(name, "").strip():
+            require(shutil.which("gh") is not None, "Install gh or supply signing references and public updater settings in the environment.")
+            env[name] = run(["gh", "variable", "get", name, "--repo", REPOSITORY], sensitive=True).strip()
+    require(all(env[name].startswith("op://") for name in SECRET_REFS[:2]),
+            "Signing settings must be op:// references, not private values.")
+    if no_updater:
+        env.update({name: "" for name in public_names})
+    else:
+        for name in public_names[:2]:
+            env[name] = https_url(env[name].strip(), name)
+        require(env[public_names[0]] != env[public_names[1]], "Stable and beta feeds must have distinct URLs.")
+        require(len(base64.b64decode(env["SPARKLE_PUBLIC_KEY"].strip(), validate=True)) == 32,
+                "SPARKLE_PUBLIC_KEY must encode a 32-byte Ed25519 public key.")
+        env["SPARKLE_PUBLIC_KEY"] = env["SPARKLE_PUBLIC_KEY"].strip()
+    env.update(VERSION=version, BUILD_NUMBER=build, RELEASE_CHANNEL="beta", CONFIGURATION="release")
+    temporary_root = Path(tempfile.gettempdir()).resolve()
+    require(temporary_root != ROOT and ROOT not in temporary_root.parents,
+            "TMPDIR must be outside the project for signing secrets.")
+    dist = ROOT / "dist"
+    require(not dist.is_symlink(), "dist must not be a symlink.")
+    dist.mkdir(exist_ok=True)
+    app = dist / "Talkless.app"
+    require(not app.is_symlink(), "The build output app must not be a symlink.")
+    lock = dist / ".release-lock"
+    try:
+        lock.mkdir()
+    except FileExistsError:
+        raise ValueError("Another build may be running (dist/.release-lock exists).") from None
+    try:
+        with tempfile.TemporaryDirectory(prefix="talkless-local-signing-", dir=temporary_root) as secret_dir:
+            session = SigningSession(Path(secret_dir), env)
+            old_umask = os.umask(0o077)
+            try:
+                print("Preparing the release Developer ID in a private temporary keychain.", flush=True)
+                # Local builds need neither Apple's notary credentials nor Sparkle's private key.
+                session.prepare({}, notarization=False)
+                os.umask(old_umask)
+                print(f"Building local Talkless {version} ({build}); no notarization or publication.", flush=True)
+                run(["/bin/bash", str(ROOT / "scripts/build-app.sh")], env=env)
+                info = local_app_info(app)
+                require(info.get("CFBundleShortVersionString") == version and info.get("CFBundleVersion") == build
+                        and info.get("TalklessDefaultUpdateChannel") == "beta"
+                        and info.get("SUFeedURL", "") == env["UPDATE_FEED_URL"]
+                        and info.get("SUBetaFeedURL", "") == env["BETA_UPDATE_FEED_URL"]
+                        and info.get("SUPublicEDKey", "") == env["SPARKLE_PUBLIC_KEY"],
+                        "Built app version or updater settings do not match the local configuration.")
+                verify_signature(app)
+                with tempfile.TemporaryDirectory(prefix=".talkless-local-install-", dir=applications) as stage_dir:
+                    stage = Path(stage_dir)
+                    staged_app = stage / "Talkless.app"
+                    run(["ditto", str(app), str(staged_app)])
+                    local_app_info(staged_app)
+                    verify_signature(staged_app)
+                    require_talkless_stopped()
+                    if existing:
+                        local_app_info(target)
+                        current_stat = target.stat()
+                        require((current_stat.st_dev, current_stat.st_ino, current_stat.st_mtime_ns)
+                                == (original_stat.st_dev, original_stat.st_ino, original_stat.st_mtime_ns),
+                                "Installed app changed during the build; refusing to overwrite it.")
+                        backup_root = Path.home() / "Library/Application Support/Talkless/LocalBuildBackups"
+                        require(backup_root.resolve() == backup_root.absolute(), "Backup directory must not contain symlinks.")
+                        backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                        backup = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=backup_root))
+                        run(["ditto", str(target), str(backup / "Talkless.app")])
+                        local_app_info(backup / "Talkless.app")
+                        print(f"Previous app backed up to {backup / 'Talkless.app'}", flush=True)
+                    else:
+                        require(not os.path.lexists(target), "An app appeared at the install destination during the build.")
+                    require_talkless_stopped()
+                    previous = stage / "Previous-Talkless.app"
+                    try:
+                        if existing:
+                            target.rename(previous)
+                        staged_app.rename(target)
+                        local_app_info(target)
+                        verify_signature(target)
+                    except BaseException:
+                        # Move only the app we installed out of the way; restore the untouched original.
+                        if not staged_app.exists() and os.path.lexists(target):
+                            target.rename(stage / "Failed-Talkless.app")
+                        if previous.exists():
+                            previous.rename(target)
+                        raise
+            finally:
+                os.umask(old_umask)
+                session.close()
+    finally:
+        lock.rmdir()
+    print(f"Installed {target} with the release Developer ID. No permissions or app data were reset.\n"
+          "This local build is not notarized. Launch /Applications/Talkless.app, not dist/Talkless.app.")
+
+
 def publish(directory: str, publish_public: bool) -> None:
     repository = os.environ.get("RELEASE_REPOSITORY", REPOSITORY)
     require(repository == REPOSITORY, "RELEASE_REPOSITORY must be x2x3studio/talkless.")
@@ -412,6 +547,8 @@ def main() -> None:
     build = commands.add_parser("release", help="Build signed, notarized ZIP/DMG locally; never publish")
     build.add_argument("version")
     build.add_argument("build_number")
+    local = commands.add_parser("local-install", help="Build a local checkout with the release identity and install in /Applications; quit Talkless first")
+    local.add_argument("--no-updater", action="store_true", help="Disable updates instead of loading public updater repository variables")
     upload = commands.add_parser("publish", help="Create a draft by default; require acknowledgement for the public repository")
     upload.add_argument("directory")
     upload.add_argument("--publish", action="store_true", help="Explicitly publish to the existing public Talkless repository")
@@ -421,6 +558,8 @@ def main() -> None:
     try:
         if args.command == "release":
             release(args.version, args.build_number)
+        elif args.command == "local-install":
+            local_install(args.no_updater)
         else:
             publish(args.directory, args.publish)
     except (ValueError, RuntimeError, OSError, KeyError) as error:

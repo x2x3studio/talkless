@@ -12,11 +12,19 @@ bash scripts/build-app.sh
 open dist/Talkless.app
 ```
 
-The development build uses the downloaded `experiments/qwen-streaming/model` weights when available. In Settings > Speech Recognition, select Qwen and a local Qwen3-ASR model directory containing configuration, tokenizer and safetensors files. The tested model is Qwen3-ASR-1.7B 4-bit. A portable installation should place it in `~/Library/Application Support/Talkless/Models/Qwen3-ASR-1.7B-4bit`, or choose another local directory in settings. The model is not embedded in the 55 MB app bundle.
+Open **Settings > Models** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is recommended and selected by default (712.8 MB including configuration/tokenizer files); 1.7B 4-bit is an optional larger model. Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
+
+Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror can redirect to Hugging Face and is not guaranteed to provide independent regional access. ModelScope is not listed until matching MLX artifacts are verified; SpeakMore's GGUF Q8 files are not compatible with this MLX runtime.
+
+The manager supports progress, cancel/resume, retries, Use and confirmed Delete. Every file has a pinned revision, byte size and SHA-256; the model becomes usable only after verification. Verified files and partial downloads survive restarts. Installed models live in `~/Library/Application Support/Talkless/Models/`. Deletion affects only managed files and waits for runtime unload; downloads cannot delete arbitrary imported folders. Advanced settings retain an explicit custom-folder override.
+
+The application icon is original artwork; regenerate it with `swift scripts/generate-icon.swift`. Model weights are not included in the app or its updates.
 
 Grant microphone and Accessibility permissions in macOS System Settings. Fn is the default trigger: hold to speak, release to finish; a quick tap toggles hands-free recording. Configure the system Globe-key action to do nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selection editing are off by default for new users.
 
-The default build is ad-hoc signed and **not notarized**. Rebuilding may require removing and re-adding its Accessibility permission. Set `CODE_SIGN_IDENTITY` to a stable development/Developer ID identity when available. Do not expect the ad-hoc build to be distributable to other machines as a signed release.
+For local testing with the release identity and a fixed installation path, quit Talkless and run `bash scripts/install-local.sh`. It uses the configured signing references, builds with the same Developer ID as releases, verifies the signature, backs up any existing app and installs `/Applications/Talkless.app`. Launch that copy rather than changing build-directory apps; the initial switch from ad-hoc signing may require one permission grant. This local install is not notarized or published.
+
+The basic `build-app.sh` fallback is ad-hoc signed and **not notarized** unless `CODE_SIGN_IDENTITY` is supplied. Such builds may need permission reapproval and are not distribution releases. CI Beta/Stable artifacts are signed and notarized separately.
 
 ## Recognition
 
@@ -34,6 +42,7 @@ Model weights, generated recordings, local results, dependencies, and build prod
 
 ```sh
 swift experiments/native-tests/run-qwen-state-tests.swift
+bash experiments/model-tests/run-tests.sh
 bash experiments/fixtures/generate.sh
 
 dist/Talkless.app/Contents/MacOS/Talkless \

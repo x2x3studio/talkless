@@ -26,6 +26,12 @@ for name in filter(None, paths):
         errors.append(f"{name}: local environment file")
     if path.stat().st_size > 2 * 1024 * 1024:
         errors.append(f"{name}: file exceeds 2 MiB source limit")
+    if name in {"Resources/AppIcon.png", "Resources/AppIcon.icns"}:
+        signature = path.read_bytes()[:8]
+        expected = b"\x89PNG\r\n\x1a\n" if path.suffix == ".png" else b"icns"
+        if not signature.startswith(expected):
+            errors.append(f"{name}: invalid icon format")
+        continue
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeError:

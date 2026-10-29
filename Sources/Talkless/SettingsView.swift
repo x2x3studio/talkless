@@ -3,20 +3,126 @@ import AVFoundation
 import Combine
 import SwiftUI
 
+enum SettingsAppearance {
+    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
+        if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+            return NSColor(srgbRed: 0.64, green: 0.69, blue: 1, alpha: 1)
+        }
+        return NSColor(srgbRed: 86 / 255, green: 103 / 255, blue: 219 / 255, alpha: 1)
+    })
+}
+
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case general, models, polish, dictionary, history
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .models: "Models"
+        case .polish: "AI polish"
+        case .dictionary: "Dictionary"
+        case .history: "History"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .models: "square.stack.3d.up"
+        case .polish: "sparkles"
+        case .dictionary: "character.book.closed"
+        case .history: "clock"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general: "Make Talkless feel at home on your Mac."
+        case .models: "Choose how Talkless transcribes your voice."
+        case .polish: "Turn your transcript into finished text."
+        case .dictionary: "Names, terms, and spellings that matter to you."
+        case .history: "Your recent dictations, edits, and translations."
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
     var updateController: UpdateController? = nil
+    @State private var selection: SettingsSection? = .general
+
+    private var currentSection: SettingsSection { selection ?? .general }
 
     var body: some View {
-        TabView {
-            GeneralTab(controller: controller, updateController: updateController).tabItem { Label("General", systemImage: "gearshape") }
-            SpeechTab().tabItem { Label("Speech Recognition", systemImage: "waveform") }
-            PolishTab().tabItem { Label("AI Polish", systemImage: "sparkles") }
-            DictionaryTab().tabItem { Label("Dictionary", systemImage: "character.book.closed") }
-            HistoryTab().tabItem { Label("History", systemImage: "clock") }
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Talkless")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    Text("Settings")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 26)
+
+                List(SettingsSection.allCases, selection: $selection) { section in
+                    Label {
+                        Text(section.title)
+                    } icon: {
+                        Image(systemName: section.symbol)
+                            .frame(width: 18)
+                    }
+                    .padding(.vertical, 5)
+                    .tag(section)
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+            }
+            .frame(width: 196)
+            .background(.regularMaterial)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(currentSection.title)
+                        .font(.system(size: 25, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(currentSection.subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 26)
+                .padding(.bottom, 8)
+
+                Group {
+                    switch currentSection {
+                    case .general:
+                        GeneralTab(controller: controller, updateController: updateController)
+                    case .models:
+                        SpeechTab(controller: controller)
+                    case .polish:
+                        PolishTab()
+                    case .dictionary:
+                        DictionaryTab().padding(28)
+                    case .history:
+                        HistoryTab().padding(28)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .padding(20)
-        .frame(width: 620, height: 520)
+        .tint(SettingsAppearance.accent)
+        .frame(minWidth: 800, idealWidth: 900, minHeight: 580, idealHeight: 660)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowModels"))) { _ in
+            selection = .models
+        }
     }
 }
 
@@ -34,7 +140,7 @@ private struct GeneralTab: View {
         Form {
             Section("Permissions") {
                 PermissionRow(
-                    title: "Accessibility", detail: "Monitor shortcuts, read selected text, and paste text into other apps",
+                    title: "Accessibility", detail: "Keyboard shortcuts and text insertion",
                     granted: accessibility && controller.hotkeyActive
                 ) {
                     DictationController.requestAccessibility()
@@ -49,11 +155,11 @@ private struct GeneralTab: View {
                 }
             }
 
-            Section("Keyboard Shortcuts") {
+            Section("Keyboard shortcuts") {
                 Picker("Dictation key", selection: $settings.triggerKey) {
                     ForEach(TriggerKey.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Hold to talk and release to insert. Tap for hands-free mode, then press again to finish. Esc cancels.")
+                Text("Hold to talk, or tap for hands-free dictation. Esc cancels.")
                     .font(.caption).foregroundStyle(.secondary)
                 if settings.triggerKey == .fn {
                     Text("For Fn, set the Globe key action to Do Nothing in System Settings › Keyboard to prevent the emoji panel from opening.")
@@ -63,8 +169,10 @@ private struct GeneralTab: View {
             }
 
             Section("Behavior") {
-                Toggle("Use speech to edit selected text (e.g. Make it more formal)", isOn: $settings.voiceEditEnabled)
-                Toggle("Adapt tone to the current app (chat, email, code, or documents)", isOn: $settings.appToneEnabled)
+                Toggle("Edit selected text with your voice", isOn: $settings.voiceEditEnabled)
+                    .help("Select text, then dictate an instruction such as Make it more formal")
+                Toggle("Adapt tone to the current app", isOn: $settings.appToneEnabled)
+                    .help("Match your writing to chat, email, code, or documents")
                 Toggle("Sound effects", isOn: $settings.playSounds)
             }
 
@@ -91,7 +199,7 @@ private struct UpdatesSection: View {
                 ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
             }
             .disabled(!updater.canChangeChannel)
-            Text("Stable includes stable releases only. Beta includes beta and stable releases, whichever is newer. Switching to Stable does not downgrade the installed app.")
+            Text("Beta includes prereleases. Returning to Stable does not downgrade Talkless.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Check for Updates…") { updater.checkForUpdates(nil) }
                 .disabled(controller.state != .idle || !updater.canCheckForUpdates)
@@ -129,9 +237,14 @@ private struct PermissionRow: View {
 // MARK: - Speech Recognition
 
 private struct SpeechTab: View {
+    @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
+    @ObservedObject var modelManager = ModelManager.shared
     @State private var locales: [Locale] = []
     @State private var downloadStatus = ""
+    @State private var downloadingAppleModel = false
+
+    private var controlsDisabled: Bool { controller.state != .idle || modelManager.isBusy }
 
     private let presets: [(String, String, String)] = [
         ("OpenAI", "https://api.openai.com/v1", "gpt-4o-transcribe"),
@@ -145,22 +258,29 @@ private struct SpeechTab: View {
                 Picker("Recognition engine", selection: $settings.asrEngine) {
                     ForEach(ASREngine.allCases) { Text($0.title).tag($0) }
                 }
-                .pickerStyle(.radioGroup)
+                .disabled(controlsDisabled)
             }
 
             if settings.asrEngine == .qwen {
-                Section("Local Qwen Model") {
-                    TextField("Model directory", text: $settings.qwenModelDirectory)
-                    HStack {
-                        Button("Choose Model Folder…") { chooseModelDirectory() }
-                        Button("Reset to Default Path") {
-                            settings.qwenModelDirectory = AppSettings.defaultQwenModelDirectory
+                ModelManagementView(controller: controller)
+
+                Section {
+                    DisclosureGroup("Advanced") {
+                        Toggle("Use a custom model folder", isOn: $settings.useCustomQwenDirectory)
+                        if settings.useCustomQwenDirectory {
+                            TextField("Model folder", text: $settings.qwenModelDirectory)
+                                .textFieldStyle(.roundedBorder)
+                            HStack {
+                                Button("Choose Folder…") { chooseModelDirectory() }
+                                Button("Use Downloaded Models") {
+                                    settings.useCustomQwenDirectory = false
+                                }
+                            }
+                            Text("A Qwen3 ASR MLX folder with its configuration, tokenizer, and safetensors weights. Talkless does not manage or delete this folder.")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    Text("Choose a downloaded Qwen3-ASR-1.7B MLX model folder containing config.json, a tokenizer, and safetensors weights. Audio stays on this Mac; models are not downloaded automatically.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("Default: ~/Library/Application Support/Talkless/Models/Qwen3-ASR-1.7B-4bit. Development builds fall back to an existing experimental model in the project if this folder is unavailable.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    .disabled(controlsDisabled)
                 }
             } else if settings.asrEngine == .apple {
                 Section("Apple On-device Recognition") {
@@ -173,15 +293,18 @@ private struct SpeechTab: View {
                                 .tag(locale.identifier)
                         }
                     }
+                    .disabled(downloadingAppleModel || controlsDisabled)
                     HStack {
                         Button("Download Speech Model") { download() }
+                            .disabled(downloadingAppleModel || controlsDisabled)
+                        if downloadingAppleModel { ProgressView().controlSize(.small) }
                         Text(downloadStatus).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Free and fully offline, with live previews while you speak. Mixed Chinese and English speech may be less accurate than cloud models.")
+                    Text("On-device recognition with live previews while you speak.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                Section("Cloud Recognition (OpenAI /audio/transcriptions compatible)") {
+                Section("Cloud recognition") {
                     HStack {
                         Text("Presets")
                         ForEach(presets, id: \.0) { preset in
@@ -219,12 +342,14 @@ private struct SpeechTab: View {
     }
 
     private func download() {
+        downloadingAppleModel = true
         downloadStatus = "Downloading…"
         let locale = Locale(identifier: settings.speechLocale)
         Task {
+            defer { downloadingAppleModel = false }
             do {
                 try await AppleSpeechSession.prepareAssets(locale: locale)
-                downloadStatus = "Ready ✓"
+                downloadStatus = "Ready"
             } catch {
                 downloadStatus = error.localizedDescription
             }
@@ -238,8 +363,9 @@ private struct PolishTab: View {
     @ObservedObject var settings = AppSettings.shared
     @State private var testResult = ""
     @State private var testing = false
+    @State private var confirmTest = false
 
-    private let presets: [(String, String, String)] = [
+    private let presets: [(name: String, url: String, model: String)] = [
         ("OpenAI", "https://api.openai.com/v1", "gpt-4.1-mini"),
         ("DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
         ("Qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
@@ -249,28 +375,36 @@ private struct PolishTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Polish dictation with AI (remove fillers, resolve corrections, add punctuation and lists)", isOn: $settings.polishEnabled)
+                Toggle("Polish dictation with AI", isOn: $settings.polishEnabled)
+                Text("Remove fillers, resolve corrections, and add punctuation.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Output language", selection: $settings.outputLanguage) {
                     ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
                 }
                 TextField("Translation target language", text: $settings.translateTarget)
             }
 
-            Section("Language Model (OpenAI Chat Completions compatible)") {
-                HStack {
-                    Text("Presets")
-                    ForEach(presets, id: \.0) { preset in
-                        Button(preset.0) {
-                            settings.llmBaseURL = preset.1
-                            settings.llmModel = preset.2
+            Section("Language model") {
+                LabeledContent("Provider preset") {
+                    Menu("Choose…") {
+                        ForEach(presets, id: \.name) { preset in
+                            Button(preset.name) {
+                                settings.llmBaseURL = preset.url
+                                settings.llmModel = preset.model
+                            }
                         }
                     }
+                    .fixedSize()
                 }
                 TextField("API URL", text: $settings.llmBaseURL)
-                SecureField("API Key (any value for local Ollama)", text: $settings.llmAPIKey)
+                SecureField("API key", text: $settings.llmAPIKey)
+                    .help("For local Ollama, enter any value")
                 TextField("Model", text: $settings.llmModel)
+                Text("Polishing sends your transcript, selected text, and writing instructions to this endpoint. Cloud providers may charge for usage.")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack {
-                    Button("Test") { test() }.disabled(testing || !settings.llmConfigured)
+                    Button("Test Polish…") { confirmTest = true }
+                        .disabled(testing || !settings.llmConfigured)
                     if testing { ProgressView().controlSize(.small) }
                 }
                 if !testResult.isEmpty {
@@ -278,7 +412,7 @@ private struct PolishTab: View {
                 }
             }
 
-            Section("Additional Instructions") {
+            Section("Additional instructions") {
                 TextEditor(text: $settings.customInstructions)
                     .font(.body)
                     .frame(height: 60)
@@ -287,6 +421,12 @@ private struct PolishTab: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Send a sample to your language model?", isPresented: $confirmTest, titleVisibility: .visible) {
+            Button("Send Test") { test() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This sends a sample transcript with your dictionary and writing instructions to the configured endpoint. Your provider may charge for the request.")
+        }
     }
 
     private func test() {
@@ -316,7 +456,7 @@ private struct DictionaryTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("One term per line: names, products, technical terms, or preferred spellings for mixed Chinese and English text. Used for recognition and polishing.")
+            Text("Add one term per line. Used for speech recognition and AI polish.")
                 .font(.callout).foregroundStyle(.secondary)
             TextEditor(text: $settings.dictionary)
                 .font(.system(.body, design: .monospaced))

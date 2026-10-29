@@ -12,7 +12,7 @@ enum TriggerKey: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .fn: return "Fn / 🌐"
+        case .fn: return "Fn / Globe"
         case .rightOption: return "Right Option ⌥"
         case .rightCommand: return "Right Command ⌘"
         case .rightControl: return "Right Control ⌃"
@@ -85,22 +85,30 @@ final class AppSettings: ObservableObject {
     @Published var asrEngine: ASREngine { didSet { save(asrEngine.rawValue, "asrEngine") } }
     @Published var qwenModelDirectory: String { didSet { save(qwenModelDirectory, "qwenModelDirectory") } }
 
-    /// Models are user-managed and are never downloaded or bundled by Talkless.
+    @Published var useCustomQwenDirectory: Bool { didSet { save(useCustomQwenDirectory, "useCustomQwenDirectory") } }
+
     static var defaultQwenModelDirectory: String {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Talkless/Models/Qwen3-ASR-1.7B-4bit", isDirectory: true)
-        if FileManager.default.fileExists(atPath: support.appendingPathComponent("config.json").path) {
-            return support.path
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Talkless/Models/Qwen3-ASR-0.6B-4bit", isDirectory: true).path
+    }
+
+    func resolvedQwenModelDirectory() throws -> URL {
+        if useCustomQwenDirectory {
+            let path = (qwenModelDirectory as NSString).expandingTildeInPath
+            guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw TalklessError.message("Choose a local model folder in Models settings.")
+            }
+            return URL(fileURLWithPath: path)
         }
-        // Development-only fallback: available only while the original source checkout exists.
-        // A distributed app on another machine falls back to Application Support instead.
-        let project = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let development = project.appendingPathComponent("experiments/qwen-streaming/model", isDirectory: true)
-        if FileManager.default.fileExists(atPath: development.appendingPathComponent("config.json").path) {
-            return development.path
+        let manager = ModelManager.shared
+        guard !manager.isChecking else {
+            throw TalklessError.message("Checking downloaded model files. Try again in a moment.")
         }
-        return support.path
+        guard let directory = manager.installedDirectory(manager.activeModelID) else {
+            let name = ModelCatalog.model(id: manager.activeModelID)?.name ?? "the selected model"
+            throw TalklessError.message("Download \(name) in Models settings before starting dictation.")
+        }
+        return directory
     }
     /// The locale for on-device recognition, such as zh_CN or en_US.
     @Published var speechLocale: String { didSet { save(speechLocale, "speechLocale") } }
@@ -128,7 +136,8 @@ final class AppSettings: ObservableObject {
         let d = UserDefaults.standard
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? .fn
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
-        qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? Self.defaultQwenModelDirectory
+        qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""
+        useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false
         speechLocale = d.string(forKey: "speechLocale") ?? "zh_CN"
         asrBaseURL = d.string(forKey: "asrBaseURL") ?? "https://api.openai.com/v1"
         asrAPIKey = d.string(forKey: "asrAPIKey") ?? ""

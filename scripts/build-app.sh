@@ -33,6 +33,7 @@ python3 -I "$ROOT/scripts/build-metal.py" "$ROOT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Talkless" "$APP/Contents/MacOS/Talkless"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 python3 -I "$ROOT/scripts/configure-bundle.py" "$APP/Contents/Info.plist"
 SPARKLE_FRAMEWORK="$(find "$ROOT/.build/artifacts" -type d -path '*/macos-arm64_x86_64/Sparkle.framework' -print -quit)"
 if [[ -z "$SPARKLE_FRAMEWORK" ]]; then

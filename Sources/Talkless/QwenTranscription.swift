@@ -96,6 +96,10 @@ final class QwenTranscriptionSession: TranscriptionSession, @unchecked Sendable 
     static func prepareAssets(modelDirectory: URL) async throws {
         try await QwenModelRuntime.shared.prepare(modelDirectory: modelDirectory)
     }
+
+    static func unloadModel() async {
+        await QwenModelRuntime.shared.unload()
+    }
 }
 
 /// An unstructured race: a task group would wait for uninterruptible MLX work on timeout.
@@ -161,6 +165,13 @@ private actor QwenModelRuntime {
         } else {
             waiters.removeFirst().resume()
         }
+    }
+
+    func unload() async {
+        await acquire()
+        defer { release() }
+        loaded = nil
+        Memory.clearCache()
     }
 
     func prepare(modelDirectory: URL) async throws {
