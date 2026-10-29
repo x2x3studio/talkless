@@ -51,7 +51,7 @@ require(ISO8601DateFormatter().date(from: marker["started_at"] ?? "") != nil, "S
 diagnostic.record(event: "recording_start", metadata: [
     "engine": "qwen", "num_channels": "1", "sample_rate": "48000", "error_code": "-50",
     "text": "PRIVATE_TRANSCRIPT", "api_key": "PRIVATE_SECRET", "engine_bad": "PRIVATE",
-    "model_id": "/Users/synthetic-private/model", "error_domain": "PRIVATE_DOMAIN", "duration_ms": "PRIVATE_VALUE",
+    "model_id": "/synthetic-private/model", "error_domain": "PRIVATE_DOMAIN", "duration_ms": "PRIVATE_VALUE",
 ])
 diagnostic.record(event: "PRIVATE_TRANSCRIPT")
 let filtered = try events(logs)
