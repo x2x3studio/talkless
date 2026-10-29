@@ -1,0 +1,20 @@
+name: Source checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check repository hygiene
+        run: python3 -I scripts/check-repository.py
+      - name: Test timeline validation
+        run: python3 -I experiments/test_validate_timeline.py
+      - name: Check shell syntax
+        run: bash -n scripts/build-app.sh experiments/fixtures/generate.sh
