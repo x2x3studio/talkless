@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 /// Capture audio from the default microphone and convert it to 16 kHz mono Float32.
@@ -30,6 +31,9 @@ final class AudioRecorder: @unchecked Sendable {
     @MainActor
     func start() throws {
         stop()
+        // An input node can advertise a fallback format even when no input device exists.
+        // Check Core Audio before touching inputNode, whose tap can otherwise raise NSException.
+        try Self.requireDefaultInputDevice()
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -45,7 +49,9 @@ final class AudioRecorder: @unchecked Sendable {
             self.engine = engine
             accepting = true
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        // AVAudioNodeTapBlock is non-Sendable; explicitly opt out of inherited MainActor isolation.
+        // Core Audio invokes the tap on its audio thread, not the main actor.
+        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { @Sendable [weak self] buffer, _ in
             self?.process(buffer)
         }
         engine.prepare()
@@ -69,6 +75,35 @@ final class AudioRecorder: @unchecked Sendable {
 
     var duration: TimeInterval {
         lock.withLock { Double(samples.count) / Self.sampleRate }
+    }
+
+    private static func requireDefaultInputDevice() throws {
+        let unavailable = TalklessError.message("No available microphone found. Connect a microphone and select it in System Settings › Sound › Input.")
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var device = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
+                                         0, nil, &size, &device) == noErr,
+              device != kAudioObjectUnknown else { throw unavailable }
+
+        address.mSelector = kAudioDevicePropertyStreamConfiguration
+        address.mScope = kAudioDevicePropertyScopeInput
+        size = 0
+        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
+              size >= MemoryLayout<AudioBufferList>.size else { throw unavailable }
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { storage.deallocate() }
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, storage) == noErr else {
+            throw unavailable
+        }
+        let buffers = UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self))
+        guard buffers.contains(where: { $0.mNumberChannels > 0 }) else { throw unavailable }
     }
 
     private func process(_ buffer: AVAudioPCMBuffer) {

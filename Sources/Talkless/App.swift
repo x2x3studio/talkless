@@ -32,6 +32,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Diagnostics.shared.startSession()
+        if CommandLine.arguments.contains("--test-microphone") {
+            Task {
+                do {
+                    let count = try await MicrophoneDiagnostic.run()
+                    FileHandle.standardOutput.write(Data("Microphone test passed: \(count) background audio callbacks.\n".utf8))
+                    NSApp.terminate(nil)
+                } catch {
+                    FileHandle.standardError.write(Data("Microphone test failed: \(error.localizedDescription)\n".utf8))
+                    Diagnostics.shared.finishSession()
+                    exit(1)
+                }
+            }
+            return
+        }
         ModelManager.shared.beforeModelChange = { [weak self] _ in
             guard let self else { return }
             try await self.controller.prepareForModelChange()
@@ -166,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Diagnostics.shared.finishSession()
         permissionTimer?.invalidate()
     }
 

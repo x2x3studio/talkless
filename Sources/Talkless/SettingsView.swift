@@ -179,12 +179,47 @@ private struct GeneralTab: View {
             if let updateController {
                 UpdatesSection(updater: updateController, controller: controller)
             }
+
+            DiagnosticsSection()
         }
         .formStyle(.grouped)
         .onReceive(refresh) { _ in
             accessibility = DictationController.accessibilityGranted
             microphone = DictationController.microphoneStatus
             if accessibility, !controller.hotkeyActive { controller.activateHotkey() }
+        }
+    }
+}
+
+private struct DiagnosticsSection: View {
+    @State private var includeCrashReports = false
+    @State private var exporting = false
+
+    var body: some View {
+        Section("Diagnostics") {
+            Text("Local debug logs record app and recording lifecycle events, not audio, transcripts, API keys, or request contents. Logs rotate automatically (up to 15 MB). Nothing is uploaded automatically.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Include recent macOS crash reports", isOn: $includeCrashReports)
+                .disabled(exporting)
+            if includeCrashReports {
+                Text("Original Talkless crash reports from the last 7 days include native backtraces and may contain personal information and file paths. Review them before sharing.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            HStack {
+                Button(exporting ? "Exporting…" : "Export Diagnostics…") {
+                    exporting = true
+                    Task { @MainActor in
+                        await Diagnostics.shared.exportDiagnostics(includeCrashReports: includeCrashReports)
+                        exporting = false
+                    }
+                }
+                .disabled(exporting)
+                if exporting { ProgressView().controlSize(.small) }
+                Button("Open Logs") { Diagnostics.shared.revealAppLogs() }
+                Button("Open Crash Reports") { Diagnostics.shared.openCrashReports() }
+            }
+            Text("After a crash, relaunch Talkless and export diagnostics. Enable crash reports to include the macOS backtrace; a previous unclean exit can also mean Force Quit or power loss.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

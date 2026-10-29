@@ -187,6 +187,7 @@ private actor QwenModelRuntime {
         try Task.checkCancellation()
         if let loaded, loaded.directory == directory { return loaded }
         loaded = nil
+        Diagnostics.shared.record(event: "model_load_start")
         let result = try await Task.detached(priority: .userInitiated) {
             let files = try FileManager.default.contentsOfDirectory(
                 at: directory, includingPropertiesForKeys: nil
@@ -198,6 +199,7 @@ private actor QwenModelRuntime {
             return LoadedModel(directory: directory, model: model)
         }.value
         loaded = result
+        Diagnostics.shared.record(event: "model_load_complete")
         return result
     }
 

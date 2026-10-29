@@ -83,6 +83,7 @@ final class DictationController: ObservableObject {
     // MARK: - Key events
 
     private func triggerPressed() {
+        Diagnostics.shared.record(event: "hotkey_press")
         switch state {
         case .idle:
             pressedAt = Date()
@@ -95,6 +96,7 @@ final class DictationController: ObservableObject {
     }
 
     private func triggerReleased() {
+        Diagnostics.shared.record(event: "hotkey_release")
         guard state == .recording, !handsFree else { return }
         if Date().timeIntervalSince(pressedAt) < tapThreshold {
             handsFree = true
@@ -141,6 +143,7 @@ final class DictationController: ObservableObject {
     // MARK: - Recording
 
     private func startRecording() {
+        Diagnostics.shared.record(event: "recording_start", metadata: ["engine": settings.asrEngine.rawValue])
         guard !changingModel else { return }
         if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
             hud.show(.error("Wait for the model operation to finish before starting dictation."))
@@ -235,7 +238,9 @@ final class DictationController: ObservableObject {
         }
         do {
             try recorder.start()
+            Diagnostics.shared.record(event: "recording_started")
         } catch {
+            Diagnostics.shared.record(event: "recording_error", metadata: ["error_code": String((error as NSError).code)])
             session.cancel()
             self.session = nil
             hud.show(.error("Cannot start recording: \(error.localizedDescription)"))
@@ -251,6 +256,7 @@ final class DictationController: ObservableObject {
 
     private func stopAndProcess() {
         guard state == .recording, let session else { return }
+        Diagnostics.shared.record(event: "recording_stop")
         let samples = recorder.stop()
         let duration = Double(samples.count) / AudioRecorder.sampleRate
         state = .processing
@@ -265,7 +271,9 @@ final class DictationController: ObservableObject {
         processingTask = Task { [weak self] in
             guard let self else { return }
             do {
+                Diagnostics.shared.record(event: "recognition_finish", metadata: ["num_samples": String(samples.count)])
                 let raw = try await session.finish(samples: samples)
+                Diagnostics.shared.record(event: "recognition_complete")
                 guard generation == self.generation else { return }
                 guard !raw.isEmpty else {
                     self.finish(.error("No speech detected"))
@@ -303,6 +311,7 @@ final class DictationController: ObservableObject {
 
                 self.lastTranscript = output
                 let inserted = TextIO.targetIsCurrent(insertionTarget)
+                Diagnostics.shared.record(event: inserted ? "paste_attempt" : "paste_skipped")
                 if inserted {
                     await TextIO.insert(output)
                 }
@@ -332,6 +341,7 @@ final class DictationController: ObservableObject {
     }
 
     func cancel() {
+        Diagnostics.shared.record(event: "dictation_cancel")
         generation += 1
         recorder.stop()
         session?.cancel()
