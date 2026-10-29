@@ -5,10 +5,11 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
+    var updateController: UpdateController? = nil
 
     var body: some View {
         TabView {
-            GeneralTab(controller: controller).tabItem { Label("General", systemImage: "gearshape") }
+            GeneralTab(controller: controller, updateController: updateController).tabItem { Label("General", systemImage: "gearshape") }
             SpeechTab().tabItem { Label("Speech Recognition", systemImage: "waveform") }
             PolishTab().tabItem { Label("AI Polish", systemImage: "sparkles") }
             DictionaryTab().tabItem { Label("Dictionary", systemImage: "character.book.closed") }
@@ -23,6 +24,7 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @ObservedObject var controller: DictationController
+    var updateController: UpdateController?
     @ObservedObject var settings = AppSettings.shared
     @State private var accessibility = DictationController.accessibilityGranted
     @State private var microphone = DictationController.microphoneStatus
@@ -65,12 +67,41 @@ private struct GeneralTab: View {
                 Toggle("Adapt tone to the current app (chat, email, code, or documents)", isOn: $settings.appToneEnabled)
                 Toggle("Sound effects", isOn: $settings.playSounds)
             }
+
+            if let updateController {
+                UpdatesSection(updater: updateController, controller: controller)
+            }
         }
         .formStyle(.grouped)
         .onReceive(refresh) { _ in
             accessibility = DictationController.accessibilityGranted
             microphone = DictationController.microphoneStatus
             if accessibility, !controller.hotkeyActive { controller.activateHotkey() }
+        }
+    }
+}
+
+private struct UpdatesSection: View {
+    @ObservedObject var updater: UpdateController
+    @ObservedObject var controller: DictationController
+
+    var body: some View {
+        Section("Updates") {
+            Picker("Update channel", selection: Binding(get: { updater.channel }, set: { updater.selectChannel($0) })) {
+                ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
+            }
+            .disabled(!updater.canChangeChannel)
+            Text("Stable includes stable releases only. Beta includes beta and stable releases, whichever is newer. Switching to Stable does not downgrade the installed app.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Check for Updates…") { updater.checkForUpdates(nil) }
+                .disabled(controller.state != .idle || !updater.canCheckForUpdates)
+            if let status = updater.status {
+                Text(status).font(.caption).foregroundStyle(.secondary)
+            }
+            if !updater.canChangeChannel {
+                Text("Finish or dismiss the current update before changing channels.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 }

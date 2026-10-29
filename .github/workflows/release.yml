@@ -1,0 +1,102 @@
+name: macOS Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      eligible: ${{ steps.ref.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate trusted release ref
+        id: ref
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_REF" == refs/heads/main ]]; then
+            echo 'eligible=true' >> "$GITHUB_OUTPUT"
+          elif [[ "$RELEASE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            git merge-base --is-ancestor HEAD origin/main
+            echo 'eligible=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'eligible=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check release configuration
+        if: steps.ref.outputs.eligible == 'true'
+        run: |
+          python3 -I scripts/check-repository.py
+          python3 -I scripts/test-release-config.py
+          python3 -I scripts/test-release-version.py
+          python3 -I scripts/test-signing-session.py
+
+  release:
+    needs: validate
+    if: needs.validate.outputs.eligible == 'true'
+    runs-on: [self-hosted, macOS, ARM64, talkless-macos-arm64]
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    env:
+      UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
+      BETA_UPDATE_FEED_URL: ${{ vars.BETA_UPDATE_FEED_URL }}
+      SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+      TALKLESS_SPARKLE_KEY_REF: ${{ vars.TALKLESS_SPARKLE_KEY_REF }}
+      SIGNING_CERTIFICATE_REF: ${{ vars.SIGNING_CERTIFICATE_REF }}
+      SIGNING_PASSWORD_REF: ${{ vars.SIGNING_PASSWORD_REF }}
+      NOTARY_KEY_REF: ${{ vars.NOTARY_KEY_REF }}
+      NOTARY_KEY_ID_REF: ${{ vars.NOTARY_KEY_ID_REF }}
+      NOTARY_ISSUER_REF: ${{ vars.NOTARY_ISSUER_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Generate calendar version
+        run: |
+          set -euo pipefail
+          python3 -I scripts/release-version.py
+          source "$GITHUB_ENV"
+          printf 'DOWNLOAD_BASE_URL=https://github.com/%s/releases/download/%s\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_ENV"
+      - name: Verify build environment
+        run: |
+          set -euo pipefail
+          swift --version
+          xcode-select -p
+          xcrun metal --version
+          command -v op
+          command -v gh
+          TEMP_ROOT="${TMPDIR:-${RUNNER_TEMP:-/tmp}}"
+          test -d "$TEMP_ROOT"
+          df -h "$RUNNER_WORKSPACE" "$TEMP_ROOT"
+      - name: Resolve pinned dependencies
+        run: swift package --build-system native resolve --force-resolved-versions
+      - name: Run model-free tests
+        run: |
+          swift experiments/native-tests/run-qwen-state-tests.swift
+          python3 -I experiments/test_validate_timeline.py
+      - name: Build, sign, and notarize
+        run: bash scripts/release-macos.sh "$VERSION" "$BUILD_NUMBER"
+      - name: Retain signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Talkless-${{ env.VERSION }}-${{ env.RELEASE_CHANNEL }}-macOS-arm64
+          path: dist/releases/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish release and update feeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          PUBLIC_RELEASE_ACK: ${{ github.repository }}
+        run: bash scripts/publish-release.sh "dist/releases/$VERSION-$BUILD_NUMBER" --publish

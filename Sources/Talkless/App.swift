@@ -28,12 +28,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var testWindow: NSWindow?
     private var testTextView: NSTextView?
     private var permissionTimer: Timer?
+    private var updateController: UpdateController?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if CommandLine.arguments.contains("--test-audio") {
             launchAudioTest()
             return
+        }
+        updateController = UpdateController { [weak self] in
+            self?.controller.state != .idle
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
@@ -142,6 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard controller.state == .idle else {
+            // Also protects resumed updates and a new dictation started after Sparkle's check.
+            UpdateController.showDictationBusyAlert()
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         permissionTimer?.invalidate()
     }
@@ -178,6 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Translate Selected Text  ⌃⌥T", #selector(translate)))
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(openSettingsAction), key: ","))
+        if let updateController {
+            menu.addItem(updateController.makeMenuItem())
+            if let status = updateController.status {
+                let statusItem = NSMenuItem(title: status, action: nil, keyEquivalent: "")
+                statusItem.isEnabled = false
+                menu.addItem(statusItem)
+            }
+        }
         menu.addItem(.separator())
         menu.addItem(item("Quit Talkless", #selector(quit), key: "q"))
     }
@@ -204,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func openSettings() {
         if settingsWindow == nil {
-            let hosting = NSHostingController(rootView: SettingsView(controller: controller))
+            let hosting = NSHostingController(rootView: SettingsView(controller: controller, updateController: updateController))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Talkless Settings"
             window.styleMask = [.titled, .closable, .miniaturizable]
