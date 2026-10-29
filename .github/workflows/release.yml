@@ -84,6 +84,7 @@ jobs:
       - name: Run model-free tests
         run: |
           swift experiments/native-tests/run-qwen-state-tests.swift
+          swift experiments/native-tests/run-qwen-output-tests.swift
           bash experiments/model-tests/run-tests.sh
           python3 -I experiments/audio-tests/run-tests.py
           bash experiments/diagnostics-tests/run-tests.sh

@@ -28,7 +28,8 @@ The basic `build-app.sh` fallback is ad-hoc signed and **not notarized** unless 
 
 ## Recognition
 
-- Qwen runs in-process, not through Python or a CLI subprocess. Model state is reused between dictations.
+- Qwen runs in-process, not through Python or a CLI subprocess. The selected installed model is prepared at startup and after download/selection, then kept in memory between dictations. Stopping recording does not unload weights; model changes, deletion or process exit release them.
+- Raw Qwen language/control headers are parsed before display. Incomplete headers never become transcript text; malformed final headers produce an error rather than inserting metadata. Literal words such as `language English` inside the transcript remain untouched.
 - Audio callbacks copy PCM into a background queue. One actor serializes MLX model access.
 - Live text is a replaceable snapshot of the current acoustic window, decoded approximately every two seconds of new audio.
 - Windows are up to 30 seconds. Long dictations commit at a nearby low-energy boundary when available, retaining all remaining audio without acoustic overlap. Silence is not removed and does not stop recording.

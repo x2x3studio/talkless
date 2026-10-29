@@ -32,11 +32,51 @@ final class DictationController: ObservableObject {
     private var context: AppContext?
     var onModelSetupRequested: (() -> Void)?
     private var changingModel = false
+    @Published private(set) var modelPreparationStatus: String?
+    private var modelPreparationTask: Task<Void, Never>?
+    private var preparedModelDirectory: URL?
+    private var preparingModelDirectory: URL?
+    private var preparationGeneration = 0
+
+    func prepareSelectedModel() {
+        guard settings.asrEngine == .qwen, state == .idle, !changingModel,
+              !ModelManager.shared.isBusy,
+              let directory = try? settings.resolvedQwenModelDirectory() else { return }
+        let normalized = directory.standardizedFileURL
+        guard preparedModelDirectory != normalized, preparingModelDirectory != normalized else { return }
+        modelPreparationTask?.cancel()
+        preparationGeneration += 1
+        let token = preparationGeneration
+        preparingModelDirectory = normalized
+        modelPreparationStatus = "Preparing model…"
+        modelPreparationTask = Task { [weak self] in
+            do {
+                try await QwenTranscriptionSession.prepareAssets(modelDirectory: normalized)
+                guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
+                self.preparedModelDirectory = normalized
+                self.preparingModelDirectory = nil
+                self.modelPreparationStatus = "Ready · kept in memory"
+                self.modelPreparationTask = nil
+            } catch {
+                guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
+                self.preparingModelDirectory = nil
+                self.modelPreparationStatus = "Model preparation failed. Check Models settings."
+                self.modelPreparationTask = nil
+                Diagnostics.shared.record(event: "model_error", metadata: ["error_code": String((error as NSError).code)])
+            }
+        }
+    }
 
     func prepareForModelChange() async throws {
         guard state == .idle, !changingModel else {
             throw TalklessError.message("Finish dictation before changing or deleting a model.")
         }
+        preparationGeneration += 1
+        modelPreparationTask?.cancel()
+        modelPreparationTask = nil
+        preparedModelDirectory = nil
+        preparingModelDirectory = nil
+        modelPreparationStatus = nil
         changingModel = true
         defer { changingModel = false }
         await QwenTranscriptionSession.unloadModel()

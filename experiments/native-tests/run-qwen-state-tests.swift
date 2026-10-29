@@ -20,11 +20,11 @@ private enum TalklessError: Error { case message(String) }
 private actor QwenModelRuntime {
     static let shared = QwenModelRuntime()
     var calls: [[Float]] = []
-    func prepare(modelDirectory: URL) async throws {}
-    func decode(samples: [Float], modelDirectory: URL, language: String?, context: String) async throws -> String {
+    func prepare(modelDirectory: URL, onLoading: @escaping @MainActor @Sendable () -> Void = {}) async throws {}
+    func decode(samples: [Float], modelDirectory: URL, language: String?, context: String) async throws -> QwenDecodedOutput {
         calls.append(samples)
         try await Task.sleep(for: .milliseconds(2))
-        return "[\(Int(samples.first ?? -1))..\(Int(samples.last ?? -1))]"
+        return .transcript("[\(Int(samples.first ?? -1))..\(Int(samples.last ?? -1))]")
     }
     func reset() { calls = [] }
 }
@@ -159,7 +159,8 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 defer { try? FileManager.default.removeItem(at: directory) }
 let swiftFile = directory.appendingPathComponent("StateTests.swift")
 let binary = directory.appendingPathComponent("state-tests")
-try (stub + "\n" + section(from: "private final class QwenFinishCompletion:", to: "/// Sole MLX owner.")
+let parser = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/QwenOutputParser.swift"), encoding: .utf8)
+try (stub + "\n" + parser + "\n" + section(from: "private final class QwenFinishCompletion:", to: "/// Sole MLX owner.")
     + section(from: "private final class QwenCaptureState:") + "\n" + tests)
     .write(to: swiftFile, atomically: true, encoding: .utf8)
 func run(_ executable: String, _ arguments: [String]) throws {

@@ -174,18 +174,26 @@ private actor QwenModelRuntime {
         Memory.clearCache()
     }
 
-    func prepare(modelDirectory: URL) async throws {
+    func prepare(
+        modelDirectory: URL,
+        onLoading: @escaping @MainActor @Sendable () -> Void = {}
+    ) async throws {
         await acquire()
         defer { release() }
-        _ = try await model(at: modelDirectory)
+        _ = try await model(at: modelDirectory, onLoading: onLoading)
         try Task.checkCancellation()
     }
 
     /// Called only while holding the operation gate.
-    private func model(at directory: URL) async throws -> LoadedModel {
+    private func model(
+        at directory: URL,
+        onLoading: @escaping @MainActor @Sendable () -> Void = {}
+    ) async throws -> LoadedModel {
         let directory = directory.standardizedFileURL
         try Task.checkCancellation()
         if let loaded, loaded.directory == directory { return loaded }
+        await onLoading()
+        try Task.checkCancellation()
         loaded = nil
         Diagnostics.shared.record(event: "model_load_start")
         let result = try await Task.detached(priority: .userInitiated) {
@@ -205,28 +213,64 @@ private actor QwenModelRuntime {
 
     func decode(
         samples: [Float], modelDirectory: URL, language: String?, context: String
-    ) async throws -> String {
+    ) async throws -> QwenDecodedOutput {
         await acquire()
         defer { release() }
         let loaded = try await model(at: modelDirectory)
         try Task.checkCancellation()
-        guard !samples.isEmpty else { return "" }
-        let output = loaded.model.generate(
-            audio: MLXArray(samples),
-            maxTokens: 512,
-            temperature: 0,
-            context: context,
-            language: language,
-            // Our own windows are <=30 seconds. Disable the library's long-file splitter.
-            chunkDuration: 1200,
-            minChunkDuration: 1,
-            repetitionPenalty: 1
+        guard !samples.isEmpty else { return .transcript("") }
+        let language = language?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let forcedLanguage = language.flatMap { $0.isEmpty ? nil : $0 }
+        let rawText = try generateRaw(
+            model: loaded.model, samples: samples, language: forcedLanguage, context: context
         )
         try Task.checkCancellation()
-        guard output.generationTokens < 512 else {
-            throw TalklessError.message("Qwen reached the output limit for one window; try a shorter dictation")
+        return QwenOutputParser.parse(
+            rawText: rawText, languageWasForced: forcedLanguage != nil,
+            supportedLanguages: loaded.model.config.supportLanguages
+        )
+    }
+
+    /// The pinned generate() discards the raw header and reports "English" even for
+    /// an unfinished "language Chinese". Its text/segments cannot distinguish that
+    /// from spoken words. Keep raw tokens using public model APIs, without patching
+    /// the checkout or forcing a language. Each <=30s window gets its own KV cache.
+    private func generateRaw(
+        model: Qwen3ASRModel, samples: [Float], language: String?, context: String
+    ) throws -> String {
+        guard let tokenizer = model.tokenizer else {
+            throw TalklessError.message("The Qwen tokenizer is not loaded")
         }
-        return output.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let (features, mask, audioTokenCount) = model.preprocessAudio(MLXArray(samples))
+        let prompt = model.buildPrompt(
+            numAudioTokens: audioTokenCount, context: context, language: language
+        )
+        let cache = model.makeCache()
+        // Audio embedding/merging happens only during this initial full-prompt call.
+        // Our bounded window is far below the vendor's long-file prefill workload.
+        let logits = model(
+            inputIds: prompt, inputFeatures: features, featureAttentionMask: mask, cache: cache
+        )
+        var nextToken = logits[0..., -1, 0...].argMax(axis: -1)
+        asyncEval(nextToken)
+        var tokens: [Int] = []
+        let maxTokens = 512
+        defer { Memory.clearCache() }
+        for index in 0..<maxTokens {
+            try Task.checkCancellation()
+            let token = nextToken.item(Int.self)
+            // Same EOS IDs as the pinned Qwen generateSingleChunk implementation.
+            if token == 151645 || token == 151643 {
+                return tokenizer.decode(tokens: tokens, skipSpecialTokens: false)
+            }
+            tokens.append(token)
+            guard index < maxTokens - 1 else { break }
+            let input = MLXArray([Int32(token)]).expandedDimensions(axis: 0)
+            let logits = model(inputIds: input, cache: cache)
+            nextToken = logits[0..., -1, 0...].argMax(axis: -1)
+            asyncEval(nextToken)
+        }
+        throw TalklessError.message("Qwen reached the output limit for one window; try a shorter dictation")
     }
 }
 
@@ -341,20 +385,16 @@ private final class QwenCaptureState: @unchecked Sendable {
             }
         }
         try checkCancellation()
-        await MainActor.run {
+        try await QwenModelRuntime.shared.prepare(modelDirectory: modelDirectory) {
             if !self.lock.withLock({ self.cancelled }) { onStatus("Loading the Qwen speech model…") }
         }
-        try await QwenModelRuntime.shared.prepare(modelDirectory: modelDirectory)
         try checkCancellation()
-        await MainActor.run {
-            if !self.lock.withLock({ self.cancelled }) { onStatus("Local Qwen recognition is ready") }
-        }
 
         let windowSamples = 30 * 16_000
         let decodeIntervalSamples = 2 * 16_000
         var audio: [Float] = []
         var committed = ""
-        var liveText = ""
+        var liveOutput = QwenDecodedOutput.transcript("")
         var decodedSamples = 0
 
         for await _ in wakeups {
@@ -370,33 +410,33 @@ private final class QwenCaptureState: @unchecked Sendable {
 
             while audio.count >= windowSamples {
                 let cut = Self.commitBoundary(in: audio, limit: windowSamples)
-                let text: String
+                let output: QwenDecodedOutput
                 if decodedSamples == cut {
-                    text = liveText
+                    output = liveOutput
                 } else {
-                    text = try await QwenModelRuntime.shared.decode(
+                    output = try await QwenModelRuntime.shared.decode(
                         samples: Array(audio[..<cut]), modelDirectory: modelDirectory,
                         language: language, context: context
                     )
                 }
                 try checkCancellation()
-                committed = Self.join(committed, text)
+                committed = Self.join(committed, try output.finalText())
                 // Non-overlapping acoustic ranges: retain ALL audio after the boundary.
                 audio.removeFirst(cut)
                 decodedSamples = 0
-                liveText = ""
+                liveOutput = .transcript("")
                 await publish(committed)
             }
 
             if inbox.1 {
                 if !audio.isEmpty, decodedSamples != audio.count {
-                    liveText = try await QwenModelRuntime.shared.decode(
+                    liveOutput = try await QwenModelRuntime.shared.decode(
                         samples: audio, modelDirectory: modelDirectory,
                         language: language, context: context
                     )
                 }
                 try checkCancellation()
-                let final = Self.join(committed, liveText)
+                let final = Self.join(committed, try liveOutput.finalText())
                 await publish(final)
                 return final
             }
@@ -404,13 +444,15 @@ private final class QwenCaptureState: @unchecked Sendable {
             // Skip stale intermediate snapshots when inference was slower than capture.
             // The next wakeup drains all accumulated PCM, rather than queueing every decode.
             if audio.count - decodedSamples >= decodeIntervalSamples {
-                liveText = try await QwenModelRuntime.shared.decode(
+                liveOutput = try await QwenModelRuntime.shared.decode(
                     samples: audio, modelDirectory: modelDirectory,
                     language: language, context: context
                 )
                 try checkCancellation()
                 decodedSamples = audio.count
-                await publish(Self.join(committed, liveText))
+                // Header-only short-window results are not user text. Retain their
+                // state so releasing with no new samples still fails closed.
+                await publish(Self.join(committed, liveOutput.previewText))
             }
         }
         try checkCancellation()

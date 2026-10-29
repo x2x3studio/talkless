@@ -148,7 +148,7 @@ struct ModelManagementView: View {
                 if entry.phase == .checking || entry.phase == .verifying || entry.phase == .deleting {
                     ProgressView().controlSize(.small)
                 }
-                Text(statusText(entry))
+                Text(isInUse(entry) ? (controller.modelPreparationStatus ?? statusText(entry)) : statusText(entry))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()

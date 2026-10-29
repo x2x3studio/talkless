@@ -61,6 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             launchAudioTest()
             return
         }
+        ModelManager.shared.onModelOperationChange = { [weak self] in
+            self?.controller.prepareSelectedModel()
+        }
+        settings.$asrEngine.combineLatest(settings.$qwenModelDirectory, settings.$useCustomQwenDirectory)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.controller.prepareSelectedModel() }
+            .store(in: &cancellables)
+        controller.prepareSelectedModel()
         updateController = UpdateController { [weak self] in
             self?.controller.state != .idle
         }
@@ -117,6 +125,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             outputURL = URL(fileURLWithPath: NSString(string: arguments[outputIndex + 1]).expandingTildeInPath)
         }
+        var repetitions = 1
+        if let repeatIndex = arguments.firstIndex(of: "--test-repeat") {
+            guard arguments.indices.contains(repeatIndex + 1),
+                  let value = Int(arguments[repeatIndex + 1]), (1...5).contains(value) else {
+                FileHandle.standardError.write(Data("--test-repeat requires a value from 1 to 5.\n".utf8))
+                exit(2)
+            }
+            repetitions = value
+        }
         let keepOpen = arguments.contains("--test-keep-open")
         showTestWindow(audio: audio)
         controller.$previewText
@@ -128,11 +145,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .store(in: &cancellables)
         Task {
             do {
-                let result = try await controller.runAudioTest(url: audio)
+                var result = ""
+                for index in 1...repetitions {
+                    result = try await controller.runAudioTest(url: audio)
+                    FileHandle.standardOutput.write(Data("Session \(index): \(result)\n".utf8))
+                }
                 if let outputURL {
                     try result.write(to: outputURL, atomically: true, encoding: .utf8)
                 }
-                FileHandle.standardOutput.write(Data((result + "\n").utf8))
                 testTextView?.string = result.isEmpty ? "Transcription complete: no speech detected." : result
                 if !keepOpen { NSApp.terminate(nil) }
             } catch {
