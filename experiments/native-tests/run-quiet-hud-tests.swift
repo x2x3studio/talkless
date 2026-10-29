@@ -40,5 +40,6 @@ func run(_ executable: String, _ arguments: [String]) throws {
 let binary = directory.appendingPathComponent("hud-tests")
 try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library", source.path,
     root.appendingPathComponent("Sources/Talkless/Overlay.swift").path,
+    root.appendingPathComponent("Sources/Talkless/CaretPosition.swift").path,
     root.appendingPathComponent("Sources/Talkless/TextIO.swift").path, "-o", binary.path])
 try run(binary.path, [])

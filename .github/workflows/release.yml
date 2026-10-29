@@ -86,6 +86,8 @@ jobs:
           swift experiments/native-tests/run-qwen-state-tests.swift
           swift experiments/native-tests/run-qwen-output-tests.swift
           bash experiments/model-tests/run-tests.sh
+          bash experiments/caret-tests/run-tests.sh
+          swift experiments/native-tests/run-quiet-hud-tests.swift
           python3 -I experiments/audio-tests/run-tests.py
           bash experiments/diagnostics-tests/run-tests.sh
           python3 -I experiments/test_validate_timeline.py

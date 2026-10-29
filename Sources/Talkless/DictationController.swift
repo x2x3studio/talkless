@@ -273,9 +273,6 @@ final class DictationController: ObservableObject {
         self.session = session
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
-        recorder.onLevel = { [weak self] level in
-            DispatchQueue.main.async { self?.hud.model.push(level: level) }
-        }
         do {
             try recorder.start()
             Diagnostics.shared.record(event: "recording_started")

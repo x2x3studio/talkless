@@ -18,5 +18,6 @@ printf '%s\n' \
 swiftc -O -swift-version 6 -parse-as-library \
   "$ROOT/experiments/preview-runner/PreviewProbe.swift" \
   "$ROOT/Sources/Talkless/Overlay.swift" \
+  "$ROOT/Sources/Talkless/CaretPosition.swift" \
   "$ROOT/Sources/Talkless/TextIO.swift" \
   -o "$APP/Contents/MacOS/TalklessPreviewProbe"

@@ -13,19 +13,8 @@ final class HUDModel: ObservableObject {
     @Published var phase: Phase = .hidden
     @Published var isEditMode = false
     @Published var preview = ""
-    @Published var levels: [CGFloat] = Array(repeating: 0, count: 28)
-
-    func push(level: Float) {
-        // Apply simple smoothing to keep the bars from jittering.
-        let last = levels.last ?? 0
-        let value = max(CGFloat(level), last * 0.6)
-        levels.removeFirst()
-        levels.append(value)
-    }
-
-    func resetLevels() {
-        levels = Array(repeating: 0, count: levels.count)
-    }
+    static let maximumWidth: CGFloat = 340
+    static let maximumHeight: CGFloat = 82
 }
 
 /// A floating capsule at the bottom center of the screen; it neither takes focus nor receives mouse events.
@@ -34,10 +23,11 @@ final class HUDController {
     let model = HUDModel()
     private let panel: NSPanel
     private var hideTask: Task<Void, Never>?
+    private var trackingTask: Task<Void, Never>?
 
     init() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: HUDModel.maximumWidth, height: HUDModel.maximumHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -58,6 +48,7 @@ final class HUDController {
         if !panel.isVisible {
             position()
             panel.orderFrontRegardless()
+            beginTracking()
         }
         switch phase {
         case .error:
@@ -81,19 +72,33 @@ final class HUDController {
     }
 
     private func dismiss() {
+        trackingTask?.cancel()
+        trackingTask = nil
         panel.orderOut(nil)
         model.phase = .hidden
         model.preview = ""
         model.isEditMode = false
-        model.resetLevels()
+    }
+
+    private func beginTracking() {
+        trackingTask?.cancel()
+        trackingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled, let self, self.panel.isVisible else { return }
+                self.position()
+            }
+        }
     }
 
     private func position() {
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
-        guard let frame = screen?.visibleFrame else { return }
-        let size = panel.frame.size
-        panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.minY + 28))
+        let frame = CaretPlacement.frame(
+            size: panel.frame.size,
+            caret: CaretPosition.current(),
+            screens: NSScreen.screens.map(\.visibleFrame),
+            fallbackPoint: NSEvent.mouseLocation
+        )
+        if panel.frame.origin != frame.origin { panel.setFrameOrigin(frame.origin) }
     }
 }
 
@@ -101,89 +106,52 @@ struct HUDView: View {
     @ObservedObject var model: HUDModel
 
     var body: some View {
-        VStack(spacing: 8) {
-            Spacer(minLength: 0)
-            if !model.preview.isEmpty, isListeningOrWorking {
-                Text(model.preview)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(3)
-                    .truncationMode(.head)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: 560)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.78)))
-                    .transition(.opacity)
+        Group {
+            if model.phase != .hidden {
+                HStack(spacing: 9) {
+                    indicator
+                    if case .error(let message) = model.phase {
+                        Text(message)
+                            .lineLimit(3)
+                            .truncationMode(.tail)
+                    } else if !model.preview.isEmpty {
+                        Text(model.preview)
+                            .lineLimit(2)
+                            .truncationMode(.head)
+                    }
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.95))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .frame(maxWidth: HUDModel.maximumWidth - 8)
+                .fixedSize(horizontal: true, vertical: true)
+                .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.82)))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.10)))
             }
-            capsule
         }
-        .frame(width: 640, height: 200)
-        .animation(.easeOut(duration: 0.15), value: model.phase)
-        .animation(.easeOut(duration: 0.15), value: model.preview.isEmpty)
-    }
-
-    private var isListeningOrWorking: Bool {
-        switch model.phase {
-        case .listening, .working: return true
-        default: return false
-        }
+        .frame(width: HUDModel.maximumWidth, height: HUDModel.maximumHeight, alignment: .bottom)
     }
 
     @ViewBuilder
-    private var capsule: some View {
-        HStack(spacing: 10) {
-            icon
-            switch model.phase {
-            case .listening:
-                Waveform(levels: model.levels)
-                    .frame(width: 120, height: 22)
-            case .working:
-                ProgressView().controlSize(.small).tint(.white)
-                    .accessibilityLabel("Processing dictation")
-            case .error(let text):
-                Text(text)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .frame(maxWidth: 420)
-            case .hidden:
-                EmptyView()
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 40)
-        .background(Capsule().fill(.black.opacity(0.85)))
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-    }
-
-    @ViewBuilder
-    private var icon: some View {
+    private var indicator: some View {
         switch model.phase {
         case .listening:
-            Image(systemName: model.isEditMode ? "pencil.and.scribble" : "mic.fill")
-                .foregroundStyle(model.isEditMode ? .orange : .red)
+            Circle()
+                .fill(model.isEditMode ? Color.orange : Color.red)
+                .frame(width: 6, height: 6)
+                .accessibilityLabel("Recording")
         case .working:
-            EmptyView()
+            ProgressView()
+                .controlSize(.mini)
+                .tint(.white)
+                .accessibilityLabel("Processing dictation")
         case .error:
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
         case .hidden:
             EmptyView()
         }
-    }
-}
-
-struct Waveform: View {
-    var levels: [CGFloat]
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(levels.indices, id: \.self) { i in
-                Capsule()
-                    .fill(.white.opacity(0.9))
-                    .frame(width: 2.5, height: max(3, levels[i] * 22))
-            }
-        }
-        .animation(.linear(duration: 0.08), value: levels)
     }
 }
 
