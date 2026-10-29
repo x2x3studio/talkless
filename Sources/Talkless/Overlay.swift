@@ -6,8 +6,7 @@ final class HUDModel: ObservableObject {
     enum Phase: Equatable {
         case hidden
         case listening(handsFree: Bool)
-        case working(String)
-        case done(String)
+        case working
         case error(String)
     }
 
@@ -53,6 +52,7 @@ final class HUDController {
     }
 
     func show(_ phase: HUDModel.Phase) {
+        guard phase != .hidden else { hide(); return }
         hideTask?.cancel()
         model.phase = phase
         if !panel.isVisible {
@@ -60,8 +60,6 @@ final class HUDController {
             panel.orderFrontRegardless()
         }
         switch phase {
-        case .done:
-            hide(after: .milliseconds(700))
         case .error:
             hide(after: .seconds(3))
         default:
@@ -71,15 +69,23 @@ final class HUDController {
 
     func hide(after delay: Duration = .zero) {
         hideTask?.cancel()
-        hideTask = Task { [weak self] in
-            if delay > .zero { try? await Task.sleep(for: delay) }
-            guard !Task.isCancelled, let self else { return }
-            self.panel.orderOut(nil)
-            self.model.phase = .hidden
-            self.model.preview = ""
-            self.model.isEditMode = false
-            self.model.resetLevels()
+        if delay <= .zero {
+            dismiss()
+            return
         }
+        hideTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.dismiss()
+        }
+    }
+
+    private func dismiss() {
+        panel.orderOut(nil)
+        model.phase = .hidden
+        model.preview = ""
+        model.isEditMode = false
+        model.resetLevels()
     }
 
     private func position() {
@@ -131,11 +137,9 @@ struct HUDView: View {
             case .listening:
                 Waveform(levels: model.levels)
                     .frame(width: 120, height: 22)
-            case .working(let text):
+            case .working:
                 ProgressView().controlSize(.small).tint(.white)
-                Text(text).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85))
-            case .done(let text):
-                Text(text).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                    .accessibilityLabel("Processing dictation")
             case .error(let text):
                 Text(text)
                     .font(.system(size: 12, weight: .medium))
@@ -159,9 +163,7 @@ struct HUDView: View {
             Image(systemName: model.isEditMode ? "pencil.and.scribble" : "mic.fill")
                 .foregroundStyle(model.isEditMode ? .orange : .red)
         case .working:
-            Image(systemName: "sparkles").foregroundStyle(.yellow)
-        case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            EmptyView()
         case .error:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         case .hidden:

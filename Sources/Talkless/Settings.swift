@@ -130,7 +130,6 @@ final class AppSettings: ObservableObject {
     /// One term per line: proper nouns, names, technical terms, etc.
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
     @Published var customInstructions: String { didSet { save(customInstructions, "customInstructions") } }
-    @Published var playSounds: Bool { didSet { save(playSounds, "playSounds") } }
 
     private init() {
         let d = UserDefaults.standard
@@ -152,7 +151,6 @@ final class AppSettings: ObservableObject {
         translateTarget = d.string(forKey: "translateTarget") ?? "Simplified Chinese"
         dictionary = d.string(forKey: "dictionary") ?? ""
         customInstructions = d.string(forKey: "customInstructions") ?? ""
-        playSounds = d.object(forKey: "playSounds") as? Bool ?? true
     }
 
     private func save(_ value: Any, _ key: String) {

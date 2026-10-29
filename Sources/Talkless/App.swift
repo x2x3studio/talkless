@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let outputURL {
                     try result.write(to: outputURL, atomically: true, encoding: .utf8)
                 }
-                testTextView?.string = result.isEmpty ? "Transcription complete: no speech detected." : result
+                testTextView?.string = result
                 if !keepOpen { NSApp.terminate(nil) }
             } catch {
                 let message = "Audio test failed: \(error.localizedDescription)"

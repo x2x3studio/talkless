@@ -83,7 +83,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         start.isEnabled = false
         window.makeFirstResponder(output)
         hud.model.preview = ""
-        hud.show(.working("Loading Qwen model…"))
+        hud.show(.working)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: args[0])
         process.arguments = Array(args.dropFirst())
@@ -155,9 +155,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             sawFinal = true
             output.insertText(text, replacementRange: output.selectedRange())
             status.stringValue = "Done · \(partialCount) preview updates · Final text inserted once into this test view"
-            hud.show(.done("Final text inserted into test view"))
+            hud.hide()
         } else if kind == "input_stopped" {
-            hud.show(.working("Audio input ended; finishing recognition…"))
+            hud.show(.working)
         }
     }
 

@@ -173,7 +173,6 @@ private struct GeneralTab: View {
                     .help("Select text, then dictate an instruction such as Make it more formal")
                 Toggle("Adapt tone to the current app", isOn: $settings.appToneEnabled)
                     .help("Match your writing to chat, email, code, or documents")
-                Toggle("Sound effects", isOn: $settings.playSounds)
             }
 
             if let updateController {

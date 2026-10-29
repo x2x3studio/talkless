@@ -230,9 +230,9 @@ final class DictationController: ObservableObject {
             session = QwenTranscriptionSession(
                 modelDirectory: qwenDirectory,
                 language: nil,
-                onStatus: { [weak self] status in
+                onStatus: { [weak self] _ in
                     guard let self, self.generation == generation else { return }
-                    self.hud.show(.working(status))
+                    self.hud.show(.working)
                 },
                 onError: { [weak self] message in
                     guard let self, self.generation == generation else { return }
@@ -244,9 +244,9 @@ final class DictationController: ObservableObject {
             session = AppleSpeechSession(
                 locale: Locale(identifier: settings.speechLocale),
                 contextualStrings: settings.dictionaryTerms,
-                onStatus: { [weak self] status in
+                onStatus: { [weak self] _ in
                     guard let self, self.generation == generation else { return }
-                    self.hud.show(.working(status))
+                    self.hud.show(.working)
                 }
             )
         case .openAICompatible:
@@ -291,7 +291,6 @@ final class DictationController: ObservableObject {
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
         hud.show(.listening(handsFree: false))
-        playSound("Tink")
     }
 
     private func stopAndProcess() {
@@ -300,8 +299,7 @@ final class DictationController: ObservableObject {
         let samples = recorder.stop()
         let duration = Double(samples.count) / AudioRecorder.sampleRate
         state = .processing
-        playSound("Pop")
-        hud.show(.working("Transcribing…"))
+        hud.show(.working)
 
         let generation = self.generation
         let editSelection = self.editSelection
@@ -316,23 +314,23 @@ final class DictationController: ObservableObject {
                 Diagnostics.shared.record(event: "recognition_complete")
                 guard generation == self.generation else { return }
                 guard !raw.isEmpty else {
-                    self.finish(.error("No speech detected"))
+                    self.finish(.hidden)
                     return
                 }
 
                 var output = raw
                 var kind = HistoryEntry.Kind.dictation
-                var note = "Inserted"
+                var polishFailed = false
                 if let selection = editSelection {
                     kind = .edit
-                    self.hud.show(.working("Applying your instruction…"))
+                    self.hud.show(.working)
                     output = try await LLMClient.complete(
                         system: Prompts.voiceEdit(settings: self.settings),
                         user: Prompts.voiceEditInput(selection: selection, instruction: raw),
                         config: self.settings.llmConfig
                     )
                 } else if self.settings.polishEnabled, self.settings.llmConfigured {
-                    self.hud.show(.working("Polishing…"))
+                    self.hud.show(.working)
                     do {
                         output = try await LLMClient.complete(
                             system: Prompts.polish(context: context, settings: self.settings),
@@ -344,7 +342,7 @@ final class DictationController: ObservableObject {
                     } catch {
                         // A cleanup failure must not lose the user's words; fall back to the raw transcript.
                         output = raw
-                        note = "Polishing failed; inserted the raw transcript"
+                        polishFailed = true
                     }
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
@@ -359,7 +357,7 @@ final class DictationController: ObservableObject {
                 self.history.add(HistoryEntry(
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
-                if inserted { self.finish(.done(note)) }
+                if inserted { self.finish(polishFailed ? .error("Polishing failed; using the original transcript.") : .hidden) }
                 else {
                     self.finish(.error("Input location changed or could not be verified; result saved"))
                     self.translationPanel.show(source: "Transcript", result: output, error: nil, allowsReplacement: false, onReplace: { _ in })
@@ -428,9 +426,9 @@ final class DictationController: ObservableObject {
         let session = QwenTranscriptionSession(
             modelDirectory: modelDirectory,
             language: nil,
-            onStatus: { [weak self] status in
+            onStatus: { [weak self] _ in
                 guard let self, self.generation == generation else { return }
-                self.hud.show(.working(status))
+                self.hud.show(.working)
             }
         )
         self.session = session
@@ -457,12 +455,12 @@ final class DictationController: ObservableObject {
                 session.feed(frame)
             }
             state = .processing
-            hud.show(.working("Transcribing…"))
+            hud.show(.working)
             let text = try await session.finish(samples: [])
             guard self.generation == generation else { throw CancellationError() }
             lastTranscript = text
             previewText = text
-            finish(.done("Done"))
+            finish(.hidden)
             return text
         } catch {
             session.cancel()
@@ -502,8 +500,4 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func playSound(_ name: String) {
-        guard settings.playSounds else { return }
-        NSSound(named: NSSound.Name(name))?.play()
-    }
 }

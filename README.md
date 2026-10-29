@@ -28,6 +28,8 @@ The basic `build-app.sh` fallback is ad-hoc signed and **not notarized** unless 
 
 ## Recognition
 
+Dictation is silent: no start/stop sounds or routine success/empty-result messages. The HUD shows live words and a small processing indicator, then hides immediately on completion. Actionable errors remain visible; diagnostic events are retained locally.
+
 - Qwen runs in-process, not through Python or a CLI subprocess. The selected installed model is prepared at startup and after download/selection, then kept in memory between dictations. Stopping recording does not unload weights; model changes, deletion or process exit release them.
 - Raw Qwen language/control headers are parsed before display. Incomplete headers never become transcript text; malformed final headers produce an error rather than inserting metadata. Literal words such as `language English` inside the transcript remain untouched.
 - Audio callbacks copy PCM into a background queue. One actor serializes MLX model access.
