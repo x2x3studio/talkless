@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-recorder-tests-") as work:
     enum_file.write_text("import Foundation\n" + enums)
     binary = directory / "shortcut-recorder-tests"
     subprocess.run([
-        "swiftc", "-swift-version", "6", "-parse-as-library",
+        "/usr/bin/xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
         str(enum_file), str(root / "Sources/Talkless/ShortcutRecorder.swift"),
         str(root / "Tests/ShortcutRecorderTests/ShortcutRecorderTests.swift"),
         "-o", str(binary),
