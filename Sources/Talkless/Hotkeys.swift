@@ -5,10 +5,10 @@ import Carbon.HIToolbox
 @MainActor
 final class HotkeyMonitor {
     var triggerKey: TriggerKey = .fn
-    var onPress: () -> Void = {}
-    var onRelease: () -> Void = {}
+    var onPress: (CGEventTimestamp) -> Void = { _ in }
+    var onRelease: (CGEventTimestamp) -> Void = { _ in }
     /// Another key was pressed while holding the trigger (a keyboard shortcut, not dictation).
-    var onComboKey: () -> Void = {}
+    var onComboKey: (CGEventTimestamp) -> Void = { _ in }
     /// Return true to consume this Escape key event.
     var onEscape: () -> Bool = { false }
 
@@ -63,10 +63,10 @@ final class HotkeyMonitor {
             let down = isTriggerDown(event.flags)
             if down && !triggerDown {
                 triggerDown = true
-                onPress()
+                onPress(event.timestamp)
             } else if !down && triggerDown {
                 triggerDown = false
-                onRelease()
+                onRelease(event.timestamp)
             }
             return true
 
@@ -75,7 +75,7 @@ final class HotkeyMonitor {
             if keyCode == Int64(kVK_Escape) {
                 return !onEscape()
             }
-            if triggerDown { onComboKey() }
+            if triggerDown { onComboKey(event.timestamp) }
             return true
 
         default:

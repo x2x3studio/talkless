@@ -12,10 +12,13 @@ The Swift 6 audio tap previously inherited MainActor isolation from its setup me
 
 A second preflight checks that the default Core Audio input device exists and exposes input channels before constructing AVAudioEngine. Without a microphone, an apparently valid fallback format can otherwise reach exception-prone tap installation. The app now reports the missing device instead. Device disconnection races in the older macOS audio API remain a limitation.
 
+Tap/hold classification uses the physical Core Graphics event timestamps, not callback-processing time. Cold audio initialization must not turn a short tap into a long hold. Release diagnostics record only the physical duration in milliseconds; a 100 ms tap with 450 ms delayed startup remains hands-free in the regression harness.
+
 ## Regression checks
 
 ```sh
 python3 -I Tests/AudioTests/run-tests.py
+python3 -I Tests/HotkeyTests/run-tests.py
 bash Tests/DiagnosticsTests/run-tests.sh
 ```
 

@@ -22,7 +22,7 @@ final class DictationController: ObservableObject {
     private var processingTask: Task<Void, Never>?
     /// Incremented on each start/cancel to discard stale asynchronous results.
     private var generation = 0
-    private var pressedAt = Date()
+    private var pressedAt: CGEventTimestamp?
     private var handsFree = false
     private var editSelection: String?
     private var targetApp: NSRunningApplication?
@@ -81,13 +81,13 @@ final class DictationController: ObservableObject {
         await QwenTranscriptionSession.unloadModel()
     }
 
-    /// Releasing before this threshold counts as a tap and enters hands-free mode.
-    private let tapThreshold: TimeInterval = 0.3
+    /// Physical event timestamps exclude microphone setup and main-thread dispatch delays.
+    private let tapThreshold: CGEventTimestamp = 300_000_000
 
     init() {
-        hotkeys.onPress = { [weak self] in self?.triggerPressed() }
-        hotkeys.onRelease = { [weak self] in self?.triggerReleased() }
-        hotkeys.onComboKey = { [weak self] in self?.comboKeyPressed() }
+        hotkeys.onPress = { [weak self] timestamp in self?.triggerPressed(at: timestamp) }
+        hotkeys.onRelease = { [weak self] timestamp in self?.triggerReleased(at: timestamp) }
+        hotkeys.onComboKey = { [weak self] timestamp in self?.comboKeyPressed(at: timestamp) }
         hotkeys.onEscape = { [weak self] in self?.escapePressed() ?? false }
         translateHotKey = GlobalHotKey { [weak self] in
             Task { await self?.translateSelection() }
@@ -121,12 +121,13 @@ final class DictationController: ObservableObject {
 
     // MARK: - Key events
 
-    private func triggerPressed() {
+    private func triggerPressed(at timestamp: CGEventTimestamp) {
         Diagnostics.shared.record(event: "hotkey_press")
         switch state {
         case .idle:
-            pressedAt = Date()
+            pressedAt = timestamp
             startRecording()
+            if state != .recording { pressedAt = nil }
         case .recording where handsFree:
             stopAndProcess()
         default:
@@ -134,10 +135,13 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func triggerReleased() {
-        Diagnostics.shared.record(event: "hotkey_release")
+    private func triggerReleased(at timestamp: CGEventTimestamp) {
+        guard let start = pressedAt, timestamp >= start else { return }
+        pressedAt = nil
+        let duration = timestamp - start
+        Diagnostics.shared.record(event: "hotkey_release", metadata: ["duration_ms": String(duration / 1_000_000)])
         guard state == .recording, !handsFree else { return }
-        if Date().timeIntervalSince(pressedAt) < tapThreshold {
+        if duration < tapThreshold {
             handsFree = true
             hud.show(.listening(handsFree: true))
         } else {
@@ -145,9 +149,10 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func comboKeyPressed() {
+    private func comboKeyPressed(at timestamp: CGEventTimestamp) {
         // The user is holding the trigger for a shortcut (such as Fn+arrow), not dictation.
-        if state == .recording, !handsFree, Date().timeIntervalSince(pressedAt) < 1.0 {
+        guard let start = pressedAt, timestamp >= start else { return }
+        if state == .recording, !handsFree, timestamp - start < 1_000_000_000 {
             cancel()
         }
     }
@@ -168,7 +173,7 @@ final class DictationController: ObservableObject {
     func toggleFromMenu() {
         switch state {
         case .idle:
-            pressedAt = Date()
+            pressedAt = nil
             startRecording()
             handsFree = true
             if state == .recording { hud.show(.listening(handsFree: true)) }
@@ -368,6 +373,7 @@ final class DictationController: ObservableObject {
 
     func cancel() {
         Diagnostics.shared.record(event: "dictation_cancel")
+        pressedAt = nil
         generation += 1
         recorder.stop()
         session?.cancel()
