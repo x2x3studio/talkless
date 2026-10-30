@@ -90,7 +90,8 @@ struct ModelCoreTests {
             try expect(model.totalBytes == model.manifest.files.reduce(0) { $0 + $1.bytes }, "Wrong total")
         }
         try expect(ModelCatalog.models[0].manifest.files.last?.bytes == 708236945, "Default weight size mismatch")
-        try expect(ModelCatalog.models[1].manifest.files.last?.sha256 == "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45", "Receipt mismatch")
+        try expect(ModelCatalog.models.count == 1, "Only the 0.6B local model should be offered")
+        try expect(ModelCatalog.models[0].manifest.files.last?.sha256 == "70c7e67e588062adce4f10796e47ad42ead51c6671eda61a0987eae38ca95ddf", "Receipt mismatch")
         let manifest = ModelCatalog.models[0].manifest
         for value in ["http://example.com", "file:///tmp/model", "https://user:secret@example.com", "https://example.com?token=secret", "https://example.com/#fragment", "https://example.com/a/../b"] {
             try expectThrows("Accepted insecure source \(value)") {

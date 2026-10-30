@@ -106,7 +106,7 @@ struct SettingsView: View {
                     case .models:
                         SpeechTab(controller: controller)
                     case .polish:
-                        PolishTab()
+                        PolishSettingsView()
                     case .dictionary:
                         DictionaryTab().padding(28)
                     case .history:
@@ -386,98 +386,6 @@ private struct SpeechTab: View {
                 downloadStatus = "Ready"
             } catch {
                 downloadStatus = error.localizedDescription
-            }
-        }
-    }
-}
-
-// MARK: - AI Polish
-
-private struct PolishTab: View {
-    @ObservedObject var settings = AppSettings.shared
-    @State private var testResult = ""
-    @State private var testing = false
-    @State private var confirmTest = false
-
-    private let presets: [(name: String, url: String, model: String)] = [
-        ("OpenAI", "https://api.openai.com/v1", "gpt-4.1-mini"),
-        ("DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
-        ("Qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-        ("Ollama", "http://localhost:11434/v1", "qwen3:8b"),
-    ]
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Polish dictation with AI", isOn: $settings.polishEnabled)
-                Text("Remove fillers, resolve corrections, and add punctuation.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Picker("Output language", selection: $settings.outputLanguage) {
-                    ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
-                }
-                TextField("Translation target language", text: $settings.translateTarget)
-            }
-
-            Section("Language model") {
-                LabeledContent("Provider preset") {
-                    Menu("Choose…") {
-                        ForEach(presets, id: \.name) { preset in
-                            Button(preset.name) {
-                                settings.llmBaseURL = preset.url
-                                settings.llmModel = preset.model
-                            }
-                        }
-                    }
-                    .fixedSize()
-                }
-                TextField("API URL", text: $settings.llmBaseURL)
-                SecureField("API key", text: $settings.llmAPIKey)
-                    .help("For local Ollama, enter any value")
-                TextField("Model", text: $settings.llmModel)
-                Text("Polishing sends your transcript, selected text, and writing instructions to this endpoint. Cloud providers may charge for usage.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Test Polish…") { confirmTest = true }
-                        .disabled(testing || !settings.llmConfigured)
-                    if testing { ProgressView().controlSize(.small) }
-                }
-                if !testResult.isEmpty {
-                    Text(testResult).font(.callout).textSelection(.enabled)
-                }
-            }
-
-            Section("Additional instructions") {
-                TextEditor(text: $settings.customInstructions)
-                    .font(.body)
-                    .frame(height: 60)
-                Text("For example: Always use digits for numbers, or Do not use exclamation marks.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-        .confirmationDialog("Send a sample to your language model?", isPresented: $confirmTest, titleVisibility: .visible) {
-            Button("Send Test") { test() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This sends a sample transcript with your dictionary and writing instructions to the configured endpoint. Your provider may charge for the request.")
-        }
-    }
-
-    private func test() {
-        testing = true
-        testResult = ""
-        let sample = "Um, let us meet tomorrow at three, no, four in the afternoon, and uh we need to discuss three things, first the budget, second hiring, and third the Q4 roadmap"
-        Task {
-            defer { testing = false }
-            do {
-                let output = try await LLMClient.complete(
-                    system: Prompts.polish(context: nil, settings: settings),
-                    user: Prompts.polishInput(sample),
-                    config: settings.llmConfig
-                )
-                testResult = "Original: \(sample)\n\nPolished:\n\(output)"
-            } catch {
-                testResult = "Failed: \(error.localizedDescription)"
             }
         }
     }

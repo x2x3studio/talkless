@@ -1,6 +1,6 @@
 # Local model management
 
-Talkless recommends **Qwen3-ASR 0.6B, MLX 4-bit**. The optional 1.7B entry is explicitly separate. Selecting a model is not the same as downloading it; downloads start only from a user action. The catalogue pins repository revisions, file sizes, hashes and runtime format.
+Talkless offers one built-in model: **Qwen3-ASR 0.6B, MLX 4-bit**. The former 1.7B catalogue entry has been removed; existing files are not automatically deleted. Selecting a model is not the same as downloading it; downloads start only from a user action. The catalogue pins repository revisions, file sizes, hashes and runtime format.
 
 ## Reference decisions
 
@@ -33,4 +33,4 @@ Advanced settings offer an explicit custom-model folder override. The catalogue 
 - The installed model completed a native application Mandarin transcription test. Reopening the manager after inference correctly recognizes the installation, including its generated tokenizer cache.
 - The icon is original reproducible AppKit/CoreGraphics artwork in `scripts/generate-icon.swift`.
 
-This iteration focuses on local model management. Additional cloud ASR providers, Responses/Anthropic protocol adapters, remote model discovery, thinking controls, and expanded prompt editing are deferred, not represented as completed features.
+Local recognition and second-stage API polishing are separate. See [AI polishing providers](ai-polish.md) for the implemented protocol adapters and remote model discovery. Additional cloud ASR providers and token-level local transcription updates remain outside this model-management scope.

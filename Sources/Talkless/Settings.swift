@@ -79,7 +79,14 @@ enum OutputLanguage: String, CaseIterable, Identifiable {
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let credentialStore: any CredentialStoring
+    private static let polishSettingsKey = "polishProviderSettings.v1"
+    private var providerStates: [String: PolishProviderState]
+    private var credentials: [PolishProvider: String] = [:]
+    private var credentialErrors: [PolishProvider: String] = [:]
+    private var legacyCredentialProvider: PolishProvider?
+    private var isLoadingProvider = false
 
     @Published var triggerKey: TriggerKey { didSet { save(triggerKey.rawValue, "triggerKey") } }
     @Published var asrEngine: ASREngine { didSet { save(asrEngine.rawValue, "asrEngine") } }
@@ -118,9 +125,14 @@ final class AppSettings: ObservableObject {
     @Published var asrModel: String { didSet { save(asrModel, "asrModel") } }
 
     @Published var polishEnabled: Bool { didSet { save(polishEnabled, "polishEnabled") } }
-    @Published var llmBaseURL: String { didSet { save(llmBaseURL, "llmBaseURL") } }
-    @Published var llmAPIKey: String { didSet { save(llmAPIKey, "llmAPIKey") } }
-    @Published var llmModel: String { didSet { save(llmModel, "llmModel") } }
+    @Published private(set) var selectedPolishProvider: PolishProvider
+    // These published compatibility bindings always describe the selected provider.
+    @Published var llmBaseURL: String { didSet { persistCurrentProvider() } }
+    @Published var llmAPIKey: String { didSet { persistCurrentCredential() } }
+    @Published var llmModel: String { didSet { persistCurrentProvider() } }
+    @Published var llmProtocol: LLMProtocol { didSet { persistCurrentProvider() } }
+    @Published var llmAuthMode: LLMAuthMode { didSet { persistCurrentProvider() } }
+    @Published private(set) var llmCredentialSaveError: String?
 
     @Published var outputLanguage: OutputLanguage { didSet { save(outputLanguage.rawValue, "outputLanguage") } }
     /// If text is selected when dictation starts, treat speech as an instruction to edit it.
@@ -131,8 +143,40 @@ final class AppSettings: ObservableObject {
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
     @Published var customInstructions: String { didSet { save(customInstructions, "customInstructions") } }
 
-    private init() {
-        let d = UserDefaults.standard
+    /// Tests supply an isolated defaults suite and in-memory credential store.
+    init(defaults: UserDefaults = .standard, credentialStore: any CredentialStoring = CredentialStore()) {
+        self.defaults = defaults
+        self.credentialStore = credentialStore
+        let d = defaults
+        let stored = d.data(forKey: Self.polishSettingsKey)
+            .flatMap { try? JSONDecoder().decode(StoredPolishSettings.self, from: $0) }
+        var states = stored?.providers ?? [:]
+        var selected = stored?.selectedProvider ?? .deepSeek
+        // Reading only the old polish fields lets an untouched installation use the
+        // new recommended provider rather than the old implicit OpenAI defaults.
+        let legacyURL = d.string(forKey: "llmBaseURL")
+        let legacyModel = d.string(forKey: "llmModel")
+        let legacyKey = d.string(forKey: "llmAPIKey")
+        if stored == nil, legacyURL != nil || legacyModel != nil || !(legacyKey ?? "").isEmpty {
+            let url = legacyURL ?? "https://api.openai.com/v1"
+            selected = PolishProvider.matchingLegacyURL(url)
+            var state = PolishProviderState(provider: selected)
+            state.baseURL = url
+            // This is the old implicit default, preserved only for an existing setup.
+            state.model = legacyModel ?? "gpt-4.1-mini"
+            if selected == .openAI { state.apiProtocol = .chatCompletions }
+            states[selected.rawValue] = state
+        }
+        let state = states[selected.rawValue] ?? PolishProviderState(provider: selected)
+        states[selected.rawValue] = state
+        providerStates = states
+        selectedPolishProvider = selected
+        llmBaseURL = state.baseURL
+        llmModel = state.model
+        llmProtocol = state.apiProtocol
+        llmAuthMode = state.authMode
+        llmAPIKey = ""
+        llmCredentialSaveError = nil
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? .fn
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
         qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""
@@ -142,15 +186,109 @@ final class AppSettings: ObservableObject {
         asrAPIKey = d.string(forKey: "asrAPIKey") ?? ""
         asrModel = d.string(forKey: "asrModel") ?? "gpt-4o-transcribe"
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
-        llmBaseURL = d.string(forKey: "llmBaseURL") ?? "https://api.openai.com/v1"
-        llmAPIKey = d.string(forKey: "llmAPIKey") ?? ""
-        llmModel = d.string(forKey: "llmModel") ?? "gpt-4.1-mini"
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         voiceEditEnabled = d.object(forKey: "voiceEditEnabled") as? Bool ?? false
         appToneEnabled = d.object(forKey: "appToneEnabled") as? Bool ?? true
         translateTarget = d.string(forKey: "translateTarget") ?? "Simplified Chinese"
         dictionary = d.string(forKey: "dictionary") ?? ""
         customInstructions = d.string(forKey: "customInstructions") ?? ""
+
+        if let legacyKey, !legacyKey.isEmpty {
+            let provider = PolishProvider.matchingLegacyURL(legacyURL ?? "https://api.openai.com/v1")
+            legacyCredentialProvider = provider
+            migrateLegacyCredential(legacyKey, for: provider)
+        }
+        isLoadingProvider = true
+        llmAPIKey = loadCredential(for: selected)
+        llmCredentialSaveError = credentialErrors[selected]
+        isLoadingProvider = false
+        persistCurrentProvider()
+    }
+
+    func selectPolishProvider(_ provider: PolishProvider) {
+        guard provider != selectedPolishProvider else { return }
+        let state = providerStates[provider.rawValue] ?? PolishProviderState(provider: provider)
+        isLoadingProvider = true
+        selectedPolishProvider = provider
+        llmBaseURL = state.baseURL
+        llmModel = state.model
+        llmProtocol = state.apiProtocol
+        llmAuthMode = state.authMode
+        llmAPIKey = loadCredential(for: provider)
+        llmCredentialSaveError = credentialErrors[provider]
+        isLoadingProvider = false
+        persistCurrentProvider()
+    }
+
+    private func persistCurrentProvider() {
+        guard !isLoadingProvider else { return }
+        var state = PolishProviderState(provider: selectedPolishProvider)
+        state.baseURL = llmBaseURL
+        state.model = llmModel
+        state.apiProtocol = llmProtocol
+        state.authMode = llmAuthMode
+        providerStates[selectedPolishProvider.rawValue] = state
+        let stored = StoredPolishSettings(selectedProvider: selectedPolishProvider, providers: providerStates)
+        if let data = try? JSONEncoder().encode(stored) {
+            defaults.set(data, forKey: Self.polishSettingsKey)
+        }
+    }
+
+    private func loadCredential(for provider: PolishProvider) -> String {
+        if let cached = credentials[provider] { return cached }
+        do {
+            let value = try credentialStore.credential(for: provider) ?? ""
+            credentials[provider] = value
+            credentialErrors[provider] = nil
+            return value
+        } catch {
+            credentialErrors[provider] = credentialErrorMessage(error, saving: false)
+            return ""
+        }
+    }
+
+    private func persistCurrentCredential() {
+        guard !isLoadingProvider else { return }
+        let provider = selectedPolishProvider
+        // A failed save remains usable in this session and survives provider switching.
+        credentials[provider] = llmAPIKey
+        do {
+            try credentialStore.setCredential(llmAPIKey, for: provider)
+            credentialErrors[provider] = nil
+            if legacyCredentialProvider == provider {
+                defaults.removeObject(forKey: "llmAPIKey")
+                legacyCredentialProvider = nil
+            }
+        } catch {
+            credentialErrors[provider] = credentialErrorMessage(error, saving: true)
+        }
+        llmCredentialSaveError = credentialErrors[provider]
+    }
+
+    private func migrateLegacyCredential(_ legacyKey: String, for provider: PolishProvider) {
+        do {
+            // Do not overwrite a newer Keychain value if migration previously completed
+            // its write but the application exited before deleting the old default.
+            if let existing = try credentialStore.credential(for: provider), !existing.isEmpty {
+                credentials[provider] = existing
+            } else {
+                try credentialStore.setCredential(legacyKey, for: provider)
+                credentials[provider] = legacyKey
+            }
+            defaults.removeObject(forKey: "llmAPIKey")
+            legacyCredentialProvider = nil
+        } catch {
+            // Never delete or rewrite the old plaintext key until Keychain succeeds.
+            credentials[provider] = legacyKey
+            credentialErrors[provider] = credentialErrorMessage(error, saving: true)
+        }
+    }
+
+    private func credentialErrorMessage(_ error: Error, saving: Bool) -> String {
+        let detail = (error as? CredentialStoreError)?.errorDescription ?? "Check Keychain access for Talkless."
+        return saving
+            ? "The API key could not be saved to Keychain. It is available for this session only; any previous saved key is unchanged. \(detail)"
+            : "The API key could not be read from Keychain. The saved key has not been changed. \(detail)"
     }
 
     private func save(_ value: Any, _ key: String) {
@@ -165,10 +303,25 @@ final class AppSettings: ObservableObject {
     }
 
     var llmConfigured: Bool {
-        !llmAPIKey.isEmpty && !llmBaseURL.isEmpty && !llmModel.isEmpty
+        // Validation builds a request locally; it never fetches models or sends data.
+        // This also permits keyless localhost services without accepting keyless cloud URLs.
+        (try? LLMClient.makeRequest(system: "", user: "", config: llmConfig)) != nil
+    }
+
+    /// Automatic policy, not a saved preference: request thinking off only when verified.
+    var llmThinkingMode: LLMThinkingMode {
+        LLMClient.supportsDisablingThinking(config: baseLLMConfig) ? .disabled : .modelDefault
+    }
+
+    private var baseLLMConfig: LLMClient.Config {
+        LLMClient.Config(baseURL: llmBaseURL, apiKey: llmAPIKey, model: llmModel,
+                         apiProtocol: llmProtocol, authMode: llmAuthMode,
+                         maxOutputTokens: 4096, thinking: .modelDefault)
     }
 
     var llmConfig: LLMClient.Config {
-        LLMClient.Config(baseURL: llmBaseURL, apiKey: llmAPIKey, model: llmModel)
+        var config = baseLLMConfig
+        config.thinking = LLMClient.supportsDisablingThinking(config: config) ? .disabled : .modelDefault
+        return config
     }
 }

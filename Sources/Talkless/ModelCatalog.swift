@@ -124,7 +124,7 @@ enum ModelCatalog {
 
     /// HF API /api/models/{repository}/revision/{revision}?blobs=true, checked 2026-10-30.
     /// Weight checksums are LFS SHA-256, not Git blob IDs. Small-file SHA-256 values
-    /// were computed from the pinned resolve URLs. 1.7B also matches the existing receipt.
+    /// were computed from the pinned resolve URLs.
     static let models: [CatalogModel] = [
         makeModel(
             id: defaultModelID, name: "Qwen3 ASR · 0.6B", recommended: true,
@@ -133,14 +133,6 @@ enum ModelCatalog {
             configBytes: 7187, configSHA: "923618cf5ca452fda0253a6be5c1a17f94a2e4851d3b98beb45848565587bd72",
             weightBytes: 708236945, weightSHA: "70c7e67e588062adce4f10796e47ad42ead51c6671eda61a0987eae38ca95ddf",
             indexBytes: 71814, indexSHA: "e3bb80ef0fd42a5be07b04e90c97d60460bbde8af3531e0bfe9100a61404d81a"
-        ),
-        makeModel(
-            id: "Qwen3-ASR-1.7B-4bit", name: "Qwen3 ASR · 1.7B", recommended: false,
-            summary: "Optional · MLX 4-bit · Larger model, higher memory use",
-            revision: "78a389c776a5483b2d0d4ea5494e11012e0d6159",
-            configBytes: 7188, configSHA: "539c6c9d482349066e2e740241e39896f3bf4de0866c245f6539c85dbb19d93c",
-            weightBytes: 1603081617, weightSHA: "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45",
-            indexBytes: 78968, indexSHA: "2612ab715223843b3dec0742737bc85f50914ca1484ade45955f99b4e012f2bb"
         ),
     ]
 

@@ -12,7 +12,7 @@ bash scripts/build-app.sh
 open dist/Talkless.app
 ```
 
-Open **Settings > Models** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is recommended and selected by default (712.8 MB including configuration/tokenizer files); 1.7B 4-bit is an optional larger model. Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
+Open **Settings > Models** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is the single built-in model (712.8 MB including configuration/tokenizer files). Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
 
 Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror can redirect to Hugging Face and is not guaranteed to provide independent regional access. ModelScope is not listed until matching MLX artifacts are verified; SpeakMore's GGUF Q8 files are not compatible with this MLX runtime.
 
@@ -38,6 +38,10 @@ Dictation is silent: no start/stop sounds or routine success/empty-result messag
 - Stopping finishes the active window only. Previously committed windows are not decoded again.
 - This is not a complete port of `mlx-qwen3-asr`'s encoder/KV prefix cache. Long uninterrupted speech may still split a word at a window boundary.
 - Completed dictation is pasted directly at the current input cursor using the clipboard and Command-V. It does not require reading or matching the original accessibility element or selection, and does not force focus back to the original app. Cancellation still prevents stale results from being pasted. Clipboard restoration and local history remain enabled.
+
+## AI polishing
+
+Optional polishing supports DeepSeek, OpenAI (Responses or Chat Completions), native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](docs/ai-polish.md).
 
 ## Reproducible checks
 
