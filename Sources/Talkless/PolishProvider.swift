@@ -4,6 +4,7 @@ import Foundation
 enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case deepSeek
     case openAI
+    case openRouter
     case gemini
     case anthropic
     case custom
@@ -14,6 +15,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         switch self {
         case .deepSeek: return "DeepSeek"
         case .openAI: return "OpenAI"
+        case .openRouter: return "OpenRouter"
         case .gemini: return "Gemini"
         case .anthropic: return "Anthropic"
         case .custom: return "Custom"
@@ -24,6 +26,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         switch self {
         case .deepSeek: return "https://api.deepseek.com"
         case .openAI: return "https://api.openai.com/v1"
+        case .openRouter: return "https://openrouter.ai/api/v1"
         case .gemini: return "https://generativelanguage.googleapis.com/v1beta"
         case .anthropic: return "https://api.anthropic.com/v1"
         case .custom: return ""
@@ -32,7 +35,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var defaultProtocol: LLMProtocol {
         switch self {
-        case .deepSeek, .custom: return .chatCompletions
+        case .deepSeek, .openRouter, .custom: return .chatCompletions
         case .openAI: return .responses
         case .gemini: return .geminiGenerateContent
         case .anthropic: return .anthropicMessages
@@ -41,7 +44,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var protocolOptions: [LLMProtocol] {
         switch self {
-        case .deepSeek: return [.chatCompletions]
+        case .deepSeek, .openRouter: return [.chatCompletions]
         case .openAI: return [.responses, .chatCompletions]
         case .gemini: return [.geminiGenerateContent]
         case .anthropic: return [.anthropicMessages]
@@ -53,7 +56,8 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         self == .deepSeek ? "deepseek-chat" : "Fetch models or enter a model ID"
     }
 
-    var defaultModel: String { "" }
+    /// Only OpenRouter has an explicit starter route; saved model choices are never replaced.
+    var defaultModel: String { self == .openRouter ? "openrouter/free" : "" }
 
     /// Match known hosts exactly: a look-alike domain remains a custom endpoint.
     static func matchingLegacyURL(_ value: String) -> PolishProvider {
@@ -64,6 +68,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         switch url?.host?.lowercased() {
         case "api.deepseek.com", "deepseek.com": return .deepSeek
         case "api.openai.com": return .openAI
+        case "openrouter.ai": return .openRouter
         case "generativelanguage.googleapis.com": return .gemini
         case "api.anthropic.com": return .anthropic
         default: return .custom

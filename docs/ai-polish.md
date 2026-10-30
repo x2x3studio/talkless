@@ -1,32 +1,43 @@
-# AI polishing providers
+# AI service and polishing
 
-Local Qwen3-ASR 0.6B is the default speech engine; Apple on-device recognition and a cloud Whisper-compatible API are also available in Settings > Models. Optional second-stage polishing is independent of that choice and sends the final transcript, relevant writing context, dictionary and additional instructions to the selected API provider. It does not invoke Claude Code or any other CLI. This page describes the current source implementation, not a release announcement.
+Local Qwen3-ASR 0.6B is the default speech engine; Apple on-device recognition and a cloud Whisper-compatible API are also available in Settings > Speech recognition. Optional second-stage polishing is independent of that choice and sends the final transcript, relevant writing context, dictionary and additional instructions to the selected API provider. It does not invoke Claude Code or any other CLI. This page describes the current source implementation, not a release announcement.
 
 ## Configuration
 
-Settings > AI polish offers five provider entries:
+**Settings > AI service** configures the provider shared by dictation polishing, selected-text translation and voice editing. It contains service configuration only, not a master AI enable toggle. Six provider entries are available:
 
 | Provider | Protocol |
 | --- | --- |
 | DeepSeek | OpenAI Chat Completions |
 | OpenAI | Responses by default, with Chat Completions selectable |
+| OpenRouter | OpenAI Chat Completions; starts with `openrouter/free` |
 | Gemini | Native GenerateContent |
 | Anthropic | Native Messages |
 | Custom | Any of the four protocols, custom base URL and authentication |
 
-Fresh model selections are empty. Enter an API key, click **Fetch Models**, and choose a returned model, or enter its ID manually. Each provider keeps independent endpoint, model and authentication settings. Changing endpoints or providers cancels/discards stale discovery and test responses.
+OpenRouter starts with `openrouter/free`; other fresh model selections are empty. Enter an API key, click **Fetch Models**, and choose a returned model, or enter its ID manually. Each provider keeps independent endpoint, model and authentication settings. Changing endpoints or providers cancels/discards stale discovery and test responses.
 
 Custom base URLs are used as entered, preserving proxy path prefixes and accepting either a base path or the selected full endpoint. No `/v1` or `/v1beta` is injected: `https://example.com` becomes `/responses` for Responses, while `https://example.com/v1` becomes `/v1/responses`. Official provider presets include their version prefix. HTTP/keyless access is allowed only for loopback services; remote endpoints require HTTPS and credentials. Same-origin redirects cannot silently change POST into GET or forward credentials to another host.
 
+### OpenRouter free preset
+
+The preset uses `https://openrouter.ai/api/v1/chat/completions` with model `openrouter/free` and your own [OpenRouter API key](https://openrouter.ai/settings/keys). This route chooses among available free models; it is not a fixed DeepSeek model. The [official catalog](https://openrouter.ai/api/v1/models) lists current availability and pricing, and [free variants](https://openrouter.ai/docs/guides/routing/model-variants/free) have provider-controlled limits. Requests still leave your Mac and are routed through OpenRouter. No credentials are bundled and Talkless configures no paid fallback. Fetch Models can include paid choices; changing the model may incur charges.
+
+## Feature settings
+
+**Settings > Dictation** opens by default and holds microphone selection, recording mode and keys. Its **AI processing** section contains the polishing toggle, output language, app-aware tone, and additional instructions; **Voice editing** contains the selected-text editing toggle. Output language applies when dictation uses AI polishing, including a one-off alternate finish. Polishing and voice editing are off by default for new users.
+
+**Settings > Translation** holds the selected-text translation target language and shortcut, with an independent shortcut Reset. This target is separate from dictation's output language. Translation requires a configured AI service, not enabled dictation polishing. See [selected-text translation](../README.md#selected-text-translation).
+
 ## Per-dictation choice
 
-Polishing is off by default. Normal finish uses the global AI on/off setting captured when recording starts. The alternate finish key ends just that dictation with the opposite choice; it neither changes the saved default nor applies to selected-text voice editing. Configure the single-key bindings in Settings > General > Keyboard shortcuts; see [dictation and shortcuts](../README.md#dictation-and-shortcuts). A missing provider or failed polishing request retains the original transcript.
+Normal finish uses the dictation polishing setting captured when recording starts. The alternate finish key ends just that dictation with the opposite choice; it neither changes the saved default nor applies to selected-text voice editing. Configure the single-key bindings alongside recording mode in **Settings > Dictation > Recording**; see [dictation and shortcuts](../README.md#dictation-and-shortcuts). A missing provider or failed polishing request retains the original transcript.
 
 ## Credentials and privacy
 
 Polishing keys use a stable macOS Keychain service. Existing legacy plaintext polishing credentials are migrated only after Keychain storage succeeds; failures preserve the prior value and display an error. No new polishing keys are written to UserDefaults. The separate legacy cloud-ASR key remains plaintext in UserDefaults; it is not covered by this migration. Non-secret preferences and dictionary terms also use UserDefaults, while text history and managed models use Application Support, not `~/.talkless`.
 
-**Test Connection** is explicit and sends only a fixed short test request, not the user's transcript, dictionary or instructions. The provider may charge for it. No request is sent just by choosing a provider, entering a key, or enabling the panel. Fetch Models uses the configured provider's authenticated models endpoint.
+**Test Connection** is explicit and sends only a fixed short test request, not the user's transcript, dictionary or instructions. The provider may charge for it. No request is sent just by opening AI service settings, choosing a provider, or entering a key. Fetch Models uses the configured provider's authenticated models endpoint.
 
 LLM generation, model discovery, and cloud-ASR requests send an explicit `User-Agent: Talkless/<CFBundleShortVersionString>`, using the installed app's human-readable version rather than its build number. CFNetwork and Darwin versions are not appended. Unversioned development/test executables use `Talkless/0.1.0`.
 

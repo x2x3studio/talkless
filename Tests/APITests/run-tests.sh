@@ -5,6 +5,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/talkless-api-tests.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/LLMProtocol.swift" \
+  "$ROOT/Sources/Talkless/PolishProvider.swift" \
   "$ROOT/Sources/Talkless/LLMAPITransport.swift" \
   "$ROOT/Sources/Talkless/LLMClient.swift" \
   "$ROOT/Sources/Talkless/AudioInputDevice.swift" \

@@ -250,7 +250,7 @@ final class Diagnostics: @unchecked Sendable {
             it does not prove a crash. The last event helps identify the operation in progress.
 
             macOS produces native crash backtraces, not this logger. Look for Talkless*.ips
-            in ~/Library/Logs/DiagnosticReports using Settings > General > Open Crash Reports.
+            in ~/Library/Logs/DiagnosticReports using Settings > System > Open Crash Reports.
             Reports may take a little time to appear after a crash. Keep the report matching
             the failure time and app version; exception, termination, and faulting-thread
             frames help locate the crash. No unsafe signal or exception handler is installed.

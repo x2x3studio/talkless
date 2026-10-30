@@ -2,8 +2,13 @@ import SwiftUI
 
 /// Provider-first API settings. Requests are started only by the two explicit action buttons.
 @MainActor
-struct PolishSettingsView: View {
-    @ObservedObject private var settings = AppSettings.shared
+struct AIServiceSettingsView: View {
+    @ObservedObject private var settings: AppSettings
+
+    init(settings: AppSettings = .shared) {
+        self.settings = settings
+    }
+
     @State private var remoteModels: [RemoteModel] = []
     @State private var manualModelEntry = false
     @State private var modelStatus: RequestStatus?
@@ -59,9 +64,9 @@ struct PolishSettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Polish dictation with AI", isOn: $settings.polishEnabled)
-                Text("Remove fillers, resolve corrections, and add punctuation.")
+            Section("Shared AI service") {
+                AIServiceStatusView(settings: settings)
+                Text("One provider and model for dictation polish, voice editing, and translation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -78,8 +83,7 @@ struct PolishSettingsView: View {
                         Text(provider.title).tag(provider)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .pickerStyle(.menu)
                 .accessibilityLabel("API provider")
 
                 protocolControl
@@ -108,6 +112,20 @@ struct PolishSettingsView: View {
 
                 modelControls
 
+                if provider == .openRouter {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Free router uses changing free models; rate limits and availability vary. Bring your own OpenRouter key. No paid fallback.")
+                        Text("The openrouter/free preset is free; other models you select may be paid.")
+                        HStack(spacing: 12) {
+                            Link("Get an OpenRouter key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                            Link("About the free router", destination: URL(string: "https://openrouter.ai/openrouter/free")!)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
                 HStack(spacing: 10) {
                     Button(fetching ? "Fetching…" : "Fetch Models") { fetchModels() }
                         .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -120,38 +138,16 @@ struct PolishSettingsView: View {
                 if let modelStatus { statusView(modelStatus) }
                 if let connectionStatus { statusView(connectionStatus) }
 
-                Text("Test Connection sends a fixed “Reply with OK” test, not your dictation, dictionary, or writing instructions. Your provider may charge for the request.")
+                Text("Requests run only when clicked; your provider may charge for tests.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Talkless does not request extra thinking. Some models reason by default; choose a non-reasoning model for faster polish.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Output") {
-                Picker("Output language", selection: $settings.outputLanguage) {
-                    ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
-                }
-                TextField("Translation target language", text: $settings.translateTarget)
-                Text("AI polish sends transcripts, selected text, and writing instructions to your selected provider.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                DisclosureGroup("Advanced") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Additional instructions")
-                            .font(.body.weight(.medium))
-                        TextEditor(text: $settings.customInstructions)
-                            .font(.body)
-                            .frame(minHeight: 70, idealHeight: 90)
-                            .accessibilityLabel("Additional instructions")
-                        Text("For example: Always use digits for numbers, or Do not use exclamation marks.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
+                DisclosureGroup("Data sent to AI") {
+                    Text("Test Connection sends only a fixed “Reply with OK” prompt—not your dictation, dictionary, or writing instructions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Talkless does not request extra thinking; non-reasoning models may respond faster.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -302,5 +298,42 @@ struct PolishSettingsView: View {
         modelStatus = nil
         manualModelEntry = false
         invalidateTest()
+    }
+}
+
+/// Local configuration status, not proof of a successful network request.
+/// Feature pages provide navigation without starting requests or changing feature toggles.
+@MainActor
+struct AIServiceStatusView: View {
+    @ObservedObject private var settings: AppSettings
+    private let onConfigureAI: (() -> Void)?
+
+    init(settings: AppSettings = .shared, onConfigureAI: (() -> Void)? = nil) {
+        self.settings = settings
+        self.onConfigureAI = onConfigureAI
+    }
+
+    var body: some View {
+        let configured = settings.llmConfigured
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: configured ? "checkmark.circle" : "exclamationmark.circle")
+                .foregroundStyle(configured ? Color.secondary : Color.orange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(configured ? "Configuration complete" : "AI service needs configuration")
+                    .font(.body.weight(.medium))
+                if configured {
+                    Text("Connection is not checked automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if let onConfigureAI {
+                Button(configured ? "AI Service…" : "Configure AI Service…", action: onConfigureAI)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }

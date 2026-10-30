@@ -13,40 +13,46 @@ enum SettingsAppearance {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, overlay, models, polish, dictionary, history
+    case dictation, translation, models, aiService, dictionary, overlay, history, system
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .general: "General"
-        case .overlay: "Overlay"
-        case .models: "Models"
-        case .polish: "AI polish"
+        case .dictation: "Dictation"
+        case .translation: "Translation"
+        case .models: "Speech recognition"
+        case .aiService: "AI service"
         case .dictionary: "Dictionary"
+        case .overlay: "Overlay"
         case .history: "History"
+        case .system: "System"
         }
     }
 
     var symbol: String {
         switch self {
-        case .general: "gearshape"
-        case .overlay: "rectangle.on.rectangle"
-        case .models: "square.stack.3d.up"
-        case .polish: "sparkles"
+        case .dictation: "mic"
+        case .translation: "character.bubble"
+        case .models: "waveform"
+        case .aiService: "network"
         case .dictionary: "character.book.closed"
+        case .overlay: "rectangle.on.rectangle"
         case .history: "clock"
+        case .system: "gearshape"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .general: "Make Talkless feel at home on your Mac."
-        case .overlay: "Tune the quiet companion to your dictation."
-        case .models: "Choose how Talkless transcribes your voice."
-        case .polish: "Turn your transcript into finished text."
-        case .dictionary: "Names, terms, and spellings that matter to you."
+        case .dictation: "Choose how you record and how your words are processed."
+        case .translation: "Translate selected text, independently of dictation."
+        case .models: "Choose how audio becomes text."
+        case .aiService: "One AI connection for polishing, translation, and voice editing."
+        case .dictionary: "Review and manage preferred spellings."
+        case .overlay: "Preview and customize recording feedback."
         case .history: "Your recent dictations, edits, and translations."
+        case .system: "Permissions, updates, and troubleshooting."
         }
     }
 }
@@ -55,9 +61,9 @@ struct SettingsView: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var settings = AppSettings.shared
     var updateController: UpdateController? = nil
-    @State private var selection: SettingsSection? = .general
+    @State private var selection: SettingsSection? = .dictation
 
-    private var currentSection: SettingsSection { selection ?? .general }
+    private var currentSection: SettingsSection { selection ?? .dictation }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -105,14 +111,20 @@ struct SettingsView: View {
 
                 Group {
                     switch currentSection {
-                    case .general:
-                        GeneralTab(controller: controller, updateController: updateController)
+                    case .dictation:
+                        DictationSettingsTab(controller: controller,
+                                             onConfigureAI: { selection = .aiService },
+                                             onPermissions: { selection = .system })
+                    case .translation:
+                        TranslationSettingsView(controller: controller, onConfigureAI: { selection = .aiService })
+                    case .system:
+                        SystemSettingsTab(controller: controller, updateController: updateController)
                     case .overlay:
                         OverlaySettingsView(appearance: $settings.hudAppearance)
                     case .models:
                         SpeechTab(controller: controller)
-                    case .polish:
-                        PolishSettingsView()
+                    case .aiService:
+                        AIServiceSettingsView()
                     case .dictionary:
                         DictionaryTab().padding(28)
                     case .history:
@@ -132,38 +144,43 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - General
+// MARK: - Dictation and system
 
-private struct GeneralTab: View {
+private struct DictationSettingsTab: View {
     @ObservedObject var controller: DictationController
-    var updateController: UpdateController?
     @ObservedObject var settings = AppSettings.shared
-    @State private var accessibility = DictationController.accessibilityGranted
-    @State private var microphone = DictationController.microphoneStatus
+    let onConfigureAI: () -> Void
+    let onPermissions: () -> Void
+    @State private var microphoneGranted = DictationController.microphoneStatus == .authorized
+    @State private var accessibilityGranted = DictationController.accessibilityGranted
     private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Form {
-            Section("Permissions") {
-                PermissionRow(
-                    title: "Accessibility", detail: "Keyboard shortcuts and text insertion",
-                    granted: accessibility && controller.hotkeyActive
-                ) {
-                    DictationController.requestAccessibility()
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                }
-                PermissionRow(title: "Microphone", detail: "Record your voice", granted: microphone == .authorized) {
-                    if microphone == .notDetermined {
-                        AVCaptureDevice.requestAccess(for: .audio) { _ in }
-                    } else {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-                    }
+            if !microphoneGranted || !accessibilityGranted {
+                Section {
+                    Label("Permission needed to dictate", systemImage: "exclamationmark.triangle")
+                    Button("Open permissions") { onPermissions() }
                 }
             }
-
             AudioInputSettingsView(settings: settings)
 
-            Section("Keyboard shortcuts") {
+            Section("Recording") {
+                HStack {
+                    Picker("Recording mode", selection: $settings.recordingGestureMode) {
+                        ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    Button("Reset") {
+                        ShortcutRecorder.cancelCapture()
+                        settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
+                    }
+                    .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
+                    .accessibilityLabel("Reset recording mode")
+                }
+                .disabled(controller.state != .idle)
+                Text("Hold: release to finish. Tap: press again to finish. Escape cancels.")
+                    .font(.caption).foregroundStyle(.secondary)
+
                 ShortcutRecorder(
                     title: "Dictation key", value: settings.triggerKey.title,
                     defaultValue: AppSettings.defaultTriggerKey.title,
@@ -207,64 +224,65 @@ private struct GeneralTab: View {
                     return nil
                 }
                 .disabled(controller.state != .idle)
-                Text("During recording, alternate finish immediately ends dictation with the opposite AI setting for this session only. It never starts recording and does not apply to selected-text editing. Click its shortcut and press Delete or Backspace to disable it.")
+                Text(settings.polishEnabled
+                     ? "Alternate finish skips AI for this recording. Delete the binding to disable it."
+                     : "Alternate finish uses AI for this recording. Delete the binding to disable it.")
                     .font(.caption).foregroundStyle(.secondary)
                 if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
                     Text("Record a different key from the dictation key. Alternate finish is disabled while they match.")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                ShortcutRecorder(
-                    title: "Translate selection", value: settings.translationShortcut.title,
-                    defaultValue: AppSettings.defaultTranslationShortcut.title,
-                    isDefault: settings.isTranslationShortcutDefault,
-                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
-                    onReset: { settings.resetTranslationShortcut(); return nil },
-                    onTranslationRecord: { shortcut in
-                        if let error = shortcut.validationError { return error }
-                        settings.translationShortcut = shortcut
-                        return nil
-                    }, onRecord: { _ in nil }
-                )
-                .disabled(controller.state != .idle)
-                if let error = controller.translationShortcutError {
-                    Text(error).font(.caption).foregroundStyle(.orange)
-                }
                 HStack {
                     Spacer()
-                    Button("Restore defaults") {
+                    Button("Reset recording shortcuts") {
                         ShortcutRecorder.cancelCapture()
-                        settings.restoreShortcutDefaults()
+                        settings.restoreRecordingShortcutDefaults()
                     }
-                    .disabled(settings.areShortcutsDefault || controller.state != .idle)
-                    .help("Restore dictation to Fn / Globe, alternate finish to Automatic, and translation to ⌃⌥T. Other settings are unchanged.")
+                    .disabled(settings.areRecordingShortcutsDefault || controller.state != .idle)
+                    .help("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged.")
                 }
             }
 
-            Section("Behavior") {
-                HStack {
-                    Picker("Recording mode", selection: $settings.recordingGestureMode) {
-                        ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
-                    }
-                    Button("Reset") {
-                        ShortcutRecorder.cancelCapture()
-                        settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
-                    }
-                    .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
-                    .accessibilityLabel("Reset recording mode")
+            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
+        }
+        .formStyle(.grouped)
+        .onReceive(refresh) { _ in
+            microphoneGranted = DictationController.microphoneStatus == .authorized
+            accessibilityGranted = DictationController.accessibilityGranted
+            if accessibilityGranted, !controller.hotkeyActive { controller.activateHotkey() }
+        }
+    }
+}
+
+private struct SystemSettingsTab: View {
+    @ObservedObject var controller: DictationController
+    var updateController: UpdateController?
+    @State private var accessibility = DictationController.accessibilityGranted
+    @State private var microphone = DictationController.microphoneStatus
+    private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Form {
+            Section("Permissions") {
+                PermissionRow(
+                    title: "Accessibility", detail: "Keyboard shortcuts and text insertion",
+                    granted: accessibility && controller.hotkeyActive
+                ) {
+                    DictationController.requestAccessibility()
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
-                .disabled(controller.state != .idle)
-                Text("Default: Hold to talk. Hold ends when you release; Tap to toggle ends on the next press. Escape cancels. Changes apply to the next recording.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("Edit selected text with your voice", isOn: $settings.voiceEditEnabled)
-                    .help("Select text, then dictate an instruction such as Make it more formal")
-                Toggle("Adapt tone to the current app", isOn: $settings.appToneEnabled)
-                    .help("Match your writing to chat, email, code, or documents")
+                PermissionRow(title: "Microphone", detail: "Record your voice", granted: microphone == .authorized) {
+                    if microphone == .notDetermined {
+                        AVCaptureDevice.requestAccess(for: .audio) { _ in }
+                    } else {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                    }
+                }
             }
 
             if let updateController {
                 UpdatesSection(updater: updateController, controller: controller)
             }
-
             DiagnosticsSection()
         }
         .formStyle(.grouped)

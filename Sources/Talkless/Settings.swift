@@ -173,7 +173,8 @@ final class AppSettings: ObservableObject {
         }
     }
     var isTranslationShortcutDefault: Bool { translationShortcut == Self.defaultTranslationShortcut }
-    var areShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault && isTranslationShortcutDefault }
+    var areRecordingShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault }
+    var areShortcutsDefault: Bool { areRecordingShortcutsDefault && isTranslationShortcutDefault }
 
     func resetTranslationShortcut() {
         if !isTranslationShortcutDefault { translationShortcut = Self.defaultTranslationShortcut }
@@ -195,10 +196,14 @@ final class AppSettings: ObservableObject {
         return nil
     }
 
-    func restoreShortcutDefaults() {
+    func restoreRecordingShortcutDefaults() {
         // Restore Automatic first so an explicit Fn alternate cannot briefly collide.
         _ = resetAlternateFinishKey()
         _ = resetTriggerKey()
+    }
+
+    func restoreShortcutDefaults() {
+        restoreRecordingShortcutDefaults()
         resetTranslationShortcut()
     }
 
@@ -221,7 +226,7 @@ final class AppSettings: ObservableObject {
         if useCustomQwenDirectory {
             let path = (qwenModelDirectory as NSString).expandingTildeInPath
             guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw TalklessError.message("Choose a local model folder in Models settings.")
+                throw TalklessError.message("Choose a local model folder in Speech recognition settings.")
             }
             return URL(fileURLWithPath: path)
         }
@@ -231,7 +236,7 @@ final class AppSettings: ObservableObject {
         }
         guard let directory = manager.installedDirectory(manager.activeModelID) else {
             let name = ModelCatalog.model(id: manager.activeModelID)?.name ?? "the selected model"
-            throw TalklessError.message("Download \(name) in Models settings before starting dictation.")
+            throw TalklessError.message("Download \(name) in Speech recognition settings before starting dictation.")
         }
         return directory
     }

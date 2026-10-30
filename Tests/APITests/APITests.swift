@@ -126,6 +126,7 @@ private struct APITests {
             ("legacyConfigAndURLNormalization", testURLs),
             ("maliciousURLsAndValidation", testValidation),
             ("chatCompletionsHeadersAndPayload", testChat),
+            ("openRouterFreePresetAndExplicitDiscovery", testOpenRouter),
             ("responsesHeadersAndPayload", testResponses),
             ("anthropicMessagesHeadersAndTextOnly", testAnthropic),
             ("geminiNativeHeadersPayloadAndThoughtFiltering", testGemini),
@@ -264,6 +265,54 @@ private struct APITests {
         let native = try LLMClient.makeRequest(system: "", user: "", config: config(base: "https://api.openai.com/v1"))
         let nativeBody = try json(native)
         try expect(nativeBody["max_completion_tokens"] as? Int == 4096, "OpenAI modern cap missing")
+    }
+
+    static func testOpenRouter() async throws {
+        let preset = PolishProviderState(provider: .openRouter)
+        let value = LLMClient.Config(baseURL: preset.baseURL, apiKey: "test-only-router-key", model: preset.model,
+                                     apiProtocol: preset.apiProtocol, authMode: preset.authMode)
+        MockProtocol.install { request in
+            try expect(request.httpMethod == "POST", "OpenRouter completion is not POST")
+            try expect(request.url?.absoluteString == "https://openrouter.ai/api/v1/chat/completions", "OpenRouter endpoint changed")
+            try expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-router-key", "OpenRouter bearer missing")
+            let body = try json(request)
+            try expect(body["model"] as? String == "openrouter/free", "OpenRouter free route was replaced")
+            try expect(body["models"] == nil && body["route"] == nil, "OpenRouter request contains fallback routing")
+            try expect(body["max_tokens"] as? Int == 4096 && body["stream"] as? Bool == false, "OpenRouter chat options changed")
+            try expect(body["thinking"] == nil && body["reasoning_effort"] == nil, "OpenRouter has guessed model-specific flags")
+            return .reply(200, chatReply)
+        }
+        let result = try await complete(value)
+        try expect(result == "Polished text" && MockProtocol.count == 1, "OpenRouter completion failed or made extra requests")
+        try MockProtocol.verify()
+
+        MockProtocol.install { request in
+            try expect(request.httpMethod == "GET" && request.httpBody == nil, "OpenRouter discovery generated text")
+            try expect(request.url?.absoluteString == "https://openrouter.ai/api/v1/models", "OpenRouter discovery endpoint changed")
+            try expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-router-key", "OpenRouter discovery bearer missing")
+            return .reply(200, #"{"data":[{"id":"openrouter/free","pricing":{"prompt":"0","completion":"0"}},{"id":"synthetic-provider/paid-choice","pricing":{"prompt":"0.001","completion":"0.002"}}]}"#)
+        }
+        let discovered = try await models(value)
+        try expect(discovered.map(\.id) == ["openrouter/free", "synthetic-provider/paid-choice"],
+                   "explicit discovery must allow paid models without silently selecting them")
+        try expect(value.model == "openrouter/free" && MockProtocol.count == 1, "discovery changed the preset or made extra requests")
+        try MockProtocol.verify()
+        var explicitChoice = value
+        explicitChoice.model = "synthetic-provider/paid-choice"
+        let explicitRequest = try LLMClient.makeRequest(system: "", user: "", config: explicitChoice)
+        let explicitBody = try json(explicitRequest)
+        try expect(explicitBody["model"] as? String == explicitChoice.model, "explicitly selected OpenRouter model was replaced")
+
+        for status in [402, 429, 503] {
+            MockProtocol.install { request in
+                let body = try json(request)
+                try expect(body["model"] as? String == "openrouter/free", "OpenRouter fell back to another model")
+                return .reply(status, "Free route unavailable")
+            }
+            try await expectAsyncError(.httpStatus(status)) { _ = try await complete(value) }
+            try expect(MockProtocol.count == 1, "OpenRouter failure triggered retries or paid fallback")
+            try MockProtocol.verify()
+        }
     }
 
     static func testResponses() async throws {

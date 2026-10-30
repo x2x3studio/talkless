@@ -119,7 +119,7 @@ struct ProviderSettingsTests {
         dictionarySettings.dictionary = ""
         check(dictionarySettings.dictionaryTerms.isEmpty, "clearing dictionary removes all hints")
 
-        // Fresh state never guesses or silently selects a remotely available model.
+        // Only OpenRouter has an explicit local starter route; no remote discovery runs.
         let freshDefaults = MemoryDefaults()
         let freshStore = MemoryCredentials()
         let fresh = settings(freshDefaults, freshStore)
@@ -127,7 +127,8 @@ struct ProviderSettingsTests {
         check(!fresh.llmConfigured, "fresh installation is not configured")
         for provider in PolishProvider.allCases {
             fresh.selectPolishProvider(provider)
-            check(fresh.llmModel.isEmpty, "fresh model selection is empty")
+            check(fresh.llmModel == (provider == .openRouter ? "openrouter/free" : ""),
+                  "only fresh OpenRouter selects the free router preset")
             check(fresh.llmAPIKey.isEmpty, "fresh providers have no key")
             check(fresh.llmBaseURL == provider.defaultURL, "fresh endpoint matches provider")
             check(fresh.llmProtocol == provider.defaultProtocol, "fresh protocol matches provider")
@@ -170,6 +171,39 @@ struct ProviderSettingsTests {
         check(!encoded.contains("synthetic-openai-key"), "JSON excludes OpenAI secret")
         check(d.string(forKey: "llmAPIKey") == nil, "new key never enters plaintext defaults")
 
+        // OpenRouter starts with the free route, but saved choices (including blank) win.
+        restored.selectPolishProvider(.openRouter)
+        check(restored.llmBaseURL == "https://openrouter.ai/api/v1", "OpenRouter uses its public API endpoint")
+        check(restored.llmModel == "openrouter/free", "first OpenRouter selection prefills the free route")
+        check(restored.llmProtocol == .chatCompletions && restored.llmAuthMode == .automatic,
+              "OpenRouter uses Chat with automatic bearer authentication")
+        check(restored.llmAPIKey.isEmpty && !restored.llmConfigured, "OpenRouter requires the user's own key")
+        restored.llmAPIKey = "synthetic-openrouter-key"
+        check(restored.llmConfigured, "free preset is locally configured after entering a key")
+        let savedRouter = settings(d, keychain)
+        check(savedRouter.selectedPolishProvider == .openRouter && savedRouter.llmModel == "openrouter/free",
+              "OpenRouter selection and free preset survive relaunch")
+        check(savedRouter.llmAPIKey == "synthetic-openrouter-key", "OpenRouter key survives relaunch")
+        check(savedRouter.llmThinkingMode == .modelDefault, "free router has no guessed thinking flags")
+        savedRouter.llmModel = "synthetic-provider/explicit-paid-choice"
+        savedRouter.selectPolishProvider(.openAI)
+        check(savedRouter.llmAPIKey == "synthetic-openai-key" && savedRouter.llmModel == "synthetic-openai-model",
+              "OpenRouter does not overwrite OpenAI settings or key")
+        savedRouter.selectPolishProvider(.openRouter)
+        check(savedRouter.llmModel == "synthetic-provider/explicit-paid-choice", "manual OpenRouter choice survives switching")
+        check(settings(d, keychain).llmModel == "synthetic-provider/explicit-paid-choice",
+              "manual OpenRouter choice survives relaunch")
+        savedRouter.llmModel = ""
+        savedRouter.selectPolishProvider(.deepSeek)
+        check(savedRouter.llmModel == "synthetic-deepseek-model" && savedRouter.llmAPIKey == "synthetic-deepseek-key",
+              "OpenRouter leaves the existing default provider untouched")
+        savedRouter.selectPolishProvider(.openRouter)
+        check(savedRouter.llmModel.isEmpty && settings(d, keychain).llmModel.isEmpty,
+              "explicitly cleared OpenRouter model is not silently reset")
+        let routerEncoded = String(data: d.data(forKey: persistenceKey)!, encoding: .utf8)!
+        check(!routerEncoded.contains("synthetic-openrouter-key"), "JSON excludes OpenRouter secret")
+        check(keychain.values[.openRouter] == "synthetic-openrouter-key", "OpenRouter credential uses its own account")
+
         // Existing setup migrates without changing its URL, model, or Chat protocol.
         let legacy = MemoryDefaults()
         legacy.values = ["llmBaseURL": "https://api.openai.com/v1",
@@ -182,6 +216,39 @@ struct ProviderSettingsTests {
         check(migrated.llmAPIKey == "synthetic-legacy-key", "legacy key available")
         check(migratedStore.values[.openAI] == "synthetic-legacy-key", "legacy key saved to mock Keychain")
         check(legacy.string(forKey: "llmAPIKey") == nil, "legacy plaintext removed after success")
+
+        let legacyRouterDefaults = MemoryDefaults()
+        legacyRouterDefaults.values = ["llmBaseURL": "https://openrouter.ai/api/v1/",
+                                       "llmModel": "synthetic-provider/existing-choice", "llmAPIKey": "synthetic-router-legacy-key"]
+        let legacyRouterStore = MemoryCredentials()
+        let legacyRouter = settings(legacyRouterDefaults, legacyRouterStore)
+        check(legacyRouter.selectedPolishProvider == .openRouter, "legacy OpenRouter URL is classified")
+        check(legacyRouter.llmBaseURL == "https://openrouter.ai/api/v1/" && legacyRouter.llmModel == "synthetic-provider/existing-choice",
+              "legacy OpenRouter endpoint and model are not replaced by the free preset")
+        check(legacyRouter.llmProtocol == .chatCompletions, "legacy OpenRouter retains Chat")
+        check(legacyRouterStore.values[.openRouter] == "synthetic-router-legacy-key", "legacy OpenRouter key migrates to its own account")
+        check(legacyRouterDefaults.string(forKey: "llmAPIKey") == nil, "migrated OpenRouter plaintext key is removed")
+        check(PolishProvider.matchingLegacyURL("https://openrouter.ai.evil.invalid/api/v1") == .custom,
+              "look-alike OpenRouter host stays custom")
+
+        // Already saved Custom OpenRouter configurations remain Custom and unchanged.
+        let customRouterDefaults = MemoryDefaults()
+        let customRouterStore = MemoryCredentials()
+        var customRouterState = PolishProviderState(provider: .custom)
+        customRouterState.baseURL = "https://openrouter.ai/api/v1"
+        customRouterState.model = "synthetic-provider/saved-custom-choice"
+        customRouterDefaults.values[persistenceKey] = try JSONEncoder().encode(
+            StoredPolishSettings(selectedProvider: .custom, providers: [PolishProvider.custom.rawValue: customRouterState]))
+        customRouterStore.values[.custom] = "synthetic-custom-router-key"
+        let existingCustomRouter = settings(customRouterDefaults, customRouterStore)
+        check(existingCustomRouter.selectedPolishProvider == .custom && existingCustomRouter.llmModel == customRouterState.model,
+              "saved Custom configuration is not reclassified or assigned the free preset")
+        existingCustomRouter.selectPolishProvider(.openRouter)
+        check(existingCustomRouter.llmAPIKey.isEmpty && existingCustomRouter.llmModel == "openrouter/free",
+              "new preset does not borrow an existing Custom credential or model")
+        existingCustomRouter.selectPolishProvider(.custom)
+        check(existingCustomRouter.llmAPIKey == "synthetic-custom-router-key" && existingCustomRouter.llmBaseURL == customRouterState.baseURL,
+              "existing Custom OpenRouter credentials and endpoint remain intact")
 
         // A failed migration retains the old credential, and switching retains failed edits.
         let failingDefaults = MemoryDefaults()
@@ -242,6 +309,7 @@ struct ProviderSettingsTests {
 
         check(PolishProvider.openAI.protocolOptions == [.responses, .chatCompletions], "OpenAI supports only advertised protocols")
         check(PolishProvider.deepSeek.protocolOptions == [.chatCompletions], "DeepSeek protocol fixed")
+        check(PolishProvider.openRouter.protocolOptions == [.chatCompletions], "OpenRouter protocol fixed")
         check(PolishProvider.gemini.protocolOptions == [.geminiGenerateContent], "Gemini protocol fixed")
         check(PolishProvider.anthropic.protocolOptions == [.anthropicMessages], "Anthropic protocol fixed")
         check(PolishProvider.custom.protocolOptions.count == 4, "Custom offers all protocols")
@@ -264,6 +332,54 @@ struct ProviderSettingsTests {
         local.llmBaseURL = "https://remote.invalid/v1"
         local.llmModel = "   "
         check(!local.llmConfigured, "whitespace model is not configured")
+
+        // Feature pages share service configuration, not an enabling toggle or output language.
+        let featureDefaults = MemoryDefaults()
+        let featureCredentials = MemoryCredentials()
+        let features = settings(featureDefaults, featureCredentials)
+        features.selectPolishProvider(.custom)
+        features.llmBaseURL = "https://synthetic-provider.invalid/v1"
+        features.llmModel = "synthetic-feature-model"
+        features.llmAPIKey = "synthetic-feature-key"
+        features.outputLanguage = .japanese
+        features.translateTarget = "French"
+        features.customInstructions = "Use digits for numbers."
+        features.appToneEnabled = false
+        features.voiceEditEnabled = true
+        features.translationShortcut = .disabled
+        features.polishEnabled = true
+        let providerBeforeToggle = featureDefaults.data(forKey: persistenceKey)
+        features.polishEnabled = false
+        check(features.llmConfigured, "AI service remains configured with dictation polish off")
+        check(features.voiceEditEnabled, "voice editing is independent of dictation polish")
+        check(features.outputLanguage == .japanese, "polish off retains output language for alternate finish")
+        check(features.translateTarget == "French", "polish off retains translation target")
+        check(features.customInstructions == "Use digits for numbers.", "polish off retains writing preferences")
+        check(!features.appToneEnabled, "polish off retains tone preference")
+        check(featureDefaults.data(forKey: persistenceKey) == providerBeforeToggle,
+              "feature toggle does not rewrite provider configuration")
+        check(featureCredentials.values[.custom] == "synthetic-feature-key", "feature toggle does not clear credentials")
+        features.resetTranslationShortcut()
+        check(features.isTranslationShortcutDefault, "translation reset restores its shortcut")
+        check(!features.polishEnabled && features.voiceEditEnabled, "translation reset leaves feature toggles alone")
+        check(features.translateTarget == "French" && features.outputLanguage == .japanese,
+              "translation shortcut reset leaves both languages alone")
+        features.outputLanguage = .english
+        check(features.translateTarget == "French", "dictation output language does not change translation target")
+        features.translateTarget = "German"
+        check(features.outputLanguage == .english, "translation target does not change dictation output language")
+        let restoredFeatures = settings(featureDefaults, featureCredentials)
+        check(!restoredFeatures.polishEnabled && restoredFeatures.voiceEditEnabled,
+              "independent feature toggles survive relaunch")
+        check(restoredFeatures.outputLanguage == .english && restoredFeatures.translateTarget == "German",
+              "separate output languages survive relaunch")
+        check(restoredFeatures.customInstructions == "Use digits for numbers." && !restoredFeatures.appToneEnabled,
+              "disabled polish retains its preferences after relaunch")
+        check(restoredFeatures.llmConfigured, "shared AI service remains configured after relaunch")
+        features.llmModel = ""
+        check(!features.llmConfigured, "incomplete service configuration is reported locally")
+        check(features.voiceEditEnabled && features.translateTarget == "German",
+              "incomplete configuration does not clear feature preferences")
 
         print("Provider settings tests passed (\(assertions) assertions; in-memory defaults and credentials only).")
     }

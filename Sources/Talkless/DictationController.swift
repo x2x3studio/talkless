@@ -71,7 +71,7 @@ final class DictationController: ObservableObject {
             } catch {
                 guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
                 self.preparingModelDirectory = nil
-                self.modelPreparationStatus = "Model preparation failed. Check Models settings."
+                self.modelPreparationStatus = "Model preparation failed. Check Speech recognition settings."
                 self.modelPreparationTask = nil
                 Diagnostics.shared.record(event: "model_error", metadata: ["error_code": String((error as NSError).code)])
             }
@@ -427,7 +427,7 @@ final class DictationController: ObservableObject {
                         polishError = "Polishing failed; using the original transcript."
                     }
                 } else if shouldPolish, opposite {
-                    polishError = "Configure a language model in Settings to polish. Using the original transcript."
+                    polishError = "Configure an AI service in Settings to polish. Using the original transcript."
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
 
@@ -560,7 +560,7 @@ final class DictationController: ObservableObject {
     func translateSelection() async {
         guard !shortcutCaptureActive else { return }
         guard settings.llmConfigured else {
-            hud.show(.error("Configure a language model in Settings to translate selected text"))
+            hud.show(.error("Configure an AI service in Settings to translate selected text"))
             return
         }
         guard let text = await TextIO.selectedText() else {

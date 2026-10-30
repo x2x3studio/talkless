@@ -63,7 +63,7 @@ final class AudioRecorder: @unchecked Sendable {
             &device, UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         guard status == noErr else {
-            throw TalklessError.message("Cannot use the selected microphone (Core Audio error \(status)). Reconnect it or choose another microphone in Settings › General › Audio.")
+            throw TalklessError.message("Cannot use the selected microphone (Core Audio error \(status)). Reconnect it or choose another microphone in Settings › Dictation › Audio.")
         }
         // The input scope reflects hardware; the output scope may still cache the previous
         // device's client format. Input nodes cannot convert between those formats.

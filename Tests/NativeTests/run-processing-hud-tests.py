@@ -202,7 +202,7 @@ TESTS = r'''
         await check("opposite AI without configuration preserves raw with useful error", enabled: false,
                     configured: false, opposite: true,
                     phases: [.recognizing,
-                             .error("Configure a language model in Settings to polish. Using the original transcript.")])
+                             .error("Configure an AI service in Settings to polish. Using the original transcript.")])
         await check("opposite AI failure preserves raw", enabled: false, failure: true, opposite: true,
                     phases: [.recognizing, .polishing,
                              .error("Polishing failed; using the original transcript.")])

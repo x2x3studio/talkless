@@ -92,15 +92,19 @@ func testShortcutDefaults() -> Int {
     let defaults = MemoryDefaults()
     let credentials = MemoryCredentials()
     let settings = AppSettings(defaults: defaults, credentialStore: credentials)
-    check(settings.isTriggerKeyDefault && settings.isAlternateFinishKeyDefault && settings.areShortcutsDefault,
+    check(settings.isTriggerKeyDefault && settings.isAlternateFinishKeyDefault
+          && settings.areRecordingShortcutsDefault && settings.areShortcutsDefault,
           "Fresh shortcuts disable both row resets and Restore defaults")
     let freshValues = defaults.values as NSDictionary
     check(settings.resetTriggerKey() == nil, "Resetting the default primary is a no-op")
     check(settings.resetAlternateFinishKey() == nil, "Resetting the default alternate is a no-op")
+    settings.restoreRecordingShortcutDefaults()
     settings.restoreShortcutDefaults()
     check(freshValues.isEqual(to: defaults.values), "Already-default resets do not write preferences")
 
     // Keep custom settings and synthetic credentials in place throughout every reset.
+    settings.recordingGestureMode = .toggle
+    settings.audioInputDeviceUID = "synthetic-input-uid"
     settings.polishEnabled = true
     settings.outputLanguage = .japanese
     settings.voiceEditEnabled = true
@@ -120,16 +124,27 @@ func testShortcutDefaults() -> Int {
         settings.llmModel = "synthetic-\(provider.rawValue)-model"
         settings.llmAPIKey = "synthetic-\(provider.rawValue)-key"
     }
-    let unrelatedValues = defaults.values as NSDictionary
+    func unrelatedSettingsValues() -> [String: Any] {
+        var values = defaults.values.filter { $0.key != "triggerKey" && $0.key != "alternateFinishKey" }
+        // Reloading re-encodes provider JSON with unspecified key order. Compare its
+        // complete decoded structure while retaining every other preference check.
+        if let providerData = values["polishProviderSettings.v1"] as? Data {
+            values["polishProviderSettings.v1"] = try! JSONSerialization.jsonObject(with: providerData)
+        }
+        return values
+    }
+    let unrelatedValues = unrelatedSettingsValues() as NSDictionary
     let credentialValues = credentials.values
     let appearance = settings.hudAppearance
-    func checkUnrelatedSettings(_ context: String) {
-        let otherValues = defaults.values.filter { $0.key != "triggerKey" && $0.key != "alternateFinishKey" }
-        check(unrelatedValues.isEqual(to: otherValues), "\(context) only writes shortcut preferences")
+    func checkUnrelatedSettings(_ context: String, expectedValues: NSDictionary? = nil) {
+        check((expectedValues ?? unrelatedValues).isEqual(to: unrelatedSettingsValues()),
+              "\(context) only writes shortcut preferences")
         check(credentials.values == credentialValues, "\(context) leaves every provider credential unchanged")
         check(settings.polishEnabled && settings.outputLanguage == .japanese && settings.voiceEditEnabled,
               "\(context) leaves live AI behavior unchanged")
         check(settings.hudAppearance == appearance, "\(context) leaves live appearance unchanged")
+        check(settings.recordingGestureMode == .toggle && settings.audioInputDeviceUID == "synthetic-input-uid",
+              "\(context) leaves recording mode and microphone unchanged")
         check(settings.selectedPolishProvider == .custom && settings.llmAPIKey == credentialValues[.custom],
               "\(context) leaves selected provider and live credential unchanged")
     }
@@ -196,6 +211,32 @@ func testShortcutDefaults() -> Int {
           "Missing translation preference retains existing Control Option T")
     for shortcut in [customTranslation, .disabled, .default] {
         settings.translationShortcut = shortcut
+        let expectedUnrelatedValues = unrelatedSettingsValues() as NSDictionary
+        for primary in TriggerKey.allCases {
+            for alternate in AlternateFinishKey.allCases {
+                settings.triggerKey = primary
+                settings.alternateFinishKey = alternate
+                let context = "Recording reset: \(primary.rawValue) / \(alternate.rawValue), translation \(shortcut)"
+                check(settings.areRecordingShortcutsDefault == (primary == .fn && alternate == .automatic),
+                      "\(context) reset availability ignores translation")
+                let beforeReset = defaults.values as NSDictionary
+                settings.restoreRecordingShortcutDefaults()
+                check(settings.areRecordingShortcutsDefault && settings.triggerKey == .fn
+                      && settings.alternateFinishKey == .automatic && settings.effectiveAlternateFinishKey == .rightOption,
+                      "\(context) restores both recording shortcuts even from an explicit Fn alternate")
+                check(settings.translationShortcut == shortcut,
+                      "\(context) leaves the translation shortcut unchanged")
+                check(settings.areShortcutsDefault == (shortcut == .default),
+                      "\(context) all-shortcut default state still includes translation")
+                if primary == .fn && alternate == .automatic {
+                    check(beforeReset.isEqual(to: defaults.values), "\(context) already-default recording reset writes nothing")
+                }
+                let restored = AppSettings(defaults: defaults, credentialStore: credentials)
+                check(restored.areRecordingShortcutsDefault && restored.translationShortcut == shortcut,
+                      "\(context) recording defaults and unchanged translation survive relaunch")
+                checkUnrelatedSettings(context, expectedValues: expectedUnrelatedValues)
+            }
+        }
         let reloaded = AppSettings(defaults: defaults, credentialStore: credentials)
         check(reloaded.translationShortcut == shortcut, "Custom and disabled translation survive relaunch")
         check(settings.isTranslationShortcutDefault == (shortcut == .default), "Translation reset reflects preference")

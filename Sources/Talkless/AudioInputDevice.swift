@@ -48,7 +48,7 @@ enum AudioInputDevices {
     ) throws -> AudioDeviceID {
         guard let uid else { return try defaultDevice() }
         guard let device = try devices().first(where: { $0.uid == uid }) else {
-            throw TalklessError.message("The selected microphone is unavailable. Reconnect it or choose another microphone in Settings › General › Audio.")
+            throw TalklessError.message("The selected microphone is unavailable. Reconnect it or choose another microphone in Settings › Dictation › Audio.")
         }
         return device.id
     }

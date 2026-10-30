@@ -1,6 +1,6 @@
 # Recording diagnostics
 
-General settings provide **Export Diagnostics**, **Open Logs**, and **Open Crash Reports**. Exporting creates a local ZIP and never uploads it. Relaunch after a crash before exporting so the previous unclean-session marker is recorded.
+Settings > System provides **Export Diagnostics**, **Open Logs**, and **Open Crash Reports**. Exporting creates a local ZIP and never uploads it. Relaunch after a crash before exporting so the previous unclean-session marker is recorded.
 
 Local structured event logs retain up to three 5 MB files. Events cover application start/stop, hotkey press/release, recording start/stop/errors, model loading, recognition completion, cancellation and paste decisions. Critical lifecycle checkpoints are flushed synchronously. Audio callbacks do not write per-frame logs.
 

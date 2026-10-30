@@ -14,7 +14,7 @@ bash scripts/build-app.sh
 open dist/Talkless.app
 ```
 
-Open **Settings > Models** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is the single built-in model (712.8 MB including configuration/tokenizer files). Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
+Open **Settings > Speech recognition** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is the single built-in model (712.8 MB including configuration/tokenizer files). Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
 
 Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror can redirect to Hugging Face and is not guaranteed to provide independent regional access. ModelScope is not listed until matching MLX artifacts are verified; SpeakMore's GGUF Q8 files are not compatible with this MLX runtime.
 
@@ -26,11 +26,22 @@ The basic `build-app.sh` build is ad-hoc signed unless `CODE_SIGN_IDENTITY` is s
 
 For local testing with the release identity and a fixed installation path, quit Talkless and run `bash scripts/install-local.sh`. It uses the configured signing references, builds with the same Developer ID as releases, verifies the signature and installs `/Applications/Talkless.app`. The old app is held only during replacement for failure rollback, then removed automatically; successful installs retain no backup. Launch that copy rather than changing build-directory apps; the initial switch from ad-hoc signing may require one permission grant. This local install is not notarized or published. See [release setup](docs/releasing.md) for prerequisites and signing references.
 
+## Settings
+
+Settings opens to **Dictation**. The sidebar is organized by task:
+
+- **Dictation:** microphone, recording mode and keys, AI polishing, output language, app-aware tone, selected-text voice editing, and additional instructions.
+- **Translation:** selected-text target language and shortcut, separate from dictation's output language.
+- **Speech recognition:** recognition engine and local speech models.
+- **AI service:** shared provider, protocol, credentials and model for polishing, translation and voice editing; no master AI enable toggle.
+- **Dictionary**, **Overlay**, and **History:** terms and review, HUD appearance, and saved text.
+- **System:** permissions, updates and diagnostics.
+
 ## Dictation and shortcuts
 
-Grant microphone and Accessibility permissions in macOS System Settings. Fn is the default trigger and Hold to talk is the default mode: hold to speak, release to finish. Select Tap to toggle if you prefer pressing once to start and again to finish. Escape cancels. Configure the system Globe-key action to Do Nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selected-text voice editing are off by default for new users.
+Grant microphone and Accessibility permissions in macOS System Settings; **Settings > System > Permissions** provides the permission controls. Fn is the default trigger and Hold to talk is the default mode: hold to speak, release to finish. Select Tap to toggle if you prefer pressing once to start and again to finish. Escape cancels. Configure the system Globe-key action to Do Nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selected-text voice editing are off by default for new users.
 
-**Settings > General > Behavior > Recording mode** has two choices: Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). There is no timing-based automatic mode. The mode is captured at recording start; menu-started dictation remains hands-free. Reset restores Hold to talk without changing other preferences. Older Automatic recording preferences migrate to Hold to talk.
+**Settings > Dictation > Recording > Recording mode** has two choices: Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). There is no timing-based automatic mode. The mode is captured at recording start; menu-started dictation remains hands-free. Reset restores Hold to talk without changing other preferences. Older Automatic recording preferences migrate to Hold to talk.
 
 For a one-off AI choice, press the **alternate finish key** while recording:
 
@@ -39,23 +50,23 @@ For a one-off AI choice, press the **alternate finish key** while recording:
 | On | Polish | Use original transcript |
 | Off | Use original transcript | Request polishing |
 
-This captures the global AI on/off default at recording start; the alternate key does not change it. The HUD shows the captured default and alternate action. Alternate finish never starts recording while idle and is unavailable during selected-text voice editing. If requested polishing fails or no provider is configured, the original transcript is retained.
+This captures the dictation polishing default at recording start; the alternate key does not change it. The HUD shows the captured default and alternate action. Alternate finish never starts recording while idle and is unavailable during selected-text voice editing. If requested polishing fails or no provider is configured, the original transcript is retained.
 
-**Settings > General > Keyboard shortcuts** lets you click either shortcut field and press then release **Fn, Right Option, Right Command, or Right Control** to save it without starting dictation. Only these single keys are supported, not key combinations. Escape cancels shortcut capture; Delete or Backspace clears the alternate binding. Conflicting bindings are rejected. Automatic (the default for unset preferences) uses Right Option unless that is the dictation key, then Right Command, until you record an explicit binding.
+**Settings > Dictation > Recording** lets you click either shortcut field and press then release **Fn, Right Option, Right Command, or Right Control** to save it without starting dictation. Only these single keys are supported, not key combinations. Escape cancels shortcut capture; Delete or Backspace clears the alternate binding. Conflicting bindings are rejected. Automatic (the default for unset preferences) uses Right Option unless that is the dictation key, then Right Command, until you record an explicit binding.
 
-Each shortcut shows its default and has a **Reset** button. Reset affects that binding only; an explicit conflicting binding is left unchanged and reported. **Restore defaults** resets the dictation key to Fn, alternate finish to Automatic, and translation to Control-Option-T, without touching recording mode, AI settings, microphone, or other preferences. Reset cancels any active shortcut capture before changing bindings; buttons are disabled when already at their defaults or while dictation is active.
+Each shortcut shows its default and has a **Reset** button. Reset affects that binding only; an explicit conflicting binding is left unchanged and reported. **Reset recording shortcuts** resets the dictation key to Fn and alternate finish to Automatic, without touching translation, recording mode, AI settings, microphone, or other preferences. Reset cancels any active shortcut capture before changing bindings; buttons are disabled when already at their defaults or while dictation is active.
 
 Press the alternate key by itself or while holding the primary dictation key. It finishes immediately, even if you then add another key for an application shortcut. Already-held unrelated modifiers or non-modifier keys prevent alternate finish; alternate-key events still pass through to the focused app.
 
 ## Selected-text translation
 
-Select text in the foreground app, then use Translate Selected Text from the menu or its configurable shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace actions. Translation requires a configured provider, not the AI-polish on/off toggle. The target language is currently under Settings > AI polish > Output. The translation shortcut supports recorded modifier-plus-key combinations, independent Reset, and inclusion in shortcut Restore defaults; it can also be disabled without removing the menu action.
+Select text in the foreground app, then use Translate Selected Text from the menu or its configurable shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace actions. Translation requires a configured **AI service**, not the dictation polishing toggle. **Settings > Translation** contains the target language and shortcut; its target language is independent of dictation's output language. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; it can also be disabled without removing the menu action.
 
 ## Recognition
 
-**Settings > General > Audio > Microphone** defaults to System default, or can target a named input device. Selection is saved by stable device UID and applied to the next recording without changing the system-wide microphone. The list refreshes while settings are visible. A missing explicit device stops recording setup with an error rather than silently using another microphone. An audio-engine configuration change during recording interrupts the session with an error and discards partial audio instead of pasting an incomplete transcript. Reset restores System default.
+**Settings > Dictation > Audio > Microphone** defaults to System default, or can target a named input device. Selection is saved by stable device UID and applied to the next recording without changing the system-wide microphone. The list refreshes while settings are visible. A missing explicit device stops recording setup with an error rather than silently using another microphone. An audio-engine configuration change during recording interrupts the session with an error and discards partial audio instead of pasting an incomplete transcript. Reset restores System default.
 
-**Settings > Models** selects local Qwen (the default), Apple on-device recognition, or a cloud Whisper-compatible API. Qwen requires an explicitly downloaded model; Apple may download its required speech assets on first use. Cloud recognition uploads recorded audio and dictionary hints to the configured provider and may incur charges. The local Qwen pipeline works as follows:
+**Settings > Speech recognition** selects local Qwen (the default), Apple on-device recognition, or a cloud Whisper-compatible API. Qwen requires an explicitly downloaded model; Apple may download its required speech assets on first use. Cloud recognition uploads recorded audio and dictionary hints to the configured provider and may incur charges. The local Qwen pipeline works as follows:
 
 - Qwen runs in-process, not through Python or a CLI subprocess. The selected installed model is prepared at startup and after download/selection, then kept in memory between dictations. Stopping recording does not unload weights; model changes, deletion or process exit release them.
 - Raw Qwen language/control headers are parsed before display. Incomplete headers never become transcript text; malformed final headers produce an error rather than inserting metadata. Literal words such as `language English` inside the transcript remain untouched.
@@ -76,7 +87,11 @@ The menu bar uses the app's own waveform-and-caret mark in every state, without 
 
 ## AI polishing
 
-Optional polishing supports DeepSeek, OpenAI (Responses or Chat Completions), native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](docs/ai-polish.md).
+**Settings > Dictation > AI processing** holds the polishing toggle, output language, app-aware tone, and additional instructions. Output language applies when dictation uses AI polishing, including a one-off alternate finish. Selected-text voice editing has its own **Voice editing** section on the same page. **Settings > AI service** configures their shared provider, also used by translation; configuring it does not turn on dictation polishing or voice editing.
+
+The shared AI service supports DeepSeek, OpenAI (Responses or Chat Completions), OpenRouter, native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](docs/ai-polish.md).
+
+OpenRouter starts with `https://openrouter.ai/api/v1` and `openrouter/free`; add your own OpenRouter API key. The free router selects from changing free models, not a guaranteed DeepSeek endpoint. Free-tier limits and availability vary. Talkless does not configure paid fallbacks; manually choosing another model may incur charges. See [OpenRouter's free router](https://openrouter.ai/openrouter/free).
 
 Dictionary has separate My terms and Review sections. Search, add, edit, or delete confirmed spellings in My terms; existing newline-based terms are retained and capitalization is preserved. Only confirmed terms are passed to local Qwen, Apple and API speech recognition, and to AI polishing. They are hints rather than forced replacements.
 
@@ -84,7 +99,7 @@ Review compares saved raw dictation with polished output locally to suggest smal
 
 ## Updates
 
-**Settings > General > Updates** offers Stable and Beta channels. Returning to Stable does not downgrade an installed beta. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks during dictation or another update session wait until the next interval; manual checking remains available when idle. You choose when to download and install. Turning off automatic checks does not cancel an update already in progress. Local builds without valid update feed URLs and a signing public key cannot check for updates.
+**Settings > System > Updates** offers Stable and Beta channels. Returning to Stable does not downgrade an installed beta. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks during dictation or another update session wait until the next interval; manual checking remains available when idle. You choose when to download and install. Turning off automatic checks does not cancel an update already in progress. Local builds without valid update feed URLs and a signing public key cannot check for updates.
 
 The [release workflow](docs/releasing.md) defaults to Beta for trusted pushes to `main`; Stable requires an explicit version tag. Publication still depends on a successful release job.
 
