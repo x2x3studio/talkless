@@ -299,7 +299,7 @@ final class DictationController: ObservableObject {
         let samples = recorder.stop()
         let duration = Double(samples.count) / AudioRecorder.sampleRate
         state = .processing
-        hud.show(.working)
+        hud.show(.recognizing)
 
         let generation = self.generation
         let editSelection = self.editSelection
@@ -322,14 +322,14 @@ final class DictationController: ObservableObject {
                 var polishFailed = false
                 if let selection = editSelection {
                     kind = .edit
-                    self.hud.show(.working)
+                    self.hud.show(.editing)
                     output = try await LLMClient.complete(
                         system: Prompts.voiceEdit(settings: self.settings),
                         user: Prompts.voiceEditInput(selection: selection, instruction: raw),
                         config: self.settings.llmConfig
                     )
                 } else if self.settings.polishEnabled, self.settings.llmConfigured {
-                    self.hud.show(.working)
+                    self.hud.show(.polishing)
                     do {
                         output = try await LLMClient.complete(
                             system: Prompts.polish(context: context, settings: self.settings),
@@ -449,7 +449,7 @@ final class DictationController: ObservableObject {
                 session.feed(frame)
             }
             state = .processing
-            hud.show(.working)
+            hud.show(.recognizing)
             let text = try await session.finish(samples: [])
             guard self.generation == generation else { throw CancellationError() }
             lastTranscript = text

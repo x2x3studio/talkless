@@ -7,12 +7,34 @@ final class HUDModel: ObservableObject {
         case hidden
         case listening(handsFree: Bool)
         case working
+        case recognizing
+        case polishing
+        case editing
         case error(String)
+
+        var statusText: String? {
+            switch self {
+            case .working: "Preparing recognition…"
+            case .recognizing: "Recognizing…"
+            case .polishing: "Polishing…"
+            case .editing: "Editing…"
+            case .hidden, .listening, .error: nil
+            }
+        }
     }
 
     @Published var phase: Phase = .hidden
     @Published var isEditMode = false
     @Published var preview = ""
+
+    var displayText: String {
+        switch phase {
+        case .hidden: ""
+        case .error(let message): message
+        default: phase.statusText ?? preview
+        }
+    }
+
     static let maximumWidth: CGFloat = 340
     static let maximumHeight: CGFloat = 82
 }
@@ -104,18 +126,23 @@ final class HUDController {
 
 struct HUDView: View {
     @ObservedObject var model: HUDModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             if model.phase != .hidden {
                 HStack(spacing: 9) {
                     indicator
-                    if case .error(let message) = model.phase {
-                        Text(message)
+                    if case .error = model.phase {
+                        Text(model.displayText)
                             .lineLimit(3)
                             .truncationMode(.tail)
-                    } else if !model.preview.isEmpty {
-                        Text(model.preview)
+                    } else if model.phase.statusText != nil {
+                        Text(model.displayText)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                    } else if !model.displayText.isEmpty {
+                        Text(model.displayText)
                             .lineLimit(2)
                             .truncationMode(.head)
                     }
@@ -141,11 +168,17 @@ struct HUDView: View {
                 .fill(model.isEditMode ? Color.orange : Color.red)
                 .frame(width: 6, height: 6)
                 .accessibilityLabel("Recording")
-        case .working:
+        case .working, .recognizing:
             ProgressView()
                 .controlSize(.mini)
                 .tint(.white)
-                .accessibilityLabel("Processing dictation")
+                .accessibilityHidden(true)
+        case .polishing, .editing:
+            Image(systemName: "sparkles")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
+                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                .accessibilityHidden(true)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
