@@ -18,6 +18,8 @@ An Apple Silicon Mac needs Xcode command-line tools, Swift compatible with `Pack
 
 The dedicated `talkless-mac-mini-arm64` runner is registered with labels `self-hosted`, `macOS`, `ARM64`, `talkless-macos-arm64`. It runs as a user LaunchAgent with its standard bundled Node runtime. Work directories, temporary files and caches use the internal disk. An external-SSD migration was reverted; no fixed-Node launcher or additional Full Disk Access grant is required. Mateo keeps its separate runner installation and service. Do not share working directories or move global developer caches.
 
+The `validate` release job and the separate `Source checks` workflow run on GitHub-hosted `macos-15`; only the full `release` job runs on the dedicated Mac. A hosted-runner capacity notice does not indicate a problem with the self-hosted machine. Workflow actions use Node 24 (`actions/checkout@v7.0.1` and `actions/upload-artifact@v7.0.2`); keep the self-hosted Actions runner updated (at least 2.327.1 for Node 24).
+
 Release configuration:
 
 - Signing/notarization reference variables are configured to reuse the existing Developer ID and notarization account. Private material must never enter the repository or artifact uploads.

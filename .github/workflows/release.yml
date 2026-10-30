@@ -14,7 +14,7 @@ jobs:
     outputs:
       eligible: ${{ steps.ref.outputs.eligible }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -56,7 +56,7 @@ jobs:
       NOTARY_KEY_ID_REF: ${{ vars.NOTARY_KEY_ID_REF }}
       NOTARY_ISSUER_REF: ${{ vars.NOTARY_ISSUER_REF }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -84,7 +84,7 @@ jobs:
       - name: Build, sign, and notarize
         run: bash scripts/release-macos.sh "$VERSION" "$BUILD_NUMBER"
       - name: Retain signed artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Talkless-${{ env.VERSION }}-${{ env.RELEASE_CHANNEL }}-macOS-arm64
           path: dist/releases/

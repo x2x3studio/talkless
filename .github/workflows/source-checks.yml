@@ -11,7 +11,7 @@ jobs:
   source-hygiene:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Check repository hygiene
         run: bash scripts/release-tool.sh check-repository
       - name: Test release tool
