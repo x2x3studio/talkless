@@ -123,9 +123,10 @@ private struct APITests {
             ("explicitAuthAndLocalhostNoKey", testAuth),
             ("thinkingDefaultsAndKnownDisabledOnly", testThinking),
             ("finishReasonsRefusalsToolsAndEmpty", testFailures),
-            ("cleanDoesNotInsertTaggedReasoning", testClean),
+            ("finalTextPreservesLiteralMarkupAndCode", testClean),
             ("httpErrorsAreSanitizedAndNeverRetried", testStatuses),
             ("modelDiscoveryChatAndResponses", testOpenAIModels),
+            ("customRootModelDiscoveryDoesNotInjectVersion", testRootModels),
             ("anthropicModelPagination", testAnthropicModels),
             ("geminiModelPaginationAndFiltering", testGeminiModels),
             ("paginationCursorValidationAndBound", testPaginationBound),
@@ -147,14 +148,21 @@ private struct APITests {
         let legacy = LLMClient.Config(baseURL: "https://unit.test/v1", apiKey: "test-only-key", model: "selected-model")
         try expect(legacy.apiProtocol == .chatCompletions && legacy.maxOutputTokens == 4096 && legacy.thinking == .modelDefault, "legacy initializer changed")
         let cases: [(String, LLMProtocol, String)] = [
-            ("https://api.openai.com", .responses, "https://api.openai.com/v1/responses"),
+            ("https://api.openai.com", .responses, "https://api.openai.com/responses"),
+            ("https://api.openai.com/v1", .responses, "https://api.openai.com/v1/responses"),
+            ("https://unit.test/responses", .responses, "https://unit.test/responses"),
+            ("https://unit.test/responses/", .responses, "https://unit.test/responses"),
+            ("https://unit.test", .chatCompletions, "https://unit.test/chat/completions"),
+            ("http://localhost:11434", .chatCompletions, "http://localhost:11434/chat/completions"),
             (" https://api.openai.com/v1/\n", .chatCompletions, "https://api.openai.com/v1/chat/completions"),
             ("https://api.openai.com/v1/responses/", .responses, "https://api.openai.com/v1/responses"),
             ("https://api.deepseek.com", .chatCompletions, "https://api.deepseek.com/chat/completions"),
-            ("https://api.anthropic.com", .anthropicMessages, "https://api.anthropic.com/v1/messages"),
+            ("https://api.anthropic.com", .anthropicMessages, "https://api.anthropic.com/messages"),
+            ("https://api.anthropic.com/v1", .anthropicMessages, "https://api.anthropic.com/v1/messages"),
             ("https://api.anthropic.com/v1/messages", .anthropicMessages, "https://api.anthropic.com/v1/messages"),
             ("https://unit.test/proxy/company/v1", .responses, "https://unit.test/proxy/company/v1/responses"),
-            ("https://generativelanguage.googleapis.com", .geminiGenerateContent, "https://generativelanguage.googleapis.com/v1beta/models/chosen:generateContent"),
+            ("https://generativelanguage.googleapis.com", .geminiGenerateContent, "https://generativelanguage.googleapis.com/models/chosen:generateContent"),
+            ("https://generativelanguage.googleapis.com/v1beta", .geminiGenerateContent, "https://generativelanguage.googleapis.com/v1beta/models/chosen:generateContent"),
             ("https://unit.test/proxy/v1beta/models/old:generateContent", .geminiGenerateContent, "https://unit.test/proxy/v1beta/models/chosen:generateContent"),
             ("http://localhost:11434/v1", .chatCompletions, "http://localhost:11434/v1/chat/completions"),
             ("http://[::1]:11434/v1", .responses, "http://[::1]:11434/v1/responses"),
@@ -287,7 +295,7 @@ private struct APITests {
             try expectError(.unsupportedThinking) { _ = try LLMClient.makeRequest(system: "", user: "", config: value) }
         }
         for (base, proto, model, field) in [
-            ("https://api.openai.com", LLMProtocol.responses, "gpt-5.5", "reasoning"),
+            ("https://api.openai.com/v1", LLMProtocol.responses, "gpt-5.5", "reasoning"),
             ("https://api.deepseek.com", .chatCompletions, "deepseek-v4-pro", "thinking")
         ] {
             var value = config(proto, base: base, model: model)
@@ -298,8 +306,9 @@ private struct APITests {
             value.baseURL = base + "/proxy/v1"
             try expect(!LLMClient.supportsDisablingThinking(config: value), "proxy capability guessed")
         }
-        try expect(!LLMClient.supportsDisablingThinking(config: config(.responses, base: "https://api.openai.com", model: "always-on-or-unknown")), "unknown model inferred")
-        var anthropic = config(.anthropicMessages, base: "https://api.anthropic.com", model: "claude-opus-5-5")
+        try expect(!LLMClient.supportsDisablingThinking(config: config(.responses, base: "https://api.openai.com/v1", model: "always-on-or-unknown")), "unknown model inferred")
+        try expect(!LLMClient.supportsDisablingThinking(config: config(.responses, base: "https://api.openai.com", model: "gpt-5.5")), "root endpoint silently treated as versioned API")
+        var anthropic = config(.anthropicMessages, base: "https://api.anthropic.com/v1", model: "claude-opus-5-5")
         try expect(!LLMClient.supportsDisablingThinking(config: anthropic), "Anthropic capability guessed from generic example")
         let anthropicBody = try json(LLMClient.makeRequest(system: "", user: "", config: anthropic))
         try expect(anthropicBody["thinking"] == nil, "Anthropic default forced unsupported thinking parameter")
@@ -336,13 +345,11 @@ private struct APITests {
     }
 
     static func testClean() async throws {
-        try expect(LLMClient.clean("<think>secret</think>\nFinal") == "Final", "think leaked")
-        try expect(LLMClient.clean("<THINK>secret</THINK>Final") == "Final", "uppercase think leaked")
-        try expect(LLMClient.clean("<think>first</think><think>second</think>Final") == "Final", "multiple reasoning sections leaked")
-        try expect(LLMClient.clean("<analysis>secret</analysis>Final") == "Final", "analysis leaked")
-        try expect(LLMClient.clean("<think>unfinished") == "", "unfinished think leaked")
-        try expect(LLMClient.clean("```text\nFinal\n```") == "Final", "fence retained")
-        try expect(LLMClient.clean("\"Keep quotes\"") == "\"Keep quotes\"", "quotes altered")
+        for literal in ["<analysis>keep this literal</analysis>", "The tag `<analysis>` is not closed.",
+                        "```swift\nlet value = true\n```", "<think>literal markup</think>", "\"Keep quotes\""] {
+            try expect(LLMClient.clean(literal) == literal, "Final text content was altered")
+        }
+        try expect(LLMClient.clean("  Final\n") == "Final", "Outer whitespace retained")
     }
 
     static func testStatuses() async throws {
@@ -368,6 +375,40 @@ private struct APITests {
             let result = try await models(config(proto, base: "https://unit.test/proxy/v1/" + suffix, model: ""))
             try expect(result == [RemoteModel(id: "user-can-select"), RemoteModel(id: "second", displayName: "Second")], "models not parsed/deduplicated")
         }
+    }
+
+    static func testRootModels() async throws {
+        let cases: [(LLMProtocol, String)] = [
+            (.chatCompletions, "https://unit.test"),
+            (.chatCompletions, "https://unit.test/chat/completions"),
+            (.responses, "https://unit.test"),
+            (.responses, "https://unit.test/responses"),
+            (.responses, "https://unit.test/models"),
+            (.anthropicMessages, "https://unit.test"),
+            (.anthropicMessages, "https://unit.test/messages"),
+            (.geminiGenerateContent, "https://unit.test"),
+            (.geminiGenerateContent, "https://unit.test/models/selected-model:generateContent"),
+        ]
+        for (proto, base) in cases {
+            MockProtocol.install { request in
+                try expect(request.httpMethod == "GET" && request.url?.path == "/models", "root discovery injected an API version")
+                switch proto {
+                case .anthropicMessages: return .reply(200, #"{"data":[{"id":"chosen"}],"has_more":false}"#)
+                case .geminiGenerateContent: return .reply(200, #"{"models":[{"name":"models/chosen","supportedGenerationMethods":["generateContent"]}]}"#)
+                case .chatCompletions, .responses: return .reply(200, #"{"data":[{"id":"chosen"}]}"#)
+                }
+            }
+            let result = try await models(config(proto, base: base, model: ""))
+            try expect(result.map(\.id) == ["chosen"] && MockProtocol.count == 1, "root discovery failed")
+            try MockProtocol.verify()
+        }
+        MockProtocol.install { request in
+            try expect(request.url?.path == "/models" && request.value(forHTTPHeaderField: "Authorization") == nil, "keyless root discovery changed")
+            return .reply(200, #"{"data":[]}"#)
+        }
+        var local = config(base: "http://localhost:11434")
+        local.apiKey = ""
+        _ = try await models(local)
     }
 
     static func testAnthropicModels() async throws {

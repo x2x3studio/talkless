@@ -333,6 +333,7 @@ final class DictationController: ObservableObject {
                             timeout: 15
                         )
                         if output.isEmpty { output = raw }
+                        output = try PolishValidation.validate(source: raw, output: output)
                     } catch {
                         // A cleanup failure must not lose the user's words; fall back to the raw transcript.
                         output = raw

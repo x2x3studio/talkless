@@ -255,25 +255,10 @@ enum LLMClient {
         catch { throw ClientError.invalidResponse }
     }
 
-    /// Drop tagged reasoning, including unfinished sections; retain only final text and unwrap code fences.
+    /// Protocol-specific parsing already excludes reasoning blocks. Tags and code fences
+    /// in a final text block may be literal dictation and must not be deleted.
     static func clean(_ text: String) -> String {
-        var value = text
-        for tag in ["think", "thinking", "analysis"] {
-            let open = "<\(tag)>"
-            let close = "</\(tag)>"
-            while let start = value.range(of: open, options: .caseInsensitive) {
-                guard let end = value.range(of: close, options: .caseInsensitive, range: start.upperBound..<value.endIndex) else { return "" }
-                value.removeSubrange(start.lowerBound..<end.upperBound)
-            }
-            if let end = value.range(of: close, options: [.caseInsensitive, .backwards]) { value = String(value[end.upperBound...]) }
-        }
-        value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("```"), value.hasSuffix("```"), value.count >= 6 {
-            value = String(value.dropFirst(3).dropLast(3))
-            if let newline = value.firstIndex(of: "\n") { value = String(value[value.index(after: newline)...]) }
-            value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return value
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private struct ContentBlock: Decodable { let type: String; let text: String? }

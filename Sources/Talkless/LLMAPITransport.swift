@@ -23,10 +23,6 @@ enum LLMAPITransport {
             path.removeLast("/models".count)
         }
 
-        if path.isEmpty {
-            if apiProtocol == .geminiGenerateContent { path = "/v1beta" }
-            else if components.host?.lowercased() != "api.deepseek.com" { path = "/v1" }
-        }
         let suffix: String
         if models {
             suffix = "/models"
