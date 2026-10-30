@@ -514,29 +514,47 @@ private struct DictionaryTab: View {
 
 private struct HistoryTab: View {
     @ObservedObject var history = HistoryStore.shared
+    @State private var confirmClear = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("\(history.entries.count) entries · \(history.totalCharacters) characters · \(Int(history.totalDuration / 60)) min recorded")
-                    .font(.callout).foregroundStyle(.secondary)
-                Spacer()
-                Button("Clear") { history.clear() }.disabled(history.entries.isEmpty)
-            }
-            List(history.entries) { entry in
-                HistoryRow(entry: entry)
-                    .contextMenu {
-                        Button("Copy Result") { TextIO.copyToClipboard(entry.output) }
-                        Button("Copy Raw Transcript") { TextIO.copyToClipboard(entry.raw) }
-                        Divider()
-                        Button("Delete") { history.delete(entry) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                DictationActivityView()
+                Divider()
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Recent history").font(.headline)
+                        Text("\(history.entries.count) saved entries")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-            }
-            .overlay {
-                if history.entries.isEmpty {
-                    Text("No history yet").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Clear history…") { confirmClear = true }
+                        .disabled(history.entries.isEmpty)
+                }
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(history.entries) { entry in
+                        HistoryRow(entry: entry)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("Copy Result") { TextIO.copyToClipboard(entry.output) }
+                                Button("Copy Raw Transcript") { TextIO.copyToClipboard(entry.raw) }
+                                Divider()
+                                Button("Delete") { history.delete(entry) }
+                            }
+                        Divider()
+                    }
+                    if history.entries.isEmpty {
+                        Text("No history yet").foregroundStyle(.secondary)
+                    }
                 }
             }
+        }
+        .alert("Clear saved history?", isPresented: $confirmClear) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear history", role: .destructive) { history.clear() }
+        } message: {
+            Text("This deletes saved transcripts. Daily activity totals are kept separately; use Clear activity to remove those too.")
         }
     }
 }

@@ -97,6 +97,12 @@ Dictionary has separate My terms and Review sections. Search, add, edit, or dele
 
 Review compares saved raw dictation with polished output locally to suggest small spelling corrections, including Chinese and Latin terms. Each candidate shows the heard/polished evidence and the number of distinct dictations. Accept adds that spelling to My terms; Dismiss stays hidden until an explicit reset. Suggestions are never accepted automatically. Scan history runs once on demand; automatic local suggestions are opt-in and off by default. Scanning uses up to 500 recent history entries, excludes edits/translations and large rewrites, displays up to 100 candidates, and makes no network or additional AI requests. AI changes are evidence, not ground truth: review each spelling before accepting. Talkless does not monitor edits made in other apps after pasting.
 
+## Daily activity
+
+**Settings > History** shows a calendar heatmap of completed dictation, starting with this feature's first launch. Older transcript history is not imported. Click the character, dictation, or recorded-time summary to choose the calendar metric. The period selector shows approximately three months, six months, or a year (13, 26, or 52 weeks). Hover, focus, or click a day for its details; the Activity options menu provides the exact daily table, tracking information, and Clear activity. Fixed intensity thresholds keep colors consistent when changing the date range. Edits and translations are excluded; characters count final output graphemes, not words or model tokens.
+
+Daily totals are retained for 400 calendar days in local `activity.json`, using the time zone captured when tracking starts. The file contains counts, durations, dates, and a bounded set of recent entry IDs, not transcript text or audio. Dates before tracking began are shown as Not recorded; the initial day counts only since tracking began. Clear history removes saved transcripts but keeps daily totals. Clear activity separately confirms deletion of totals and starts a fresh baseline without importing older history.
+
 ## Updates
 
 **Settings > System > Updates** offers Stable and Beta channels. Returning to Stable does not downgrade an installed beta. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks during dictation or another update session wait until the next interval; manual checking remains available when idle. You choose when to download and install. Turning off automatic checks does not cancel an update already in progress. Local builds without valid update feed URLs and a signing public key cannot check for updates.
@@ -109,7 +115,7 @@ Talkless does not use a `~/.talkless` configuration directory:
 
 - **UserDefaults:** app preferences, provider endpoints/model IDs, confirmed dictionary terms and dismissed suggestions.
 - **macOS Keychain:** AI polishing keys. The separate legacy **cloud ASR key is still stored in plaintext in UserDefaults**, not Keychain.
-- **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, up to 500 text-only history entries in `history.json`, and rotating event logs in `Diagnostics/`. History includes raw and final text, the app name, and timing metadata, not audio. Delete entries or clear them in Settings > History.
+- **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, up to 500 text-only history entries in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`. History includes raw and final text, the app name, and timing metadata, not audio. Delete entries or clear them in Settings > History.
 
 Local Qwen recognition does not upload audio. Optional cloud recognition sends audio; AI polishing, voice editing and translation send the text/context needed for those requests. See [provider privacy](docs/ai-polish.md) and [diagnostics export](docs/diagnostics.md) before sharing data.
 

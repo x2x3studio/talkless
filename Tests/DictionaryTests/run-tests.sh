@@ -13,6 +13,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/TranslationShortcut.swift" \
   "$ROOT/Sources/Talkless/Settings.swift" \
   "$ROOT/Sources/Talkless/History.swift" \
+  "$ROOT/Sources/Talkless/DictationActivity.swift" \
   "$ROOT/Sources/Talkless/DictionaryReview.swift" \
   "$ROOT/Sources/Talkless/DictionaryView.swift" \
   "$ROOT/Tests/DictionaryTests/DictionaryTests.swift" \

@@ -21,23 +21,28 @@ final class HistoryStore: ObservableObject {
 
     @Published private(set) var entries: [HistoryEntry] = []
 
-    private let url: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Talkless", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("history.json")
-    }()
+    private let url: URL
+    private let activity: DictationActivityStore
 
-    private init() {
-        if let data = try? Data(contentsOf: url) {
+    // Injectable paths/stores keep synthetic tests away from the user's Application Support.
+    init(url: URL? = nil, activity: DictationActivityStore? = nil, observeDictionaryReview: Bool = true) {
+        self.url = url ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Talkless", isDirectory: true)
+            .appendingPathComponent("history.json")
+        self.activity = activity ?? .shared
+        try? FileManager.default.createDirectory(at: self.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: self.url) {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            entries = (try? decoder.decode([HistoryEntry].self, from: data)) ?? []
+            entries = Array(((try? decoder.decode([HistoryEntry].self, from: data)) ?? []).prefix(Self.limit))
         }
-        DictionaryReviewStore.shared.observeHistory($entries.eraseToAnyPublisher())
+        if observeDictionaryReview {
+            DictionaryReviewStore.shared.observeHistory($entries.eraseToAnyPublisher())
+        }
     }
 
     func add(_ entry: HistoryEntry) {
+        activity.record(entry)
         entries.insert(entry, at: 0)
         if entries.count > Self.limit { entries.removeLast(entries.count - Self.limit) }
         save()
