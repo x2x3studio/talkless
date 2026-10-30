@@ -14,8 +14,10 @@ with tempfile.TemporaryDirectory(prefix="talkless-recorder-tests-") as work:
     enum_file = directory / "ShortcutKeys.swift"
     enum_file.write_text("import Foundation\n" + enums)
     binary = directory / "shortcut-recorder-tests"
+    # /usr/bin/python3 can inject the Command Line Tools SDKROOT. Select Xcode's
+    # macOS SDK explicitly so SwiftUI's platform macro plugins are found too.
     subprocess.run([
-        "/usr/bin/xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
+        "/usr/bin/xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "6", "-parse-as-library",
         str(enum_file), str(root / "Sources/Talkless/ShortcutRecorder.swift"),
         str(root / "Tests/ShortcutRecorderTests/ShortcutRecorderTests.swift"),
         "-o", str(binary),

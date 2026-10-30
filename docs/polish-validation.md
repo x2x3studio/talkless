@@ -30,4 +30,4 @@ bash Tests/APITests/run-tests.sh
 bash Tests/PolishIntegration/test-validation.sh
 ```
 
-Live tests remain explicit opt-in and are excluded from ordinary CI. See `Tests/PolishIntegration/run-tests.sh` and the live-testing section of `docs/ai-polish.md`. Default runs use the original eight cases; challenge selection and report filenames are configurable. Existing result files are never overwritten.
+Live tests remain explicit opt-in, may incur API charges, and are excluded from ordinary CI. See [live-testing instructions](ai-polish.md#optional-live-polishing-smoke-tests) for `Tests/PolishIntegration/run-tests.sh`. Default runs use the original eight cases; challenge selection and report filenames are configurable. Existing result files are never overwritten. The results above are a dated validation record, not evidence that every subsequent checkout or published release has been retested.

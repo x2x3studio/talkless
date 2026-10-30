@@ -4,7 +4,9 @@ Talkless is distributed directly, not through the Mac App Store. Releases contai
 
 ## Release policy
 
-- A trusted push to `main` builds and publishes a **beta** prerelease.
+These are the configured release paths, not a guarantee that the latest source changes have been published. A release requires successful validation, tests, signing, notarization and publication.
+
+- A trusted push to `main` triggers the workflow to build and publish a **beta** prerelease.
 - An explicit calendar-version tag (`v2026.1030.45296`) builds and publishes a **stable** release. Beta tags (`v2026.1030.45296-beta.BUILD`) are not stable triggers.
 - `RELEASE_CHANNEL` defaults to `beta`; stable builds require `RELEASE_CHANNEL=stable`.
 - Local `release-macos.sh` builds artifacts only. Local `publish-release.sh` defaults to a draft; the trusted workflow explicitly passes `--publish` and `PUBLIC_RELEASE_ACK=x2x3studio/talkless`.
@@ -21,7 +23,7 @@ Release configuration:
 - Signing/notarization reference variables are configured to reuse the existing Developer ID and notarization account. Private material must never enter the repository or artifact uploads.
 - A dedicated Talkless Sparkle key is stored in 1Password; its public key and private-key reference are configured as repository variables. Builds never generate or rotate update keys.
 - The source repository is public by explicit owner authorization. Release scripts never change repository visibility.
-- A published `updates` release hosts the stable and beta appcast assets. The initial feeds are valid empty channels until the first application release is published. The script never creates this mutable feed release implicitly.
+- The stable and beta appcast assets are hosted on a published `updates` release. When bootstrapping distribution, the feeds can start as valid empty channels until the first application release is published. The script never creates this mutable feed release implicitly.
 
 ## Signing and secret references
 
@@ -44,7 +46,7 @@ Configure these **reference strings**, using GitHub Actions variables or a local
 
 The helper uses `OP_SERVICE_ACCOUNT_TOKEN` if already present. Otherwise it sources `$HOME/.config/secrets.zsh` in a separate noninteractive `zsh` process, capturing the token privately and discarding other output. It never edits that file. Credential-command output is suppressed, including on failure. Do not enable shell tracing around credentials.
 
-Certificates, API keys, and any Sparkle key stay in a mode-restricted, uniquely owned temporary directory outside the project (`TMPDIR`, including the runner's SSD temp directory, is respected). A temporary keychain is passed explicitly with `codesign --keychain`; the user's keychain search list and default keychain are not changed. The imported certificate file is removed after import. Normal exit, exceptions, Ctrl-C, and SIGTERM clean up the session's keychain/directory. Forced termination or power loss may require manual cleanup of that session's `talkless-signing-*` directory/keychain and `dist/.release-lock`. Never delete unrelated keychains or temporary directories.
+Certificates, API keys, and any Sparkle key stay in a mode-restricted, uniquely owned temporary directory outside the project (`TMPDIR` is respected). A temporary keychain is passed explicitly with `codesign --keychain`; the user's keychain search list and default keychain are not changed. The imported certificate file is removed after import. Normal exit, exceptions, Ctrl-C, and SIGTERM clean up the session's keychain/directory. Forced termination or power loss may require manual cleanup of that session's `talkless-signing-*` directory/keychain and `dist/.release-lock`. Never delete unrelated keychains or temporary directories.
 
 ## Local signed build
 
