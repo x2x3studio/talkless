@@ -19,14 +19,32 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private let defaults: UserDefaults
     private var unavailableReason: String?
     private var cancellables: Set<AnyCancellable> = []
+    private var automaticCheckTimer: AnyCancellable?
+    typealias AutomaticCheckScheduler = @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> AnyCancellable
+    private let scheduleAutomaticCheck: AutomaticCheckScheduler
     private static let channelPreferenceKey = "TalklessUpdateChannel"
+    private static let automaticChecksPreferenceKey = "TalklessAutomaticallyChecksForUpdates"
+    static let automaticCheckInterval: TimeInterval = 30 * 60
     @Published private(set) var channel: UpdateChannel
+    @Published private(set) var automaticallyChecksForUpdates: Bool
 
-    init(bundle: Bundle = .main, defaults: UserDefaults = .standard, isDictationActive: @escaping () -> Bool) {
+    init(
+        bundle: Bundle = .main,
+        defaults: UserDefaults = .standard,
+        scheduleAutomaticCheck: @escaping AutomaticCheckScheduler = UpdateController.makeAutomaticCheckTimer,
+        isDictationActive: @escaping () -> Bool
+    ) {
         self.isDictationActive = isDictationActive
         self.defaults = defaults
+        self.scheduleAutomaticCheck = scheduleAutomaticCheck
         let bundleDefault = UpdateChannel(rawValue: bundle.object(forInfoDictionaryKey: "TalklessDefaultUpdateChannel") as? String ?? "") ?? .stable
         channel = defaults.string(forKey: Self.channelPreferenceKey).flatMap(UpdateChannel.init(rawValue:)) ?? bundleDefault
+        // Preserve the old Sparkle preference once, before disabling its scheduler.
+        // Sparkle clamps its own cadence to one hour, so Talkless owns the half-hour timer.
+        automaticallyChecksForUpdates = defaults.object(forKey: Self.automaticChecksPreferenceKey) as? Bool
+            ?? defaults.object(forKey: "SUEnableAutomaticChecks") as? Bool
+            ?? bundle.object(forInfoDictionaryKey: "SUEnableAutomaticChecks") as? Bool
+            ?? true
         configuredFeeds = Self.validatedFeeds(in: bundle)
         super.init()
 
@@ -34,12 +52,17 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
             unavailableReason = "Updates are not configured for this build."
             return
         }
+        defaults.set(automaticallyChecksForUpdates, forKey: Self.automaticChecksPreferenceKey)
 
         let controller = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
+        // Keep Sparkle's standard notice/download/install UI and signature verification,
+        // but never run a second scheduler or silently download/install an update.
+        controller.updater.automaticallyChecksForUpdates = false
+        controller.updater.automaticallyDownloadsUpdates = false
         do {
             // Start the underlying updater directly so packaging errors become menu status,
             // not Sparkle's delayed startup error dialog.
@@ -50,6 +73,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
                 .receive(on: RunLoop.main)
                 .sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &cancellables)
+            restartAutomaticCheckTimer()
         } catch {
             unavailableReason = "Updates are unavailable: \(error.localizedDescription)"
         }
@@ -74,15 +98,48 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     }
 
     var canChangeChannel: Bool {
-        !(standardController?.updater.sessionInProgress ?? false)
+        guard let updater = standardController?.updater else { return false }
+        return !updater.sessionInProgress
     }
 
     func selectChannel(_ newChannel: UpdateChannel) {
         guard channel != newChannel, canChangeChannel else { return }
         channel = newChannel
         defaults.set(newChannel.rawValue, forKey: Self.channelPreferenceKey)
-        // Sparkle may schedule a check for the new feed; switching never requests installation.
-        standardController?.updater.resetUpdateCycle()
+        // The next check uses the new feed. Do not reset Sparkle's cycle here:
+        // a changed feed can force a background check even with automatic checks off.
+        restartAutomaticCheckTimer()
+    }
+
+    var canChangeAutomaticChecks: Bool { standardController != nil }
+
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
+        guard canChangeAutomaticChecks, automaticallyChecksForUpdates != enabled else { return }
+        automaticallyChecksForUpdates = enabled
+        defaults.set(enabled, forKey: Self.automaticChecksPreferenceKey)
+        restartAutomaticCheckTimer()
+    }
+
+    private func restartAutomaticCheckTimer() {
+        automaticCheckTimer = nil
+        guard automaticallyChecksForUpdates, standardController != nil else { return }
+        automaticCheckTimer = scheduleAutomaticCheck(Self.automaticCheckInterval) { [weak self] in
+            self?.checkForUpdatesAutomatically()
+        }
+    }
+
+    private static func makeAutomaticCheckTimer(
+        interval: TimeInterval, action: @escaping @MainActor () -> Void
+    ) -> AnyCancellable {
+        Timer.publish(every: interval, on: .main, in: .common)
+            .autoconnect()
+            .sink { _ in action() }
+    }
+
+    private func checkForUpdatesAutomatically() {
+        guard automaticallyChecksForUpdates, canCheckForUpdates,
+              let updater = standardController?.updater, !updater.sessionInProgress else { return }
+        updater.checkForUpdatesInBackground()
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -105,6 +162,13 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         try requireIdleDictation()
+        if updateCheck == .updatesInBackground, !automaticallyChecksForUpdates {
+            throw NSError(
+                domain: "Talkless.Update",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Automatic update checks are turned off. Use Check for Updates to check manually."]
+            )
+        }
     }
 
     func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {

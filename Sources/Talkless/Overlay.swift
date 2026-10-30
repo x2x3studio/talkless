@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -14,10 +15,10 @@ final class HUDModel: ObservableObject {
 
         var statusText: String? {
             switch self {
-            case .working: "Preparing recognition…"
-            case .recognizing: "Recognizing…"
-            case .polishing: "Polishing…"
-            case .editing: "Editing…"
+            case .working: "Preparing recognition"
+            case .recognizing: "Recognizing"
+            case .polishing: "Polishing"
+            case .editing: "Editing"
             case .hidden, .listening, .error: nil
             }
         }
@@ -35,21 +36,56 @@ final class HUDModel: ObservableObject {
         }
     }
 
-    static let maximumWidth: CGFloat = 340
-    static let maximumHeight: CGFloat = 82
+    static let maximumWidth: CGFloat = 380
+    static let maximumHeight: CGFloat = 174
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 11
+    static let indicatorWidth: CGFloat = 16
+    static let spacing: CGFloat = 10
+
+    var textSize: CGSize {
+        guard !displayText.isEmpty else { return .zero }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 3
+        paragraph.lineBreakMode = .byWordWrapping
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: phase.statusText == nil ? .regular : .medium),
+            .paragraphStyle: paragraph,
+        ]
+        let text = displayText as NSString
+        let availableWidth = Self.maximumWidth - Self.horizontalPadding * 2 - Self.indicatorWidth - Self.spacing
+        let width = min(availableWidth, ceil(text.size(withAttributes: attributes).width) + 2)
+        let bounds = text.boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes
+        )
+        return CGSize(width: width, height: max(18, ceil(bounds.height) + 3))
+    }
+
+    var contentSize: CGSize {
+        let text = textSize
+        return CGSize(
+            width: Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0),
+            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2)
+        )
+    }
 }
 
-/// A floating capsule at the bottom center of the screen; it neither takes focus nor receives mouse events.
+/// A nonactivating, click-through panel that follows the insertion caret.
 @MainActor
 final class HUDController {
     let model = HUDModel()
     private let panel: NSPanel
     private var hideTask: Task<Void, Never>?
     private var trackingTask: Task<Void, Never>?
+    private var layoutSubscription: AnyCancellable?
+    private var cachedCaret: CGRect?
+
+    var frame: NSRect { panel.frame }
 
     init() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: HUDModel.maximumWidth, height: HUDModel.maximumHeight),
+            contentRect: NSRect(origin: .zero, size: model.contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -61,12 +97,24 @@ final class HUDController {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
+        layoutSubscription = model.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.updateLayout() }
+    }
+
+    private func updateLayout() {
+        guard model.phase != .hidden else { return }
+        let size = model.contentSize
+        guard panel.frame.size != size else { return }
+        panel.setContentSize(size)
+        position(refreshCaret: false)
     }
 
     func show(_ phase: HUDModel.Phase) {
         guard phase != .hidden else { hide(); return }
         hideTask?.cancel()
         model.phase = phase
+        updateLayout()
         if !panel.isVisible {
             position()
             panel.orderFrontRegardless()
@@ -113,10 +161,11 @@ final class HUDController {
         }
     }
 
-    private func position() {
+    private func position(refreshCaret: Bool = true) {
+        if refreshCaret { cachedCaret = CaretPosition.current() }
         let frame = CaretPlacement.frame(
             size: panel.frame.size,
-            caret: CaretPosition.current(),
+            caret: cachedCaret,
             screens: NSScreen.screens.map(\.visibleFrame),
             fallbackPoint: NSEvent.mouseLocation
         )
@@ -127,46 +176,61 @@ final class HUDController {
 struct HUDView: View {
     @ObservedObject var model: HUDModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
+        let size = model.contentSize
+        let textSize = model.textSize
+        let visibleTextHeight = size.height - HUDModel.verticalPadding * 2
         Group {
             if model.phase != .hidden {
-                HStack(spacing: 9) {
+                HStack(alignment: .top, spacing: HUDModel.spacing) {
                     indicator
-                    if case .error = model.phase {
+                        .frame(width: HUDModel.indicatorWidth, height: 18)
+                    if !model.displayText.isEmpty {
                         Text(model.displayText)
-                            .lineLimit(3)
-                            .truncationMode(.tail)
-                    } else if model.phase.statusText != nil {
-                        Text(model.displayText)
-                            .fontWeight(.medium)
-                            .lineLimit(1)
-                    } else if !model.displayText.isEmpty {
-                        Text(model.displayText)
-                            .lineLimit(2)
-                            .truncationMode(.head)
+                            .fontWeight(model.phase.statusText == nil ? .regular : .medium)
+                            .lineSpacing(3)
+                            .frame(width: textSize.width, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: textSize.width, height: visibleTextHeight, alignment: textAlignment)
+                            .clipped()
                     }
                 }
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.95))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .frame(maxWidth: HUDModel.maximumWidth - 8)
-                .fixedSize(horizontal: true, vertical: true)
-                .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.82)))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.10)))
+                .padding(.horizontal, HUDModel.horizontalPadding)
+                .padding(.vertical, HUDModel.verticalPadding)
+                .frame(width: size.width, height: size.height, alignment: .topLeading)
+                .background {
+                    if reduceTransparency {
+                        RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.12))
+                    } else {
+                        HUDMaterial()
+                            .overlay(.black.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14)))
+                .environment(\.colorScheme, .dark)
             }
         }
-        .frame(width: HUDModel.maximumWidth, height: HUDModel.maximumHeight, alignment: .bottom)
+        .frame(width: size.width, height: size.height)
+    }
+
+    private var textAlignment: Alignment {
+        if case .listening = model.phase { return .bottomLeading }
+        return .topLeading
     }
 
     @ViewBuilder
     private var indicator: some View {
         switch model.phase {
         case .listening:
-            Circle()
-                .fill(model.isEditMode ? Color.orange : Color.red)
-                .frame(width: 6, height: 6)
+            Image(systemName: "circle.fill")
+                .font(.system(size: 7))
+                .foregroundStyle(model.isEditMode ? Color.orange : Color.red)
+                .symbolEffect(.pulse, options: .repeating.speed(0.65), isActive: !reduceMotion)
                 .accessibilityLabel("Recording")
         case .working, .recognizing:
             ProgressView()
@@ -186,6 +250,19 @@ struct HUDView: View {
             EmptyView()
         }
     }
+}
+
+private struct HUDMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = NSAppearance(named: .darkAqua)
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Selected-text translation panel

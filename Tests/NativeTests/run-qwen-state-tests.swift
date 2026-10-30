@@ -14,19 +14,35 @@ func section(from start: String, to end: String? = nil) -> String {
     }
     return String(remainder)
 }
+// Both app entry points must opt in; the session's default is deliberately empty.
+let controller = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/DictationController.swift"), encoding: .utf8)
+let qwenInitializers = controller.components(separatedBy: "QwenTranscriptionSession(").dropFirst()
+precondition(qwenInitializers.count == 2, "Check normal dictation and runAudioTest Qwen wiring")
+for initializer in qwenInitializers {
+    let arguments = initializer.components(separatedBy: "onStatus:")[0]
+    precondition(arguments.contains("contextualStrings: settings.dictionaryTerms"),
+                 "Every controller Qwen session must receive the dictionary")
+}
+print("PASS dictionary wiring in normal dictation and audio test")
+let transcription = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Transcription.swift"), encoding: .utf8)
+let sessionProtocol = transcription.components(separatedBy: "// MARK: - On-device SpeechAnalyzer")[0]
 let stub = #"""
+import AVFoundation
 import Foundation
 private enum TalklessError: Error { case message(String) }
 private actor QwenModelRuntime {
     static let shared = QwenModelRuntime()
     var calls: [[Float]] = []
+    var contexts: [String] = []
     func prepare(modelDirectory: URL, onLoading: @escaping @MainActor @Sendable () -> Void = {}) async throws {}
+    func unload() {}
     func decode(samples: [Float], modelDirectory: URL, language: String?, context: String) async throws -> QwenDecodedOutput {
         calls.append(samples)
+        contexts.append(context)
         try await Task.sleep(for: .milliseconds(2))
         return .transcript("[\(Int(samples.first ?? -1))..\(Int(samples.last ?? -1))]")
     }
-    func reset() { calls = [] }
+    func reset() { calls = []; contexts = [] }
 }
 """#
 let tests = #"""
@@ -36,6 +52,25 @@ let tests = #"""
         let directory = URL(fileURLWithPath: "/unused")
         let state = QwenCaptureState()
         let all = (0..<520000).map { Float($0 + 1) }
+
+        let dictionarySession = QwenTranscriptionSession(
+            modelDirectory: directory,
+            contextualStrings: ["Talkless", "user_ID", "user_id", "\u{4E2D}\u{6587}\u{672F}\u{8BED}"]
+        )
+        _ = try await dictionarySession.finish(samples: all)
+        let dictionaryContexts = await runtime.contexts
+        precondition(dictionaryContexts == Array(repeating: "Talkless, user_ID, user_id, \u{4E2D}\u{6587}\u{672F}\u{8BED}", count: 2),
+                     "Session must forward the same case-preserving dictionary to every decode window")
+        print("PASS session dictionary context reaches all decode windows")
+
+        await runtime.reset()
+        let emptyDictionarySession = QwenTranscriptionSession(modelDirectory: directory)
+        _ = try await emptyDictionarySession.finish(samples: Array(all.prefix(32000)))
+        let emptyContexts = await runtime.contexts
+        precondition(emptyContexts == [""], "Default dictionary must not add context")
+        print("PASS empty dictionary sends no context")
+
+        await runtime.reset()
         for start in stride(from: 0, to: 500000, by: 800) {
             state.enqueue(Array(all[start..<min(start + 800, 500000)]))
         }
@@ -160,7 +195,8 @@ defer { try? FileManager.default.removeItem(at: directory) }
 let swiftFile = directory.appendingPathComponent("StateTests.swift")
 let binary = directory.appendingPathComponent("state-tests")
 let parser = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/QwenOutputParser.swift"), encoding: .utf8)
-try (stub + "\n" + parser + "\n" + section(from: "private final class QwenFinishCompletion:", to: "/// Sole MLX owner.")
+try (stub + "\n" + sessionProtocol + "\n" + parser + "\n"
+    + section(from: "final class QwenTranscriptionSession:", to: "/// Sole MLX owner.")
     + section(from: "private final class QwenCaptureState:") + "\n" + tests)
     .write(to: swiftFile, atomically: true, encoding: .utf8)
 func run(_ executable: String, _ arguments: [String]) throws {

@@ -235,12 +235,19 @@ private struct UpdatesSection: View {
             .disabled(!updater.canChangeChannel)
             Text("Beta includes prereleases. Returning to Stable does not downgrade Talkless.")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Automatically check for updates", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: { updater.setAutomaticallyChecksForUpdates($0) }
+            ))
+            .disabled(!updater.canChangeAutomaticChecks)
+            Text("Checks every 30 minutes while Talkless is running; checks during dictation wait until the next interval. You choose when to download and install; updates never install silently. Turning this off does not cancel an update already in progress.")
+                .font(.caption).foregroundStyle(.secondary)
             Button("Check for Updates…") { updater.checkForUpdates(nil) }
                 .disabled(controller.state != .idle || !updater.canCheckForUpdates)
             if let status = updater.status {
                 Text(status).font(.caption).foregroundStyle(.secondary)
             }
-            if !updater.canChangeChannel {
+            if updater.canChangeAutomaticChecks && !updater.canChangeChannel {
                 Text("Finish or dismiss the current update before changing channels.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -398,7 +405,7 @@ private struct DictionaryTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Add one term per line. Used for speech recognition and AI polish.")
+            Text("Add one term per line, such as a name, technical term, or identifier. Terms are hints for speech recognition and AI polish when enabled, not guaranteed replacements.")
                 .font(.callout).foregroundStyle(.secondary)
             TextEditor(text: $settings.dictionary)
                 .font(.system(.body, design: .monospaced))
@@ -406,6 +413,8 @@ private struct DictionaryTab: View {
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+            Text("\(settings.dictionaryTerms.count) unique terms · Blank lines and exact duplicates are ignored; capitalization is preserved.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

@@ -296,10 +296,11 @@ final class AppSettings: ObservableObject {
     }
 
     var dictionaryTerms: [String] {
-        dictionary
+        var seen = Set<String>()
+        return dictionary
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     var llmConfigured: Bool {

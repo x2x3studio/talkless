@@ -233,6 +233,7 @@ final class DictationController: ObservableObject {
             session = QwenTranscriptionSession(
                 modelDirectory: qwenDirectory,
                 language: nil,
+                contextualStrings: settings.dictionaryTerms,
                 onStatus: { [weak self] _ in
                     guard let self, self.generation == generation else { return }
                     self.hud.show(.working)
@@ -420,6 +421,7 @@ final class DictationController: ObservableObject {
         let session = QwenTranscriptionSession(
             modelDirectory: modelDirectory,
             language: nil,
+            contextualStrings: settings.dictionaryTerms,
             onStatus: { [weak self] _ in
                 guard let self, self.generation == generation else { return }
                 self.hud.show(.working)

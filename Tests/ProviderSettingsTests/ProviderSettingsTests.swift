@@ -58,6 +58,25 @@ struct ProviderSettingsTests {
         }
         let persistenceKey = "polishProviderSettings.v1"
 
+        // Dictionary normalization is stable and case-sensitive, without rewriting the editor.
+        let dictionaryDefaults = MemoryDefaults()
+        let dictionarySettings = settings(dictionaryDefaults)
+        check(dictionarySettings.dictionaryTerms.isEmpty, "fresh dictionary has no terms")
+        dictionarySettings.dictionary = " \t\n\r\n\u{2028}\u{3000} "
+        check(dictionarySettings.dictionaryTerms.isEmpty, "blank lines and whitespace have no terms")
+        let rawDictionary = "  Talkless \r\n\tOpenAI\t\nTalkless\n \nopenAI\r\u{7528}\u{6237}ID\u{2028}\u{7528}\u{6237}ID\nMy  Project\n user_ID \nuser_id\n\u{3000}\u{4E2D}\u{6587}\u{672F}\u{8BED}\u{3000}"
+        let expectedTerms = ["Talkless", "OpenAI", "openAI", "\u{7528}\u{6237}ID", "My  Project", "user_ID", "user_id", "\u{4E2D}\u{6587}\u{672F}\u{8BED}"]
+        dictionarySettings.dictionary = rawDictionary
+        check(dictionarySettings.dictionaryTerms == expectedTerms,
+              "dictionary trims, removes exact duplicates, and preserves first order, case, and inner spacing")
+        check(dictionarySettings.dictionary == rawDictionary, "normalization leaves editor text unchanged")
+        check(dictionaryDefaults.string(forKey: "dictionary") == rawDictionary, "saved dictionary retains editor text")
+        check(settings(dictionaryDefaults).dictionaryTerms == expectedTerms, "normalized dictionary survives relaunch")
+        dictionarySettings.dictionary = "replacement\nreplacement"
+        check(dictionarySettings.dictionaryTerms == ["replacement"], "dictionary terms reflect edits immediately")
+        dictionarySettings.dictionary = ""
+        check(dictionarySettings.dictionaryTerms.isEmpty, "clearing dictionary removes all hints")
+
         // Fresh state never guesses or silently selects a remotely available model.
         let freshDefaults = MemoryDefaults()
         let freshStore = MemoryCredentials()

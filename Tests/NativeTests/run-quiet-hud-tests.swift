@@ -11,6 +11,24 @@ import SwiftUI
 
 @main
 struct HUDTests {
+    @MainActor static func snapshot(_ model: HUDModel, name: String) throws {
+        guard CommandLine.arguments.count == 2 else { return }
+        let hosting = NSHostingView(rootView: HUDView(model: model))
+        hosting.setFrameSize(model.contentSize)
+        hosting.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        hosting.layoutSubtreeIfNeeded()
+        guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+            preconditionFailure("Could not render the HUD")
+        }
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            preconditionFailure("Could not encode the HUD snapshot")
+        }
+        let output = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("\(name).png")
+        try png.write(to: output)
+    }
+
     @MainActor static func main() throws {
         _ = NSApplication.shared
         let hud = HUDController()
@@ -18,11 +36,31 @@ struct HUDTests {
         hud.show(.listening(handsFree: true))
         precondition(hud.model.displayText == "Recognized words")
         precondition(hud.model.phase.statusText == nil)
+        let shortSize = hud.model.contentSize
+        hud.model.preview = String(repeating: "A longer sentence with natural word wrapping. ", count: 6)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let longSize = hud.model.contentSize
+        precondition(longSize.width > shortSize.width && longSize.height > shortSize.height)
+        precondition(longSize.width <= HUDModel.maximumWidth && longSize.height <= HUDModel.maximumHeight)
+        precondition(hud.frame.size == longSize)
+        try snapshot(hud.model, name: "long-recording")
+        hud.model.preview = String(repeating: "\u{957F}\u{53E5}\u{6362}\u{884C}\u{6D4B}\u{8BD5}", count: 100)
+        hud.show(.listening(handsFree: false))
+        precondition(hud.model.contentSize.height == HUDModel.maximumHeight)
+        precondition(hud.model.textSize.height > HUDModel.maximumHeight)
+        hud.model.preview = String(repeating: "Earlier words that should scroll out of view. ", count: 40) + "LATEST WORDS"
+        hud.show(.listening(handsFree: true))
+        try snapshot(hud.model, name: "overflow-recording")
+        hud.model.preview = "First line\nSecond line\nThird line"
+        hud.show(.listening(handsFree: true))
+        precondition(hud.model.contentSize.height > shortSize.height)
+        try snapshot(hud.model, name: "explicit-newlines")
+        hud.model.preview = "Recognized words"
         for (phase, label) in [
-            (HUDModel.Phase.working, "Preparing recognition…"),
-            (.recognizing, "Recognizing…"),
-            (.polishing, "Polishing…"),
-            (.editing, "Editing…")
+            (HUDModel.Phase.working, "Preparing recognition"),
+            (.recognizing, "Recognizing"),
+            (.polishing, "Polishing"),
+            (.editing, "Editing")
         ] {
             hud.show(phase)
             precondition(hud.model.phase == phase)
@@ -33,21 +71,7 @@ struct HUDTests {
             hud.model.preview = ""
             precondition(hud.model.displayText == label)
             hud.model.preview = "Recognized words"
-            if CommandLine.arguments.count == 2 {
-                let hosting = NSHostingView(rootView: HUDView(model: hud.model))
-                hosting.setFrameSize(NSSize(width: HUDModel.maximumWidth, height: HUDModel.maximumHeight))
-                hosting.layoutSubtreeIfNeeded()
-                guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
-                    preconditionFailure("Could not render the HUD")
-                }
-                hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-                guard let png = bitmap.representation(using: .png, properties: [:]) else {
-                    preconditionFailure("Could not encode the HUD snapshot")
-                }
-                let name = String(label.prefix(while: { $0 != " " && $0 != "…" })).lowercased()
-                let output = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("\(name).png")
-                try png.write(to: output)
-            }
+            try snapshot(hud.model, name: String(label.prefix(while: { $0 != " " })).lowercased())
         }
         hud.show(.hidden)
         precondition(hud.model.phase == .hidden)

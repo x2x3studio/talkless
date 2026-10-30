@@ -28,7 +28,7 @@ The basic `build-app.sh` fallback is ad-hoc signed and **not notarized** unless 
 
 ## Recognition
 
-Dictation is silent: no start/stop sounds or routine success/empty-result messages. A compact HUD shows up to two lines of live words with a small recording dot; there is no separate microphone/waveform bar. After recording stops, it replaces the live preview with "Recognizing…" and a spinner, then "Polishing…" with a pulsing blue sparkle only while AI polishing runs. Voice editing shows "Editing…" instead. The sparkle stays still when Reduce Motion is enabled. It follows the text insertion caret when the target app exposes accessibility geometry, preferring an 8-point gap below the current line or above when needed. Unsupported apps fall back to the bottom of the active display. The HUD never takes focus and hides immediately on completion. Actionable errors remain visible; diagnostic events are retained locally.
+Dictation is silent: no start/stop sounds or routine success/empty-result messages. A translucent HUD sizes itself to the live text, wraps long sentences, and grows up to 380 by 174 points before keeping the latest lines visible in a bounded preview. Its background uses native behind-window blur; Reduce Transparency uses an opaque background. A small recording dot breathes gently; there is no separate microphone/waveform bar. After recording stops, it replaces the live preview with "Recognizing" and a spinner, then "Polishing" with a pulsing blue sparkle only while AI polishing runs. Voice editing shows "Editing" instead. The recording dot and sparkle stay still when Reduce Motion is enabled. The HUD follows the text insertion caret when the target app exposes accessibility geometry, preferring an 8-point gap below the current line or above when needed. Unsupported apps fall back to the bottom of the active display. It never takes focus and hides immediately on completion. Actionable errors remain visible; diagnostic events are retained locally.
 
 - Qwen runs in-process, not through Python or a CLI subprocess. The selected installed model is prepared at startup and after download/selection, then kept in memory between dictations. Stopping recording does not unload weights; model changes, deletion or process exit release them.
 - Raw Qwen language/control headers are parsed before display. Incomplete headers never become transcript text; malformed final headers produce an error rather than inserting metadata. Literal words such as `language English` inside the transcript remain untouched.
@@ -42,6 +42,12 @@ Dictation is silent: no start/stop sounds or routine success/empty-result messag
 ## AI polishing
 
 Optional polishing supports DeepSeek, OpenAI (Responses or Chat Completions), native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](docs/ai-polish.md).
+
+The Dictionary tab accepts one preferred spelling per line and shows the unique term count. Blank lines and exact duplicates are ignored without rewriting the editor text; capitalization is preserved. Terms are passed to local Qwen, Apple and API speech recognition, and to AI polishing. They are hints rather than forced replacements.
+
+## Updates
+
+Settings > General > Updates offers Stable and Beta channels. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks are skipped during dictation or another update session; manual checking remains available when idle. Updates ask before installation rather than downloading or installing silently. Turning off automatic checks leaves manual checking available. Local builds without valid signed update feeds cannot check for updates.
 
 ## Reproducible checks
 
