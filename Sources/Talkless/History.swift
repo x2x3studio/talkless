@@ -1,6 +1,7 @@
 import Foundation
+import Combine
 
-struct HistoryEntry: Codable, Identifiable, Hashable {
+struct HistoryEntry: Codable, Identifiable, Hashable, Sendable {
     enum Kind: String, Codable { case dictation, edit, translation }
 
     var id = UUID()
@@ -33,6 +34,7 @@ final class HistoryStore: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
             entries = (try? decoder.decode([HistoryEntry].self, from: data)) ?? []
         }
+        DictionaryReviewStore.shared.observeHistory($entries.eraseToAnyPublisher())
     }
 
     func add(_ entry: HistoryEntry) {

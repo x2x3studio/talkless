@@ -13,13 +13,14 @@ enum SettingsAppearance {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, models, polish, dictionary, history
+    case general, overlay, models, polish, dictionary, history
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .general: "General"
+        case .overlay: "Overlay"
         case .models: "Models"
         case .polish: "AI polish"
         case .dictionary: "Dictionary"
@@ -30,6 +31,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
+        case .overlay: "rectangle.on.rectangle"
         case .models: "square.stack.3d.up"
         case .polish: "sparkles"
         case .dictionary: "character.book.closed"
@@ -40,6 +42,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: "Make Talkless feel at home on your Mac."
+        case .overlay: "Tune the quiet companion to your dictation."
         case .models: "Choose how Talkless transcribes your voice."
         case .polish: "Turn your transcript into finished text."
         case .dictionary: "Names, terms, and spellings that matter to you."
@@ -50,6 +53,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
+    @ObservedObject private var settings = AppSettings.shared
     var updateController: UpdateController? = nil
     @State private var selection: SettingsSection? = .general
 
@@ -103,6 +107,8 @@ struct SettingsView: View {
                     switch currentSection {
                     case .general:
                         GeneralTab(controller: controller, updateController: updateController)
+                    case .overlay:
+                        OverlaySettingsView(appearance: $settings.hudAppearance)
                     case .models:
                         SpeechTab(controller: controller)
                     case .polish:
@@ -401,21 +407,8 @@ private struct SpeechTab: View {
 // MARK: - Dictionary
 
 private struct DictionaryTab: View {
-    @ObservedObject var settings = AppSettings.shared
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Add one term per line, such as a name, technical term, or identifier. Terms are hints for speech recognition and AI polish when enabled, not guaranteed replacements.")
-                .font(.callout).foregroundStyle(.secondary)
-            TextEditor(text: $settings.dictionary)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-            Text("\(settings.dictionaryTerms.count) unique terms · Blank lines and exact duplicates are ignored; capitalization is preserved.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
+        DictionaryView()
     }
 }
 

@@ -206,13 +206,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateIcon() {
-        let name: String
+        let state: MenuBarIcon.State
         switch controller.state {
-        case .idle: name = "waveform"
-        case .recording: name = "waveform.badge.mic"
-        case .processing: name = "ellipsis.circle"
+        case .idle: state = .idle
+        case .recording: state = .recording
+        case .processing: state = .processing
         }
-        statusItem.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "Talkless")
+        statusItem.button?.image = MenuBarIcon.image(for: state)
+        statusItem.button?.toolTip = state.accessibilityDescription
     }
 
     // MARK: - Menu

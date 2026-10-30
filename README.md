@@ -39,11 +39,17 @@ Dictation is silent: no start/stop sounds or routine success/empty-result messag
 - This is not a complete port of `mlx-qwen3-asr`'s encoder/KV prefix cache. Long uninterrupted speech may still split a word at a window boundary.
 - Completed dictation is pasted directly at the current input cursor using the clipboard and Command-V. It does not require reading or matching the original accessibility element or selection, and does not force focus back to the original app. Cancellation still prevents stale results from being pasted. Clipboard restoration and local history remain enabled.
 
+Settings > Overlay provides a live sample preview with recording, recognizing, and polishing stages and short or long text. Choose a translucent or solid backdrop, adjust background-only opacity from 20% to 100%, and toggle indicator animations. Changes persist and apply immediately to the real overlay without recording audio or contacting a provider. Text and icons stay fully legible as the backdrop fades; macOS Reduce Transparency and Reduce Motion take priority. Reset appearance restores the defaults. The real overlay remains click-through and never takes focus.
+
+The menu bar uses the app's own waveform-and-caret mark in every state, without the colored app tile. A filled dot indicates recording and an outlined dot indicates processing. Template rendering adapts to light, dark, and selected menu bar appearances; accessible labels describe the current state.
+
 ## AI polishing
 
 Optional polishing supports DeepSeek, OpenAI (Responses or Chat Completions), native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](docs/ai-polish.md).
 
-The Dictionary tab accepts one preferred spelling per line and shows the unique term count. Blank lines and exact duplicates are ignored without rewriting the editor text; capitalization is preserved. Terms are passed to local Qwen, Apple and API speech recognition, and to AI polishing. They are hints rather than forced replacements.
+Dictionary has separate My terms and Review sections. Search, add, edit, or delete confirmed spellings in My terms; existing newline-based terms are retained and capitalization is preserved. Only confirmed terms are passed to local Qwen, Apple and API speech recognition, and to AI polishing. They are hints rather than forced replacements.
+
+Review compares saved raw dictation with polished output locally to suggest small spelling corrections, including Chinese and Latin terms. Each candidate shows the heard/polished evidence and the number of distinct dictations. Accept adds that spelling to My terms; Dismiss stays hidden until an explicit reset. Suggestions are never accepted automatically. Scan history runs once on demand; automatic local suggestions are opt-in and off by default. Scanning uses up to 500 recent history entries, excludes edits/translations and large rewrites, displays up to 100 candidates, and makes no network or additional AI requests. AI changes are evidence, not ground truth: review each spelling before accepting. Talkless does not monitor edits made in other apps after pasting.
 
 ## Updates
 

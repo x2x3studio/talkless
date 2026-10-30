@@ -26,6 +26,10 @@ Polishing keys use a stable macOS Keychain service. Existing legacy plaintext po
 
 No extra thinking is requested. Thinking is explicitly disabled only for exact provider/model combinations with verified parameter support; otherwise the client omits the field and shows guidance that the model may reason by default. Unknown custom proxies are not given guessed provider-specific flags. The app does not promise that every model can disable reasoning.
 
+## Dictionary review
+
+Dictionary > Review can compare existing local raw/polished dictation pairs without sending history to a provider or making additional AI requests. Automatic scanning is opt-in; Scan history runs once without enabling it. Small changed spellings become candidates with source/output evidence, not automatic corrections. Accept explicitly adds a candidate to My terms, whose spellings may then be included in enabled speech-recognition and polishing requests. Dismissed spellings stay hidden until reset. Only confirmed terms are used as hints; AI changes and repeated appearances are not proof of correctness. Edits and translations are excluded, and the app does not observe changes made after pasting into other apps.
+
 ## Response handling
 
 Only protocol-defined final text is returned to the dictation pipeline. Refusals, truncation, tool calls, incomplete statuses, empty results and reasoning-only response blocks are rejected. Markup and code fences inside a final text block are preserved rather than guessed to be reasoning. The polishing stage also checks that literal tags and code spans from the source survive; if they change, it retains the original transcript. This narrow check does not prove general semantic equivalence. The existing optional-polish failure path retains the raw transcript rather than replacing it with a partial model response. There are no hidden retries, model substitutions or protocol fallbacks.

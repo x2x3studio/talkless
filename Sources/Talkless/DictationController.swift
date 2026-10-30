@@ -12,7 +12,10 @@ final class DictationController: ObservableObject {
 
     private let settings = AppSettings.shared
     private let history = HistoryStore.shared
-    private let hud = HUDController()
+    private let hud = HUDController(
+        appearance: AppSettings.shared.hudAppearance,
+        appearanceUpdates: AppSettings.shared.$hudAppearance.eraseToAnyPublisher()
+    )
     private let translationPanel = TranslationPanelController()
     private let hotkeys = HotkeyMonitor()
     private let recorder = AudioRecorder()

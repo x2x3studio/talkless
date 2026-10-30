@@ -88,6 +88,15 @@ final class AppSettings: ObservableObject {
     private var legacyCredentialProvider: PolishProvider?
     private var isLoadingProvider = false
 
+    private static let hudAppearanceKey = "hudAppearance.v1"
+    @Published var hudAppearance: HUDAppearance {
+        didSet {
+            if let data = try? JSONEncoder().encode(hudAppearance) {
+                save(data, Self.hudAppearanceKey)
+            }
+        }
+    }
+
     @Published var triggerKey: TriggerKey { didSet { save(triggerKey.rawValue, "triggerKey") } }
     @Published var asrEngine: ASREngine { didSet { save(asrEngine.rawValue, "asrEngine") } }
     @Published var qwenModelDirectory: String { didSet { save(qwenModelDirectory, "qwenModelDirectory") } }
@@ -141,6 +150,8 @@ final class AppSettings: ObservableObject {
     @Published var translateTarget: String { didSet { save(translateTarget, "translateTarget") } }
     /// One term per line: proper nouns, names, technical terms, etc.
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
+    /// Local suggestion mining is opt-in; it never sends history to a service.
+    @Published var dictionaryReviewEnabled: Bool { didSet { save(dictionaryReviewEnabled, "dictionaryReviewEnabled") } }
     @Published var customInstructions: String { didSet { save(customInstructions, "customInstructions") } }
 
     /// Tests supply an isolated defaults suite and in-memory credential store.
@@ -148,6 +159,8 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         self.credentialStore = credentialStore
         let d = defaults
+        hudAppearance = d.data(forKey: Self.hudAppearanceKey)
+            .flatMap { try? JSONDecoder().decode(HUDAppearance.self, from: $0) } ?? HUDAppearance()
         let stored = d.data(forKey: Self.polishSettingsKey)
             .flatMap { try? JSONDecoder().decode(StoredPolishSettings.self, from: $0) }
         var states = stored?.providers ?? [:]
@@ -191,6 +204,7 @@ final class AppSettings: ObservableObject {
         appToneEnabled = d.object(forKey: "appToneEnabled") as? Bool ?? true
         translateTarget = d.string(forKey: "translateTarget") ?? "Simplified Chinese"
         dictionary = d.string(forKey: "dictionary") ?? ""
+        dictionaryReviewEnabled = d.object(forKey: "dictionaryReviewEnabled") as? Bool ?? false
         customInstructions = d.string(forKey: "customInstructions") ?? ""
 
         if let legacyKey, !legacyKey.isEmpty {

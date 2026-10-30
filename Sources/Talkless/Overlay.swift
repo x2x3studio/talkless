@@ -27,6 +27,11 @@ final class HUDModel: ObservableObject {
     @Published var phase: Phase = .hidden
     @Published var isEditMode = false
     @Published var preview = ""
+    @Published var appearance: HUDAppearance
+
+    init(appearance: HUDAppearance = HUDAppearance()) {
+        self.appearance = appearance
+    }
 
     var displayText: String {
         switch phase {
@@ -74,16 +79,24 @@ final class HUDModel: ObservableObject {
 /// A nonactivating, click-through panel that follows the insertion caret.
 @MainActor
 final class HUDController {
-    let model = HUDModel()
+    let model: HUDModel
     private let panel: NSPanel
     private var hideTask: Task<Void, Never>?
     private var trackingTask: Task<Void, Never>?
     private var layoutSubscription: AnyCancellable?
+    private var appearanceSubscription: AnyCancellable?
     private var cachedCaret: CGRect?
+    private let caretProvider: () -> CGRect?
 
     var frame: NSRect { panel.frame }
+    var isClickThrough: Bool { panel.ignoresMouseEvents }
+    var isNonactivating: Bool { panel.styleMask.contains(.nonactivatingPanel) }
 
-    init() {
+    init(appearance: HUDAppearance = HUDAppearance(),
+         appearanceUpdates: AnyPublisher<HUDAppearance, Never>? = nil,
+         caretProvider: @escaping () -> CGRect? = { CaretPosition.current() }) {
+        model = HUDModel(appearance: appearance)
+        self.caretProvider = caretProvider
         panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: model.contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -97,9 +110,14 @@ final class HUDController {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
-        layoutSubscription = model.objectWillChange
+        // Appearance changes redraw in place, without querying the caret or resizing.
+        layoutSubscription = Publishers.CombineLatest(model.$phase.removeDuplicates(), model.$preview.removeDuplicates())
             .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.updateLayout() }
+            .sink { [weak self] _ in self?.updateLayout() }
+        appearanceSubscription = appearanceUpdates?
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.model.appearance = $0 }
     }
 
     private func updateLayout() {
@@ -162,7 +180,7 @@ final class HUDController {
     }
 
     private func position(refreshCaret: Bool = true) {
-        if refreshCaret { cachedCaret = CaretPosition.current() }
+        if refreshCaret { cachedCaret = caretProvider() }
         let frame = CaretPlacement.frame(
             size: panel.frame.size,
             caret: cachedCaret,
@@ -175,6 +193,7 @@ final class HUDController {
 
 struct HUDView: View {
     @ObservedObject var model: HUDModel
+    var materialBlending: NSVisualEffectView.BlendingMode = .behindWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -203,15 +222,17 @@ struct HUDView: View {
                 .padding(.vertical, HUDModel.verticalPadding)
                 .frame(width: size.width, height: size.height, alignment: .topLeading)
                 .background {
-                    if reduceTransparency {
+                    if model.appearance.usesSolidBackdrop(reduceTransparency: reduceTransparency) {
                         RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.12))
                     } else {
-                        HUDMaterial()
-                            .overlay(.black.opacity(0.12))
+                        HUDMaterial(blendingMode: materialBlending)
+                            .overlay(.black.opacity(0.30))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
+                            // Only the backdrop fades; text, indicators, and border stay legible.
+                            .opacity(model.appearance.effectiveOpacity(reduceTransparency: reduceTransparency))
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14)))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
                 .environment(\.colorScheme, .dark)
             }
         }
@@ -223,6 +244,8 @@ struct HUDView: View {
         return .topLeading
     }
 
+    private var animates: Bool { model.appearance.animates(reduceMotion: reduceMotion) }
+
     @ViewBuilder
     private var indicator: some View {
         switch model.phase {
@@ -230,18 +253,24 @@ struct HUDView: View {
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
                 .foregroundStyle(model.isEditMode ? Color.orange : Color.red)
-                .symbolEffect(.pulse, options: .repeating.speed(0.65), isActive: !reduceMotion)
+                .symbolEffect(.pulse, options: .repeating.speed(0.65), isActive: animates)
                 .accessibilityLabel("Recording")
         case .working, .recognizing:
-            ProgressView()
-                .controlSize(.mini)
-                .tint(.white)
-                .accessibilityHidden(true)
+            if animates {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "waveform")
+                    .font(.system(size: 13, weight: .medium))
+                    .accessibilityHidden(true)
+            }
         case .polishing, .editing:
             Image(systemName: "sparkles")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
-                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                .symbolEffect(.pulse, options: .repeating, isActive: animates)
                 .accessibilityHidden(true)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
@@ -253,16 +282,20 @@ struct HUDView: View {
 }
 
 private struct HUDMaterial: NSViewRepresentable {
+    var blendingMode: NSVisualEffectView.BlendingMode
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .hudWindow
-        view.blendingMode = .behindWindow
+        view.blendingMode = blendingMode
         view.state = .active
         view.appearance = NSAppearance(named: .darkAqua)
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.blendingMode = blendingMode
+    }
 }
 
 // MARK: - Selected-text translation panel
