@@ -7,6 +7,6 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/ModelCatalog.swift" \
   "$ROOT/Sources/Talkless/ModelDownloader.swift" \
   "$ROOT/Sources/Talkless/ModelManager.swift" \
-  "$ROOT/experiments/model-tests/ModelCoreTests.swift" \
+  "$ROOT/Tests/ModelTests/ModelCoreTests.swift" \
   -o "$WORK/model-core-tests"
 "$WORK/model-core-tests"

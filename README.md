@@ -37,22 +37,21 @@ Dictation is silent: no start/stop sounds or routine success/empty-result messag
 - Windows are up to 30 seconds. Long dictations commit at a nearby low-energy boundary when available, retaining all remaining audio without acoustic overlap. Silence is not removed and does not stop recording.
 - Stopping finishes the active window only. Previously committed windows are not decoded again.
 - This is not a complete port of `mlx-qwen3-asr`'s encoder/KV prefix cache. Long uninterrupted speech may still split a word at a window boundary.
-- Automatic paste requires the original application, focused accessibility element and observable selection to match. Otherwise the result is retained in history and a copyable result panel; the app does not force focus back.
+- Completed dictation is pasted directly at the current input cursor using the clipboard and Command-V. It does not require reading or matching the original accessibility element or selection, and does not force focus back to the original app. Cancellation still prevents stale results from being pasted. Clipboard restoration and local history remain enabled.
 
 ## Reproducible checks
 
 Model weights, generated recordings, local results, dependencies, and build products are excluded from Git. Swift packages are locked in `Package.resolved`; third-party source is fetched rather than committed. All first-party source, documentation, and UI copy is English; Mandarin recognition remains supported.
 
 ```sh
-swift experiments/native-tests/run-qwen-state-tests.swift
-bash experiments/model-tests/run-tests.sh
-bash experiments/fixtures/generate.sh
+bash scripts/test.sh
+bash Tests/Fixtures/generate.sh
 
 dist/Talkless.app/Contents/MacOS/Talkless \
-  --test-audio "$PWD/experiments/fixtures/mandarin.wav" \
+  --test-audio "$PWD/Tests/Fixtures/mandarin.wav" \
   --test-output /tmp/talkless-result.txt --test-keep-open
 ```
 
-The file test drives the same native Qwen adapter and controller with real-time-paced 16 kHz mono PCM. It deliberately bypasses microphone permissions and external paste. Results and timing logs are in `experiments/native-integration-results/`. Synthetic fixtures do not establish human speech accuracy. `--test-output` writes to the specified file; choose an unused path.
+The file test drives the same native Qwen adapter and controller with real-time-paced 16 kHz mono PCM. It deliberately bypasses microphone permissions and external paste. Synthetic fixtures do not establish human speech accuracy. `--test-output` writes to the specified file; choose an unused path.
 
 Local ASR state tests cover sample preservation across windows, tail delivery, replaceable preview, cancellation/stale callbacks, bounded backlog, finish completion races, and boundary selection.

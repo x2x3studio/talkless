@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 import Foundation
 
-// Run: swift experiments/native-tests/run-qwen-state-tests.swift
+// Run: swift Tests/NativeTests/run-qwen-state-tests.swift
 // Compiles the current production state machine with a fake runtime: no model/GPU/network.
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 let source = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/QwenTranscription.swift"), encoding: .utf8)

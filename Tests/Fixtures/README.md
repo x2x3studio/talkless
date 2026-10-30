@@ -7,13 +7,13 @@ Originally generated locally with macOS `say`, Tingting voice, on 2026-10-29. No
 From the project root, with the Tingting voice installed and `ffmpeg` and Python 3 available:
 
 ```sh
-bash experiments/fixtures/generate.sh
+bash Tests/Fixtures/generate.sh
 ```
 
 The script locates its own directory, uses only local speech synthesis and audio conversion, and never uploads audio. It refuses to replace existing fixtures. To generate a separate set without changing locally retained evidence:
 
 ```sh
-bash experiments/fixtures/generate.sh "$(mktemp -d)"
+bash Tests/Fixtures/generate.sh "$(mktemp -d)"
 ```
 
 The original Mandarin text is preserved as ASCII Unicode escapes in the generator, not as an untranslated prose block. Voice or OS updates can change pronunciation and duration; the durations below describe the original recordings, not a byte-for-byte reproduction guarantee.

@@ -26,7 +26,6 @@ final class DictationController: ObservableObject {
     private var handsFree = false
     private var editSelection: String?
     private var targetApp: NSRunningApplication?
-    private var insertionTarget: TextIO.InsertionTarget?
     @Published private(set) var lastTranscript = ""
     @Published private(set) var previewText = ""
     private var context: AppContext?
@@ -212,7 +211,6 @@ final class DictationController: ObservableObject {
         generation += 1
         handsFree = false
         targetApp = NSWorkspace.shared.frontmostApplication
-        insertionTarget = TextIO.captureTarget(for: targetApp)
         previewText = ""
         context = targetApp.map {
             AppContext(name: $0.localizedName ?? "", bundleID: $0.bundleIdentifier ?? "")
@@ -301,7 +299,6 @@ final class DictationController: ObservableObject {
         let generation = self.generation
         let editSelection = self.editSelection
         let context = self.context
-        let insertionTarget = self.insertionTarget
 
         processingTask = Task { [weak self] in
             guard let self else { return }
@@ -345,20 +342,13 @@ final class DictationController: ObservableObject {
                 guard generation == self.generation, !Task.isCancelled else { return }
 
                 self.lastTranscript = output
-                let inserted = TextIO.targetIsCurrent(insertionTarget)
-                Diagnostics.shared.record(event: inserted ? "paste_attempt" : "paste_skipped")
-                if inserted {
-                    await TextIO.insert(output)
-                }
+                Diagnostics.shared.record(event: "paste_attempt")
+                await TextIO.insert(output)
                 guard generation == self.generation else { return }
                 self.history.add(HistoryEntry(
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
-                if inserted { self.finish(polishFailed ? .error("Polishing failed; using the original transcript.") : .hidden) }
-                else {
-                    self.finish(.error("Input location changed or could not be verified; result saved"))
-                    self.translationPanel.show(source: "Transcript", result: output, error: nil, allowsReplacement: false, onReplace: { _ in })
-                }
+                self.finish(polishFailed ? .error("Polishing failed; using the original transcript.") : .hidden)
             } catch is CancellationError {
                 return
             } catch {

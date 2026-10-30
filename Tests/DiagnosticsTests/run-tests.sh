@@ -5,6 +5,6 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/talkless-diagnostics-tests.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 xcrun swiftc -swift-version 6 \
   "$ROOT/Sources/Talkless/Diagnostics.swift" \
-  "$ROOT/experiments/diagnostics-tests/main.swift" \
+  "$ROOT/Tests/DiagnosticsTests/main.swift" \
   -o "$WORK/diagnostics-tests"
 "$WORK/diagnostics-tests" "$WORK/fixtures"

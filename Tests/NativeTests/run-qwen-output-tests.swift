@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 import Foundation
 
-// Run: swift experiments/native-tests/run-qwen-output-tests.swift
+// Run: swift Tests/NativeTests/run-qwen-output-tests.swift
 // Compiles production parsing/state code and the pinned vendor parser without MLX,
 // weights, network, or a GPU. All non-English fixtures use Unicode escapes.
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

@@ -4,49 +4,6 @@ import ApplicationServices
 /// Read selected text and insert text into the frontmost app. Both require Accessibility permission.
 @MainActor
 enum TextIO {
-    struct InsertionTarget {
-        let processID: pid_t
-        let element: AXUIElement?
-        let selection: CFRange?
-    }
-
-    static func captureTarget(for app: NSRunningApplication?) -> InsertionTarget? {
-        guard let app else { return nil }
-        let application = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(application, 0.15)
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value)
-        let element: AXUIElement?
-        if result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() {
-            element = (value as! AXUIElement)
-        } else { element = nil }
-        return InsertionTarget(processID: app.processIdentifier, element: element, selection: element.flatMap(selectedRange))
-    }
-
-    static func targetIsCurrent(_ target: InsertionTarget?) -> Bool {
-        guard let target,
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processID,
-              let app = NSRunningApplication(processIdentifier: target.processID),
-              let current = captureTarget(for: app),
-              let originalElement = target.element, let currentElement = current.element,
-              CFEqual(originalElement, currentElement) else { return false }
-        switch (target.selection, current.selection) {
-        case let (.some(a), .some(b)): return a.location == b.location && a.length == b.length
-        case (.none, .none): return false
-        default: return false
-        }
-    }
-
-    private static func selectedRange(_ element: AXUIElement) -> CFRange? {
-        AXUIElementSetMessagingTimeout(element, 0.15)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var range = CFRange()
-        guard AXValueGetValue(value as! AXValue, .cfRange, &range) else { return nil }
-        return range
-    }
-
     private static let vKeyV: CGKeyCode = 9
     private static let vKeyC: CGKeyCode = 8
 

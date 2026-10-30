@@ -15,8 +15,8 @@ A second preflight checks that the default Core Audio input device exists and ex
 ## Regression checks
 
 ```sh
-python3 -I experiments/audio-tests/run-tests.py
-bash experiments/diagnostics-tests/run-tests.sh
+python3 -I Tests/AudioTests/run-tests.py
+bash Tests/DiagnosticsTests/run-tests.sh
 ```
 
 Audio tests check optimized Swift isolation, a negative control restoring the original defect, actual stereo resampling from synthetic background callbacks, repeated start/stop, and missing-device rejection. They do not claim hardware microphone coverage.

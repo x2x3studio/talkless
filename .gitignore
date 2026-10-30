@@ -24,17 +24,8 @@ xcuserdata/
 
 # Dependencies are fetched at pinned revisions, not vendored
 /Vendor/
-/experiments/qwen-streaming/vendor/
-/experiments/qwen-streaming/metal-build/
 
 # Model weights, model downloads, generated speech, and test artifacts
-/experiments/qwen-streaming/model/
-/experiments/qwen-streaming/downloads/
-/experiments/qwen-streaming/download-receipt.json
-/experiments/qwen-streaming/results/
-/experiments/preview-runner/results/
-/experiments/native-integration-results/*
-!/experiments/native-integration-results/README.md
 *.safetensors
 *.gguf
 *.ggml

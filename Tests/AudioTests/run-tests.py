@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile production recorder and exercise its tap without microphone access.
 
-Run: python3 -I experiments/audio-tests/run-tests.py
+Run: python3 -I Tests/AudioTests/run-tests.py
 AVAudioEngine and Core Audio device queries are stubbed in the runtime test.
 AVAudioConverter and buffers are real, and the production tap closure still
 originates in @MainActor start().
