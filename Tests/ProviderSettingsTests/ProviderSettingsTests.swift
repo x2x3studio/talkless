@@ -47,6 +47,9 @@ final class MemoryCredentials: CredentialStoring {
 struct ProviderSettingsTests {
     @MainActor
     static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         var assertions = 0
         func check(_ condition: @autoclosure () -> Bool, _ description: String) {
             assertions += 1

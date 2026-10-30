@@ -3,6 +3,13 @@ import AppKit
 
 @MainActor public protocol SPUUpdaterDelegate: AnyObject {}
 
+public let SUSparkleErrorDomain = "SUSparkleErrorDomain"
+public enum SUError: Int32 {
+    case noUpdateError = 1001
+    case installationCanceledError = 4007
+    case installationAuthorizeLaterError = 4008
+}
+
 public enum SPUUpdateCheck {
     case updates, updatesInBackground, updateInformation
 }
@@ -15,6 +22,7 @@ public enum SPUUpdateCheck {
 @MainActor public final class SPUUpdater: NSObject {
     @objc dynamic public var canCheckForUpdates = true
     @objc dynamic public var sessionInProgress = false
+    @objc dynamic public var lastUpdateCheckDate: Date?
     public var automaticallyChecksForUpdates = true
     public var automaticallyDownloadsUpdates = true
     public var backgroundChecks = 0

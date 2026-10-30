@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+bash "$ROOT/Tests/LocalizationTests/run-tests.sh"
+bash "$ROOT/Tests/TranslationLanguageTests/run-tests.sh"
+python3 -I "$ROOT/Tests/TranslationFlowTests/run-tests.py"
 swift "$ROOT/Tests/NativeTests/run-qwen-state-tests.swift"
 swift "$ROOT/Tests/NativeTests/run-qwen-output-tests.swift"
 bash "$ROOT/Tests/ModelTests/run-tests.sh"

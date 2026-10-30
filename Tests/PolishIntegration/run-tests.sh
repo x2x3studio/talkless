@@ -21,6 +21,7 @@ if [[ ! "$REPORT" =~ ^[A-Za-z0-9_-]+\.json$ || -e "$WORK/$REPORT" ]]; then
   exit 2
 fi
 swiftc -swift-version 6 -parse-as-library \
+  "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/LLMProtocol.swift" \
   "$ROOT/Sources/Talkless/LLMAPITransport.swift" \
   "$ROOT/Sources/Talkless/LLMClient.swift" \

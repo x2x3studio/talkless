@@ -58,7 +58,7 @@ struct MainAppLaunchAtLoginService: LaunchAtLoginService {
     ) -> String? {
         guard bundleURL.pathExtension.lowercased() == "app", packageType == "APPL",
               let bundleIdentifier, !bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "Launch at login is unavailable in this development build. Install and open Talkless.app from Applications."
+            return L10n.tr("Launch at login is unavailable in this development build. Install and open Talkless.app from Applications.")
         }
         let components = bundleURL.resolvingSymlinksInPath().standardizedFileURL.pathComponents
         let installed = applicationsDirectories.contains { directory in
@@ -66,7 +66,7 @@ struct MainAppLaunchAtLoginService: LaunchAtLoginService {
             return components.count > root.count && components.starts(with: root)
         }
         guard installed else {
-            return "Move Talkless to Applications (or your home folder’s Applications folder), then reopen it to use launch at login."
+            return L10n.tr("Move Talkless to Applications (or your home folder’s Applications folder), then reopen it to use launch at login.")
         }
         return nil
     }
@@ -106,11 +106,11 @@ final class LaunchAtLoginController: ObservableObject {
         case .enabled: return nil
         case .notRegistered: return nil
         case .requiresApproval:
-            return "Waiting for approval in System Settings. Talkless will not open at login until you allow it."
+            return L10n.tr("Waiting for approval in System Settings. Talkless will not open at login until you allow it.")
         case .notFound:
-            return "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again."
+            return L10n.tr("macOS could not find this app’s login item. Reinstall Talkless in Applications and try again.")
         @unknown default:
-            return "Launch at login is unavailable. Check Login Items in System Settings."
+            return L10n.tr("Launch at login is unavailable. Check Login Items in System Settings.")
         }
     }
 
@@ -138,7 +138,7 @@ final class LaunchAtLoginController: ObservableObject {
                 try await service.unregister()
             }
         } catch {
-            errorMessage = "Could not turn launch at login \(enabled ? "on" : "off"): \(error.localizedDescription)"
+            errorMessage = L10n.format(enabled ? "Could not turn launch at login on: %@" : "Could not turn launch at login off: %@", error.localizedDescription)
         }
     }
 

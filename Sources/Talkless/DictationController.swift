@@ -36,6 +36,8 @@ final class DictationController: ObservableObject {
     private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
+    private var recordingAlternateFinishKey: TriggerKey?
+    private var languageSubscription: AnyCancellable?
     private var editSelection: String?
     private var targetApp: NSRunningApplication?
     @Published private(set) var lastTranscript = ""
@@ -43,7 +45,8 @@ final class DictationController: ObservableObject {
     private var context: AppContext?
     var onModelSetupRequested: (() -> Void)?
     private var changingModel = false
-    @Published private(set) var modelPreparationStatus: String?
+    @Published private var modelPreparationStatusKey: String?
+    var modelPreparationStatus: String? { modelPreparationStatusKey.map { L10n.tr($0) } }
     private var modelPreparationTask: Task<Void, Never>?
     private var preparedModelDirectory: URL?
     private var preparingModelDirectory: URL?
@@ -59,19 +62,19 @@ final class DictationController: ObservableObject {
         preparationGeneration += 1
         let token = preparationGeneration
         preparingModelDirectory = normalized
-        modelPreparationStatus = "Preparing model…"
+        modelPreparationStatusKey = "Preparing model…"
         modelPreparationTask = Task { [weak self] in
             do {
                 try await QwenTranscriptionSession.prepareAssets(modelDirectory: normalized)
                 guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
                 self.preparedModelDirectory = normalized
                 self.preparingModelDirectory = nil
-                self.modelPreparationStatus = "Ready · kept in memory"
+                self.modelPreparationStatusKey = "Ready · kept in memory"
                 self.modelPreparationTask = nil
             } catch {
                 guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
                 self.preparingModelDirectory = nil
-                self.modelPreparationStatus = "Model preparation failed. Check Speech recognition settings."
+                self.modelPreparationStatusKey = "Model preparation failed. Check Speech recognition settings."
                 self.modelPreparationTask = nil
                 Diagnostics.shared.record(event: "model_error", metadata: ["error_code": String((error as NSError).code)])
             }
@@ -80,14 +83,14 @@ final class DictationController: ObservableObject {
 
     func prepareForModelChange() async throws {
         guard state == .idle, !changingModel else {
-            throw TalklessError.message("Finish dictation before changing or deleting a model.")
+            throw TalklessError.message(L10n.tr("Finish dictation before changing or deleting a model."))
         }
         preparationGeneration += 1
         modelPreparationTask?.cancel()
         modelPreparationTask = nil
         preparedModelDirectory = nil
         preparingModelDirectory = nil
-        modelPreparationStatus = nil
+        modelPreparationStatusKey = nil
         changingModel = true
         defer { changingModel = false }
         await QwenTranscriptionSession.unloadModel()
@@ -103,6 +106,13 @@ final class DictationController: ObservableObject {
             Task { await self?.translateSelection() }
         }
         updateTranslationShortcut(settings.translationShortcut)
+        languageSubscription = NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.state == .recording { self.refreshRecordingHint() }
+                self.objectWillChange.send()
+            }
     }
 
     // MARK: - Permissions and hotkeys
@@ -244,7 +254,7 @@ final class DictationController: ObservableObject {
         Diagnostics.shared.record(event: "recording_start", metadata: ["engine": settings.asrEngine.rawValue])
         guard !changingModel else { return }
         if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
-            hud.show(.error("Wait for the model operation to finish before starting dictation."))
+            hud.show(.error(L10n.tr("Wait for the model operation to finish before starting dictation.")))
             return
         }
         var qwenDirectory: URL?
@@ -261,7 +271,7 @@ final class DictationController: ObservableObject {
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
             return
         case .denied, .restricted:
-            hud.show(.error("Allow Talkless in System Settings › Privacy & Security › Microphone"))
+            hud.show(.error(L10n.tr("Allow Talkless in System Settings › Privacy & Security › Microphone")))
             return
         default:
             break
@@ -308,7 +318,7 @@ final class DictationController: ObservableObject {
             )
         case .openAICompatible:
             guard !settings.asrAPIKey.isEmpty else {
-                hud.show(.error("Enter a speech recognition API key in Settings first"))
+                hud.show(.error(L10n.tr("Enter a speech recognition API key in Settings first")))
                 return
             }
             let terms = settings.dictionaryTerms
@@ -342,7 +352,7 @@ final class DictationController: ObservableObject {
             Diagnostics.shared.record(event: "recording_error", metadata: ["error_code": String((error as NSError).code)])
             session.cancel()
             self.session = nil
-            hud.show(.error("Cannot start recording: \(error.localizedDescription)"))
+            hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
             return
         }
 
@@ -357,12 +367,18 @@ final class DictationController: ObservableObject {
         recordingPolishEnabled = settings.polishEnabled
         let alternate = editSelection == nil ? settings.effectiveAlternateFinishKey : nil
         hotkeys.armAlternateFinish(alternate)
+        recordingAlternateFinishKey = alternate
+        refreshRecordingHint()
+    }
+
+    /// Relabel only: never resnapshot preferences or rearm a shortcut during recording.
+    private func refreshRecordingHint() {
         if editSelection != nil {
             hud.model.recordingHint = nil
         } else {
-            let mode = recordingPolishEnabled ? "AI on" : "AI off"
-            let action = recordingPolishEnabled ? "use original" : "polish"
-            hud.model.recordingHint = alternate.map { "\(mode) · \($0.title): \(action)" } ?? mode
+            let mode = recordingPolishEnabled ? L10n.tr("AI on") : L10n.tr("AI off")
+            let action = recordingPolishEnabled ? L10n.tr("use original") : L10n.tr("polish")
+            hud.model.recordingHint = recordingAlternateFinishKey.map { L10n.format("%@ · %@: %@", mode, $0.title, action) } ?? mode
         }
     }
 
@@ -424,10 +440,10 @@ final class DictationController: ObservableObject {
                     } catch {
                         // A cleanup failure must not lose the user's words; fall back to the raw transcript.
                         output = raw
-                        polishError = "Polishing failed; using the original transcript."
+                        polishError = L10n.tr("Polishing failed; using the original transcript.")
                     }
                 } else if shouldPolish, opposite {
-                    polishError = "Configure an AI service in Settings to polish. Using the original transcript."
+                    polishError = L10n.tr("Configure an AI service in Settings to polish. Using the original transcript.")
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
 
@@ -478,29 +494,29 @@ final class DictationController: ObservableObject {
     private func paste(_ text: String, into app: NSRunningApplication?) async {
         guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
             lastTranscript = text
-            hud.show(.error("Target app changed; result saved"))
+            hud.show(.error(L10n.tr("Target app changed; result saved")))
             return
         }
         await TextIO.insert(text)
     }
 
     func runAudioTest(url: URL) async throws -> String {
-        guard state == .idle, !changingModel else { throw TalklessError.message("Dictation or a model change is already in progress") }
+        guard state == .idle, !changingModel else { throw TalklessError.message(L10n.tr("Dictation or a model change is already in progress")) }
         let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard file.processingFormat.sampleRate == AudioRecorder.sampleRate,
               file.processingFormat.channelCount == 1, file.length > 0,
               file.length < Int64(UInt32.max),
               let audio = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
-            throw TalklessError.message("Test audio must be 16 kHz mono PCM")
+            throw TalklessError.message(L10n.tr("Test audio must be 16 kHz mono PCM"))
         }
         try file.read(into: audio)
-        guard let source = audio.floatChannelData?[0] else { throw TalklessError.message("Cannot read test audio") }
+        guard let source = audio.floatChannelData?[0] else { throw TalklessError.message(L10n.tr("Cannot read test audio")) }
         let samples = Array(UnsafeBufferPointer(start: source, count: Int(audio.frameLength)))
         while ModelManager.shared.isChecking {
             try await Task.sleep(for: .milliseconds(50))
         }
         guard ModelManager.shared.operationModelID == nil else {
-            throw TalklessError.message("Wait for the model operation to finish before testing dictation.")
+            throw TalklessError.message(L10n.tr("Wait for the model operation to finish before testing dictation."))
         }
         let modelDirectory = try settings.resolvedQwenModelDirectory()
         generation += 1
@@ -535,7 +551,7 @@ final class DictationController: ObservableObject {
                 let deadline = started.advanced(by: .seconds(Double(offset + count) / AudioRecorder.sampleRate))
                 try await clock.sleep(until: deadline)
                 guard let frame = AVAudioPCMBuffer(pcmFormat: AudioRecorder.format, frameCapacity: AVAudioFrameCount(count)),
-                      let target = frame.floatChannelData?[0] else { throw TalklessError.message("Cannot allocate a test audio buffer") }
+                      let target = frame.floatChannelData?[0] else { throw TalklessError.message(L10n.tr("Cannot allocate a test audio buffer")) }
                 frame.frameLength = AVAudioFrameCount(count)
                 for index in 0..<count { target[index] = samples[offset + index] }
                 session.feed(frame)
@@ -557,33 +573,116 @@ final class DictationController: ObservableObject {
 
     // MARK: - Selected-text translation
 
+    private var translationTask: Task<Void, Never>?
+    private var translationGeneration = 0
+    private var translationSource: String?
+    private var translationTargetApp: NSRunningApplication?
+    private var acquiringTranslationSelection = false
+
     func translateSelection() async {
-        guard !shortcutCaptureActive else { return }
+        // Clipboard fallback temporarily owns the pasteboard; never overlap two acquisitions.
+        guard !shortcutCaptureActive, !acquiringTranslationSelection else { return }
+        translationPanel.close()
+        cancelTranslation()
+        let token = translationGeneration
         guard settings.llmConfigured else {
-            hud.show(.error("Configure an AI service in Settings to translate selected text"))
+            hud.show(.error(L10n.tr("Configure an AI service in Settings to translate selected text")))
             return
         }
-        guard let text = await TextIO.selectedText() else {
-            hud.show(.error("Could not read any selected text"))
-            return
-        }
+        // Capture the destination before the clipboard fallback can suspend.
         let targetApp = NSWorkspace.shared.frontmostApplication
+        acquiringTranslationSelection = true
+        defer { acquiringTranslationSelection = false }
+        let selected = await TextIO.selectedText()
+        guard token == translationGeneration, !Task.isCancelled else { return }
+        guard let text = selected, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            hud.show(.error(L10n.tr("Could not read any selected text")))
+            return
+        }
+        translationSource = text
+        translationTargetApp = targetApp
+        requestTranslation()
+    }
+
+    private func cancelTranslation() {
+        translationGeneration += 1
+        translationTask?.cancel()
+        translationTask = nil
+        translationSource = nil
+        translationTargetApp = nil
+    }
+
+    private func changeTranslationLanguages(source: TranslationLanguageSelection, target: TranslationLanguageSelection,
+                                            displayedPreferences: TranslationLanguagePreferences) {
+        guard translationSource != nil else { return }
+        var preferences = settings.translationLanguages
+        // The popup is a snapshot. Change only the fields the user actually edited,
+        // preserving any newer choice made in Settings while this popup was open.
+        if source != displayedPreferences.source { preferences.source = source }
+        if target != displayedPreferences.target { preferences.target = target }
+        guard preferences != settings.translationLanguages else { return }
+        settings.translationLanguages = preferences
+        requestTranslation()
+    }
+
+    private func requestTranslation() {
+        guard let text = translationSource else { return }
+        translationTask?.cancel()
+        translationTask = nil
+        translationGeneration += 1
+        let token = translationGeneration
+        let targetApp = translationTargetApp
+        let preferences = settings.translationLanguages
+        let resolution = TranslationLanguages.resolve(text: text, preferences: preferences)
         let onReplace: (String) -> Void = { [weak self] translated in
             Task { await self?.paste(translated, into: targetApp) }
         }
-        translationPanel.show(source: text, result: nil, error: nil, onReplace: onReplace)
-        do {
-            let result = try await LLMClient.complete(
-                system: Prompts.translate(target: settings.translateTarget),
-                user: Prompts.translateInput(text),
-                config: settings.llmConfig
+        let show: (String?, String?) -> Void = { [weak self] result, error in
+            guard let self, self.translationGeneration == token else { return }
+            self.translationPanel.show(
+                source: text, result: result, error: error,
+                preferences: preferences, resolution: resolution,
+                allowsReplacement: targetApp != nil,
+                onLanguagesChanged: { [weak self] source, target in
+                    self?.changeTranslationLanguages(source: source, target: target, displayedPreferences: preferences)
+                },
+                onReplace: onReplace,
+                onClose: { [weak self] in self?.cancelTranslation() }
             )
-            translationPanel.show(source: text, result: result, error: nil, onReplace: onReplace)
-            history.add(HistoryEntry(
-                kind: .translation, app: targetApp?.localizedName ?? "", raw: text, output: result, duration: 0
-            ))
-        } catch {
-            translationPanel.show(source: text, result: nil, error: error.localizedDescription, onReplace: onReplace)
+        }
+        guard settings.llmConfigured else {
+            show(nil, L10n.tr("Configure an AI service in Settings to translate selected text"))
+            return
+        }
+        // A genuine script conversion (for example zh-Hans → zh-Hant) still calls the service.
+        if !resolution.isSourceAutomatic,
+           case .languageID(let targetID) = resolution.target,
+           let sourceID = resolution.sourceLanguageID,
+           TranslationLanguages.canonicalID(sourceID) == TranslationLanguages.canonicalID(targetID) {
+            show(text, nil)
+            return
+        }
+        show(nil, nil)
+        let config = settings.llmConfig
+        translationTask = Task { [weak self] in
+            guard !Task.isCancelled, self?.translationGeneration == token else { return }
+            do {
+                let result = try await LLMClient.complete(
+                    system: Prompts.translate(target: resolution.targetPromptName, source: resolution.sourcePromptName),
+                    user: Prompts.translateInput(text),
+                    config: config
+                )
+                guard let self, !Task.isCancelled, self.translationGeneration == token else { return }
+                self.translationTask = nil
+                show(result, nil)
+                self.history.add(HistoryEntry(
+                    kind: .translation, app: targetApp?.localizedName ?? "", raw: text, output: result, duration: 0
+                ))
+            } catch {
+                guard let self, !Task.isCancelled, self.translationGeneration == token else { return }
+                self.translationTask = nil
+                show(nil, error.localizedDescription)
+            }
         }
     }
 

@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "Talkless 需要使用麦克风，将你的语音转换为文字。";
+"NSSpeechRecognitionUsageDescription" = "Talkless 使用设备端语音识别，将语音转换为文字。";

@@ -201,7 +201,7 @@ private actor QwenModelRuntime {
                 at: directory, includingPropertiesForKeys: nil
             )
             guard files.contains(where: { $0.pathExtension == "safetensors" }) else {
-                throw TalklessError.message("No safetensors weights found in the Qwen model directory")
+                throw TalklessError.message(L10n.tr("No safetensors weights found in the Qwen model directory"))
             }
             let model = try await Qwen3ASRModel.fromModelDirectory(directory)
             return LoadedModel(directory: directory, model: model)
@@ -239,7 +239,7 @@ private actor QwenModelRuntime {
         model: Qwen3ASRModel, samples: [Float], language: String?, context: String
     ) throws -> String {
         guard let tokenizer = model.tokenizer else {
-            throw TalklessError.message("The Qwen tokenizer is not loaded")
+            throw TalklessError.message(L10n.tr("The Qwen tokenizer is not loaded"))
         }
         let (features, mask, audioTokenCount) = model.preprocessAudio(MLXArray(samples))
         let prompt = model.buildPrompt(
@@ -270,7 +270,7 @@ private actor QwenModelRuntime {
             nextToken = logits[0..., -1, 0...].argMax(axis: -1)
             asyncEval(nextToken)
         }
-        throw TalklessError.message("Qwen reached the output limit for one window; try a shorter dictation")
+        throw TalklessError.message(L10n.tr("Qwen reached the output limit for one window; try a shorter dictation"))
     }
 }
 
@@ -456,7 +456,7 @@ private final class QwenCaptureState: @unchecked Sendable {
             }
         }
         try checkCancellation()
-        throw TalklessError.message("The Qwen recognition session ended before completion")
+        throw TalklessError.message(L10n.tr("The Qwen recognition session ended before completion"))
     }
 
     /// Prefer the latest >=120ms low-energy run in the last five seconds of a 30s window.

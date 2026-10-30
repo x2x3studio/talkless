@@ -15,10 +15,10 @@ final class HUDModel: ObservableObject {
 
         var statusText: String? {
             switch self {
-            case .working: "Preparing recognition"
-            case .recognizing: "Recognizing"
-            case .polishing: "Polishing"
-            case .editing: "Editing"
+            case .working: L10n.tr("Preparing recognition")
+            case .recognizing: L10n.tr("Recognizing")
+            case .polishing: L10n.tr("Polishing")
+            case .editing: L10n.tr("Editing")
             case .hidden, .listening, .error: nil
             }
         }
@@ -100,6 +100,7 @@ final class HUDController {
     private var trackingTask: Task<Void, Never>?
     private var layoutSubscription: AnyCancellable?
     private var appearanceSubscription: AnyCancellable?
+    private var languageSubscription: AnyCancellable?
     private var cachedCaret: CGRect?
     private let caretProvider: () -> CGRect?
 
@@ -126,13 +127,21 @@ final class HUDController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
         // Appearance changes redraw in place, without querying the caret or resizing.
-        layoutSubscription = Publishers.CombineLatest(model.$phase.removeDuplicates(), model.$preview.removeDuplicates())
+        layoutSubscription = Publishers.CombineLatest3(
+            model.$phase.removeDuplicates(), model.$preview.removeDuplicates(), model.$recordingHint.removeDuplicates()
+        )
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLayout() }
         appearanceSubscription = appearanceUpdates?
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.model.appearance = $0 }
+        languageSubscription = NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.model.objectWillChange.send()
+                self?.updateLayout()
+            }
     }
 
     private func updateLayout() {
@@ -279,7 +288,7 @@ struct HUDView: View {
                 .font(.system(size: 7))
                 .foregroundStyle(model.isEditMode ? Color.orange : Color.red)
                 .symbolEffect(.pulse, options: .repeating.speed(0.65), isActive: animates)
-                .accessibilityLabel("Recording")
+                .accessibilityLabel(L10n.tr("Recording"))
         case .working, .recognizing:
             if animates {
                 ProgressView()
@@ -329,11 +338,37 @@ private struct HUDMaterial: NSViewRepresentable {
 final class TranslationPanelController {
     private var panel: NSPanel?
     private var clickMonitor: Any?
+    private var localClickMonitor: Any?
+    private var menuObservers: [NSObjectProtocol] = []
+    private var menuTracking = false
+    private var onClose: (() -> Void)?
 
     var isVisible: Bool { panel?.isVisible ?? false }
+    var isClickThrough: Bool { panel?.ignoresMouseEvents ?? false }
+    var isNonactivating: Bool { panel?.styleMask.contains(.nonactivatingPanel) ?? false }
 
-    func show(source: String, result: String?, error: String?, allowsReplacement: Bool = true, onReplace: @escaping (String) -> Void) {
-        close()
+    func show(source: String, result: String?, error: String?,
+              preferences: TranslationLanguagePreferences, resolution: TranslationLanguageResolution,
+              allowsReplacement: Bool = true,
+              onLanguagesChanged: @escaping (TranslationLanguageSelection, TranslationLanguageSelection) -> Void,
+              onReplace: @escaping (String) -> Void, onClose: @escaping () -> Void) {
+        self.onClose = onClose
+        let view = TranslationView(
+            source: source, result: result, error: error,
+            preferences: preferences, resolution: resolution, allowsReplacement: allowsReplacement,
+            onLanguagesChanged: onLanguagesChanged,
+            onCopy: { [weak self] text in TextIO.copyToClipboard(text); self?.close() },
+            onReplace: { [weak self] text in self?.close(); onReplace(text) },
+            onClose: { [weak self] in self?.close() }
+        )
+        // Refresh in place: a result or language change must not reposition or reactivate the panel.
+        if let panel, let hosting = panel.contentView as? NSHostingView<TranslationView> {
+            let top = panel.frame.maxY
+            hosting.rootView = view
+            panel.setContentSize(hosting.fittingSize)
+            panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
+            return
+        }
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 240),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -344,15 +379,9 @@ final class TranslationPanelController {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .floating
+        panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-
-        let view = TranslationView(
-            source: source, result: result, error: error, allowsReplacement: allowsReplacement,
-            onCopy: { [weak self] text in TextIO.copyToClipboard(text); self?.close() },
-            onReplace: { [weak self] text in self?.close(); onReplace(text) },
-            onClose: { [weak self] in self?.close() }
-        )
         let hosting = NSHostingView(rootView: view)
         hosting.setFrameSize(hosting.fittingSize)
         panel.contentView = hosting
@@ -367,33 +396,116 @@ final class TranslationPanelController {
         panel.orderFrontRegardless()
         self.panel = panel
 
+        menuObservers = [NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.menuTracking = name == NSMenu.didBeginTrackingNotification }
+            }
+        }
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let panel = self.panel else { return }
-                if !panel.frame.contains(NSEvent.mouseLocation) { self.close() }
+                if !self.menuTracking, !panel.frame.contains(NSEvent.mouseLocation) { self.close() }
             }
         }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            MainActor.assumeIsolated { self?.handleLocalClick(in: event.window) }
+            return event
+        }
+    }
+
+    func handleLocalClick(in window: NSWindow?) {
+        guard let panel, !menuTracking else { return }
+        // Menus and sheets use separate windows outside the popup's frame. Let them
+        // finish their interaction instead of treating a language choice as dismissal.
+        guard window !== panel, window?.sheetParent !== panel, window?.parent !== panel,
+              window?.level != .popUpMenu else { return }
+        close()
     }
 
     func close() {
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         clickMonitor = nil
+        localClickMonitor = nil
+        menuObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        menuObservers = []
+        menuTracking = false
         panel?.orderOut(nil)
         panel = nil
+        let callback = onClose
+        onClose = nil
+        callback?()
     }
 }
 
 struct TranslationView: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     let source: String
     let result: String?
     let error: String?
+    let preferences: TranslationLanguagePreferences
+    let resolution: TranslationLanguageResolution
     var allowsReplacement = true
+    let onLanguagesChanged: (TranslationLanguageSelection, TranslationLanguageSelection) -> Void
     let onCopy: (String) -> Void
     let onReplace: (String) -> Void
     let onClose: () -> Void
 
+    var sourceSelection: Binding<TranslationLanguageSelection> {
+        Binding(get: { preferences.source }, set: { onLanguagesChanged($0, preferences.target) })
+    }
+
+    var targetSelection: Binding<TranslationLanguageSelection> {
+        Binding(get: { preferences.target }, set: { onLanguagesChanged(preferences.source, $0) })
+    }
+
+    var automaticSourceLabel: String { L10n.tr("Auto") }
+
+    var automaticTargetLabel: String { L10n.tr("Auto") }
+
+    var canSwap: Bool {
+        guard let sourceID = resolution.sourceLanguageID,
+              TranslationLanguages.language(id: sourceID) != nil,
+              case .languageID(let targetID) = resolution.target,
+              TranslationLanguages.language(id: targetID) != nil else { return false }
+        return sourceID != targetID
+    }
+
+    func swapLanguages() {
+        guard canSwap, let sourceID = resolution.sourceLanguageID else { return }
+        // Swap only the language choices, never the source text or replacement destination.
+        onLanguagesChanged(resolution.target, .languageID(sourceID))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.tr("Source language")).font(.caption).foregroundStyle(.secondary)
+                    LanguagePickerView(title: L10n.tr("Source language"), selection: sourceSelection,
+                                       preferences: preferences, automaticLabel: automaticSourceLabel)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button(action: swapLanguages) {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canSwap)
+                .help(L10n.tr("Swap languages"))
+                .accessibilityLabel(L10n.tr("Swap languages"))
+                .padding(.bottom, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.tr("Target language")).font(.caption).foregroundStyle(.secondary)
+                    LanguagePickerView(title: L10n.tr("Target language"), selection: targetSelection,
+                                       preferences: preferences, automaticLabel: automaticTargetLabel, allowCustom: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .controlSize(.small)
+            Text(L10n.tr("Changing a language translates the original selection again using your AI service."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Text(source)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -410,10 +522,10 @@ struct TranslationView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
-                    Button("Close", action: onClose)
-                    Button("Copy") { onCopy(result) }
+                    Button(L10n.tr("Close"), action: onClose)
+                    Button(L10n.tr("Copy")) { onCopy(result) }
                     if allowsReplacement {
-                        Button("Replace Original") { onReplace(result) }
+                        Button(L10n.tr("Replace Original")) { onReplace(result) }
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -422,11 +534,13 @@ struct TranslationView: View {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 13))
                     .foregroundStyle(.orange)
-                HStack { Spacer(); Button("Close", action: onClose).controlSize(.small) }
+                HStack { Spacer(); Button(L10n.tr("Close"), action: onClose).controlSize(.small) }
             } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Translating…").foregroundStyle(.secondary)
+                    Text(L10n.tr("Translating…")).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(L10n.tr("Close"), action: onClose).controlSize(.small)
                 }
             }
         }

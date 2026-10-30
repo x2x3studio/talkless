@@ -8,8 +8,8 @@ enum MenuBarIcon {
         var accessibilityDescription: String {
             switch self {
             case .idle: "Talkless"
-            case .recording: "Talkless — Recording"
-            case .processing: "Talkless — Processing"
+            case .recording: L10n.tr("Talkless — Recording")
+            case .processing: L10n.tr("Talkless — Processing")
             }
         }
     }

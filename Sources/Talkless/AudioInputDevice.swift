@@ -18,7 +18,7 @@ enum AudioInputDevices {
         var size: UInt32 = 0
         let system = AudioObjectID(kAudioObjectSystemObject)
         guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else {
-            throw TalklessError.message("Cannot list microphones. Try reopening Settings.")
+            throw TalklessError.message(L10n.tr("Cannot list microphones. Try reopening Settings."))
         }
         var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
         guard !ids.isEmpty else { return [] }
@@ -26,13 +26,13 @@ enum AudioInputDevices {
             AudioObjectGetPropertyData(system, &address, 0, nil, &size, $0.baseAddress!)
         }
         guard status == noErr else {
-            throw TalklessError.message("Cannot list microphones. Try reopening Settings.")
+            throw TalklessError.message(L10n.tr("Cannot list microphones. Try reopening Settings."))
         }
         return ids.compactMap { id in
             guard hasInputChannels(id),
                   let uid = stringProperty(kAudioDevicePropertyDeviceUID, device: id), !uid.isEmpty else { return nil }
             let name = stringProperty(kAudioObjectPropertyName, device: id) ?? ""
-            return AudioInputDevice(id: id, uid: uid, name: name.isEmpty ? "Microphone (\(uid))" : name)
+            return AudioInputDevice(id: id, uid: uid, name: name.isEmpty ? L10n.format("Microphone (%@)", uid) : name)
         }.sorted {
             let order = $0.name.localizedStandardCompare($1.name)
             return order == .orderedSame ? $0.uid < $1.uid : order == .orderedAscending
@@ -48,13 +48,13 @@ enum AudioInputDevices {
     ) throws -> AudioDeviceID {
         guard let uid else { return try defaultDevice() }
         guard let device = try devices().first(where: { $0.uid == uid }) else {
-            throw TalklessError.message("The selected microphone is unavailable. Reconnect it or choose another microphone in Settings › Dictation › Audio.")
+            throw TalklessError.message(L10n.tr("The selected microphone is unavailable. Reconnect it or choose another microphone in Settings › Dictation › Audio."))
         }
         return device.id
     }
 
     static func systemDefault() throws -> AudioDeviceID {
-        let unavailable = TalklessError.message("No available microphone found. Connect a microphone and select it in System Settings › Sound › Input.")
+        let unavailable = TalklessError.message(L10n.tr("No available microphone found. Connect a microphone and select it in System Settings › Sound › Input."))
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,

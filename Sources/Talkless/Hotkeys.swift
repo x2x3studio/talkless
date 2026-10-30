@@ -201,7 +201,7 @@ final class GlobalHotKey {
         stop()
         error = nil
         if let validationError = shortcut.validationError {
-            error = "Translation shortcut is inactive. \(validationError)"
+            error = L10n.format("Translation shortcut is inactive. %@", validationError)
             return
         }
         guard let keyCode = shortcut.keyCode else { return }
@@ -232,7 +232,7 @@ final class GlobalHotKey {
 
     private func fail(_ status: OSStatus) {
         stop()
-        error = "Translation shortcut is inactive: macOS could not register it (error \(status)). It may be used by another app. Record a different shortcut."
+        error = L10n.format("Translation shortcut is inactive: macOS could not register it (error %d). It may be used by another app. Record a different shortcut.", status)
     }
 
     func stop() {

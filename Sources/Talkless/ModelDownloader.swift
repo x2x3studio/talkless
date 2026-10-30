@@ -33,7 +33,7 @@ final class ModelFileDownloader: NSObject, URLSessionDataDelegate, @unchecked Se
                     guard ModelDownloadSource.isSecureURL(url) else { throw ModelManagementError.invalidSource }
                     if !FileManager.default.fileExists(atPath: partial.path) {
                         guard FileManager.default.createFile(atPath: partial.path, contents: nil) else {
-                            throw ModelManagementError.download("Could not create the partial file.")
+                            throw ModelManagementError.download(L10n.tr("Could not create the partial file."))
                         }
                     }
                     let attributes = try FileManager.default.attributesOfItem(atPath: partial.path)
@@ -103,16 +103,16 @@ final class ModelFileDownloader: NSObject, URLSessionDataDelegate, @unchecked Se
         do {
             guard let http = response as? HTTPURLResponse,
                   let url = http.url, ModelDownloadSource.isSecureURL(url) else {
-                throw ModelManagementError.download("The server did not return an HTTPS response.")
+                throw ModelManagementError.download(L10n.tr("The server did not return an HTTPS response."))
             }
             let encoding = http.value(forHTTPHeaderField: "Content-Encoding")?.lowercased()
             guard encoding == nil || encoding == "identity" else {
-                throw ModelManagementError.download("The server changed the file encoding.")
+                throw ModelManagementError.download(L10n.tr("The server changed the file encoding."))
             }
             if http.statusCode == 206 {
                 guard Self.validContentRange(http.value(forHTTPHeaderField: "Content-Range"),
                                              offset: requestedOffset, total: expected) else {
-                    throw ModelManagementError.download("The server returned an invalid resume range.")
+                    throw ModelManagementError.download(L10n.tr("The server returned an invalid resume range."))
                 }
             } else if http.statusCode == 200 {
                 // A server may ignore Range. Restart this file, rather than append and corrupt it.
@@ -120,11 +120,11 @@ final class ModelFileDownloader: NSObject, URLSessionDataDelegate, @unchecked Se
                 try handle?.seek(toOffset: 0)
                 received = 0
             } else {
-                throw ModelManagementError.download("HTTP \(http.statusCode). Check the source or try again.")
+                throw ModelManagementError.download(L10n.format("HTTP %d. Check the source or try again.", http.statusCode))
             }
             let remaining = expected - received
             if response.expectedContentLength >= 0 && response.expectedContentLength != remaining {
-                throw ModelManagementError.download("The server returned an unexpected file size.")
+                throw ModelManagementError.download(L10n.tr("The server returned an unexpected file size."))
             }
             progress?(received)
             completionHandler(.allow)
@@ -146,7 +146,7 @@ final class ModelFileDownloader: NSObject, URLSessionDataDelegate, @unchecked Se
         guard failure == nil else { return }
         do {
             guard Int64(data.count) <= expected - received else {
-                throw ModelManagementError.download("The server sent more data than the pinned file size.")
+                throw ModelManagementError.download(L10n.tr("The server sent more data than the pinned file size."))
             }
             try handle?.write(contentsOf: data)
             received += Int64(data.count)

@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = LocalizationSettings.shared
+        ApplicationEditMenu.install()
         Diagnostics.shared.startSession()
         if CommandLine.arguments.contains("--test-microphone") {
             Task {
@@ -77,6 +79,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         updateIcon()
+        NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                ApplicationEditMenu.install()
+                self?.updateIcon()
+                self?.settingsWindow?.title = L10n.tr("Talkless Settings")
+                self?.testWindow?.title = L10n.tr("Talkless · Local Audio Test")
+            }
+            .store(in: &cancellables)
 
         controller.$state
             .receive(on: RunLoop.main)
@@ -162,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 testTextView?.string = result
                 if !keepOpen { NSApp.terminate(nil) }
             } catch {
-                let message = "Audio test failed: \(error.localizedDescription)"
+                let message = L10n.format("Audio test failed: %@", error.localizedDescription)
                 FileHandle.standardError.write(Data((message + "\n").utf8))
                 testTextView?.string = message
                 if !keepOpen { exit(1) }
@@ -184,11 +195,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         textView.textContainer?.widthTracksTextView = true
         textView.font = .systemFont(ofSize: 20)
         textView.textContainerInset = NSSize(width: 24, height: 24)
-        textView.string = "Transcribing with Qwen: \(audio.lastPathComponent)…\n\nThis test only displays the result; it does not paste into other apps."
+        textView.string = L10n.format("Transcribing with Qwen: %@…\n\nThis test only displays the result; it does not paste into other apps.", audio.lastPathComponent)
         scrollView.documentView = textView
         testTextView = textView
         let window = NSWindow(contentRect: scrollView.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Talkless · Local Audio Test"
+        window.title = L10n.tr("Talkless · Local Audio Test")
         window.contentView = scrollView
         window.isReleasedWhenClosed = false
         window.center()
@@ -244,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if settingsWindow == nil {
             let hosting = NSHostingController(rootView: SettingsView(controller: controller, updateController: updateController))
             let window = NSWindow(contentViewController: hosting)
-            window.title = "Talkless Settings"
+            window.title = L10n.tr("Talkless Settings")
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.setContentSize(NSSize(width: 900, height: 660))

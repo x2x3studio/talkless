@@ -38,9 +38,9 @@ struct ModelManagementView: View {
                         .background(SettingsAppearance.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Your voice. On your Mac.")
+                        Text(L10n.tr("Your voice. On your Mac."))
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        Text("Download once. Transcribe locally with Qwen3 ASR.")
+                        Text(L10n.tr("Download once. Transcribe locally with Qwen3 ASR."))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -48,7 +48,7 @@ struct ModelManagementView: View {
                 .padding(.vertical, 4)
             }
 
-            Section("Speech models") {
+            Section(L10n.tr("Speech models")) {
                 ForEach(manager.entries) { entry in
                     modelRow(entry)
                 }
@@ -60,12 +60,12 @@ struct ModelManagementView: View {
                 }
             }
 
-            Section("Download source") {
-                Picker("Source", selection: $sourceChoice) {
+            Section(L10n.tr("Download source")) {
+                Picker(L10n.tr("Source"), selection: $sourceChoice) {
                     ForEach(ModelCatalog.sources, id: \.title) { source in
                         Text(source.title).tag(source == .huggingFace ? "huggingFace" : "hfMirror")
                     }
-                    Text("Custom mirror…").tag("custom")
+                    Text(L10n.tr("Custom mirror…")).tag("custom")
                 }
                 .disabled(controlsDisabled)
 
@@ -74,19 +74,19 @@ struct ModelManagementView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if sourceChoice == "custom" {
-                    TextField("HTTPS base URL", text: $customSource, prompt: Text("https://your-mirror.example"))
+                    TextField(L10n.tr("HTTPS base URL"), text: $customSource, prompt: Text("https://your-mirror.example"))
                         .textFieldStyle(.roundedBorder)
                         .disabled(controlsDisabled)
-                    Text("A Hugging Face-compatible HTTPS mirror. Files are verified against the original model checksums.")
+                    Text(L10n.tr("A Hugging Face-compatible HTTPS mirror. Files are verified against the original model checksums."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if !customSource.isEmpty, selectedSource == nil {
-                        Text("Enter an HTTPS URL without credentials, a query, or a fragment.")
+                        Text(L10n.tr("Enter an HTTPS URL without credentials, a query, or a fragment."))
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
                 } else {
-                    Text("Downloads come from mlx-community on Hugging Face, not Talkless.")
+                    Text(L10n.tr("Downloads come from mlx-community on Hugging Face, not Talkless."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -94,11 +94,11 @@ struct ModelManagementView: View {
             .sheet(item: $deletion) { model in
                 deletionSheet(model)
             }
-            .alert("Model operation failed", isPresented: Binding(
+            .alert(L10n.tr("Model operation failed"), isPresented: Binding(
                 get: { actionError != nil },
                 set: { if !$0 { actionError = nil } }
             )) {
-                Button("OK", role: .cancel) { actionError = nil }
+                Button(L10n.tr("OK"), role: .cancel) { actionError = nil }
             } message: {
                 Text(actionError ?? "")
             }
@@ -116,22 +116,22 @@ struct ModelManagementView: View {
                 Text(entry.model.name)
                     .font(.system(size: 14, weight: .semibold))
                 if entry.model.isRecommended {
-                    badge("Recommended", highlighted: false)
+                    badge(L10n.tr("Recommended"), highlighted: false)
                 }
                 Spacer(minLength: 0)
                 if isInUse(entry) {
-                    badge("In use", highlighted: true)
+                    badge(L10n.tr("In use"), highlighted: true)
                 }
             }
 
             HStack(spacing: 6) {
-                Text("\(byteCount(entry.model.totalBytes)) · MLX 4-bit")
+                Text(L10n.format("%@ · MLX 4-bit", byteCount(entry.model.totalBytes)))
                 Spacer()
                 if let url = URL(string: "https://huggingface.co/\(entry.model.manifest.repository)") {
                     Link(destination: url) {
-                        Label("Model details", systemImage: "arrow.up.right")
+                        Label(L10n.tr("Model details"), systemImage: "arrow.up.right")
                     }
-                    .help("View \(entry.model.manifest.repository) on Hugging Face")
+                    .help(L10n.format("View %@ on Hugging Face", entry.model.manifest.repository))
                 }
             }
             .font(.caption)
@@ -140,8 +140,8 @@ struct ModelManagementView: View {
             if entry.phase == .downloading || entry.phase == .paused {
                 ProgressView(value: entry.progress)
                     .progressViewStyle(.linear)
-                    .accessibilityLabel("\(entry.model.name) download")
-                    .accessibilityValue("\(byteCount(entry.downloadedBytes)) of \(byteCount(entry.totalBytes))")
+                    .accessibilityLabel(L10n.format("%@ download", entry.model.name))
+                    .accessibilityValue(L10n.format("%@ of %@", byteCount(entry.downloadedBytes), byteCount(entry.totalBytes)))
             }
 
             HStack(spacing: 10) {
@@ -185,25 +185,25 @@ struct ModelManagementView: View {
     private func rowActions(_ entry: ModelEntry) -> some View {
         switch entry.phase {
         case .notInstalled:
-            downloadButton("Download", entry: entry)
+            downloadButton(L10n.tr("Download"), entry: entry)
         case .paused:
             deleteButton(entry)
-            downloadButton("Resume", entry: entry)
+            downloadButton(L10n.tr("Resume"), entry: entry)
         case .failed:
             deleteButton(entry)
-            downloadButton("Retry", entry: entry)
+            downloadButton(L10n.tr("Retry"), entry: entry)
         case .downloading, .verifying:
-            Button("Cancel") { manager.cancel() }
+            Button(L10n.tr("Cancel")) { manager.cancel() }
                 .disabled(manager.operationModelID != entry.id)
-                .help("Pause this download and keep its progress")
-                .accessibilityLabel("Cancel \(entry.model.name) download")
+                .help(L10n.tr("Pause this download and keep its progress"))
+                .accessibilityLabel(L10n.format("Cancel %@ download", entry.model.name))
         case .installed:
             deleteButton(entry)
             if !isInUse(entry) {
-                Button("Use") { select(entry) }
+                Button(L10n.tr("Use")) { select(entry) }
                     .buttonStyle(.borderedProminent)
                     .disabled(controlsDisabled)
-                    .accessibilityLabel("Use \(entry.model.name)")
+                    .accessibilityLabel(L10n.format("Use %@", entry.model.name))
             }
         case .checking, .deleting:
             EmptyView()
@@ -217,16 +217,16 @@ struct ModelManagementView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(controlsDisabled || selectedSource == nil)
-        .accessibilityLabel("\(title) \(entry.model.name)")
+        .accessibilityLabel(L10n.format("%@ %@", title, entry.model.name))
     }
 
     private func deleteButton(_ entry: ModelEntry) -> some View {
-        Button("Delete…", role: .destructive) {
+        Button(L10n.tr("Delete…"), role: .destructive) {
             deletionError = nil
             deletion = entry.model
         }
             .disabled(controlsDisabled)
-            .accessibilityLabel("Delete \(entry.model.name)")
+            .accessibilityLabel(L10n.format("Delete %@", entry.model.name))
     }
 
     private func select(_ entry: ModelEntry) {
@@ -243,13 +243,13 @@ struct ModelManagementView: View {
 
     private func deletionSheet(_ model: CatalogModel) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Delete \(model.name)?")
+            Text(L10n.format("Delete %@?", model.name))
                 .font(.title3.weight(.semibold))
-            Text("This removes the downloaded model files from this Mac. You can download them again at any time.")
+            Text(L10n.tr("This removes the downloaded model files from this Mac. You can download them again at any time."))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if manager.activeModelID == model.id, !settings.useCustomQwenDirectory {
-                Text("This is your selected model. Download it again or choose another model before dictating.")
+                Text(L10n.tr("This is your selected model. Download it again or choose another model before dictating."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -262,13 +262,13 @@ struct ModelManagementView: View {
             HStack {
                 if deleting {
                     ProgressView().controlSize(.small)
-                    Text("Deleting…").font(.callout).foregroundStyle(.secondary)
+                    Text(L10n.tr("Deleting…")).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Cancel", role: .cancel) { deletion = nil }
+                Button(L10n.tr("Cancel"), role: .cancel) { deletion = nil }
                     .keyboardShortcut(.cancelAction)
                     .disabled(deleting)
-                Button("Delete Model", role: .destructive) {
+                Button(L10n.tr("Delete Model"), role: .destructive) {
                     deleting = true
                     deletionError = nil
                     Task {
@@ -292,14 +292,14 @@ struct ModelManagementView: View {
 
     private func statusText(_ entry: ModelEntry) -> String {
         switch entry.phase {
-        case .checking: "Checking downloaded files…"
-        case .notInstalled: "Not downloaded"
-        case .downloading: "\(byteCount(entry.downloadedBytes)) of \(byteCount(entry.totalBytes))"
-        case .verifying: "Verifying model files…"
-        case .paused: "Paused · \(byteCount(entry.downloadedBytes)) of \(byteCount(entry.totalBytes))"
-        case .installed: "Downloaded"
-        case .failed: "Download failed"
-        case .deleting: "Deleting model files…"
+        case .checking: L10n.tr("Checking downloaded files…")
+        case .notInstalled: L10n.tr("Not downloaded")
+        case .downloading: L10n.format("%@ of %@", byteCount(entry.downloadedBytes), byteCount(entry.totalBytes))
+        case .verifying: L10n.tr("Verifying model files…")
+        case .paused: L10n.format("Paused · %@ of %@", byteCount(entry.downloadedBytes), byteCount(entry.totalBytes))
+        case .installed: L10n.tr("Downloaded")
+        case .failed: L10n.tr("Download failed")
+        case .deleting: L10n.tr("Deleting model files…")
         }
     }
 

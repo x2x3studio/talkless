@@ -24,6 +24,9 @@ struct MenuTests {
     @MainActor private static let updater = MenuTarget()
 
     @MainActor static func main() {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         var assertions = 0

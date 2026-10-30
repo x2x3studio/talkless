@@ -15,9 +15,11 @@ private func xmlEscaped(_ value: String) -> String {
 }
 
 func makeAppcast(version: String, build: String, minimumOS: String, downloadURL: String,
-                 signature: String, length: UInt64) throws -> Data {
+                 signature: String, length: UInt64, releaseNotesURL: String? = nil) throws -> Data {
     try validateVersion(version, build: build)
     try httpsURL(downloadURL, name: "Appcast download URL")
+    if let releaseNotesURL { try httpsURL(releaseNotesURL, name: "Release notes URL") }
+    let notesElement = releaseNotesURL.map { "<sparkle:releaseNotesLink>\(xmlEscaped($0))</sparkle:releaseNotesLink>" } ?? ""
     guard let signatureData = Data(base64Encoded: signature), signatureData.count == 64 else {
         throw ToolError("Invalid Sparkle signature length.")
     }
@@ -36,6 +38,7 @@ func makeAppcast(version: String, build: String, minimumOS: String, downloadURL:
           <sparkle:version>\(xmlEscaped(build))</sparkle:version>
           <sparkle:shortVersionString>\(xmlEscaped(version))</sparkle:shortVersionString>
           <sparkle:minimumSystemVersion>\(xmlEscaped(minimumOS))</sparkle:minimumSystemVersion>
+          \(notesElement)
           <enclosure url="\(xmlEscaped(downloadURL))" length="\(length)" type="application/octet-stream" sparkle:edSignature="\(xmlEscaped(signature))" />
         </item>
       </channel>
@@ -100,7 +103,8 @@ func generateSignedAppcasts(context: ToolContext, stage: URL, archive: URL,
     guard let size = attributes[.size] as? NSNumber else { throw ToolError("Could not determine archive size.") }
     let appcast = try makeAppcast(version: version, build: build, minimumOS: minimumOS,
                                  downloadURL: baseURL + "/" + archive.lastPathComponent,
-                                 signature: signature, length: size.uint64Value)
+                                 signature: signature, length: size.uint64Value,
+                                 releaseNotesURL: baseURL + "/" + ReleaseNotes.htmlName)
     for name in names.sorted() {
         try appcast.write(to: stage.appendingPathComponent(name), options: .withoutOverwriting)
     }
@@ -160,6 +164,39 @@ func validateFeedMonotonicity(_ data: Data, build: String) throws {
     }
 }
 
+/// Validate local snapshots and feed links without fetching any release-note URL.
+func validateReleaseNotes(directory: URL, metadata: ReleaseMetadata) throws -> ReleaseNotes? {
+    guard metadata.schemaVersion >= 2 else { return nil } // Previously built releases remain publishable.
+    let markdown = directory.appendingPathComponent(ReleaseNotes.markdownName)
+    let html = directory.appendingPathComponent(ReleaseNotes.htmlName)
+    try requireRegularFile(markdown)
+    try requireRegularFile(html)
+    let notes = try ReleaseNotes(snapshot: Data(contentsOf: markdown), version: metadata.version,
+                                 build: metadata.buildNumber, channel: metadata.releaseChannel)
+    guard try Data(contentsOf: html) == notes.html(version: metadata.version, build: metadata.buildNumber,
+                                                   channel: metadata.releaseChannel) else {
+        throw ToolError("Release notes HTML does not match the safe rendering of its Markdown snapshot.")
+    }
+    if metadata.updaterEnabled {
+        let expected = metadata.downloadBaseURL! + "/" + ReleaseNotes.htmlName
+        for name in try feedNames(channel: metadata.releaseChannel) {
+            let feed = directory.appendingPathComponent(name)
+            try requireRegularFile(feed)
+            let (_, channel) = try parseRSS(Data(contentsOf: feed))
+            let items = channel.elements(forName: "item")
+            guard items.count == 1, let item = items.first else {
+                throw ToolError("New release appcasts must contain exactly one item.")
+            }
+            let links = item.elements(forLocalName: "releaseNotesLink", uri: sparkleNamespace)
+            guard links.count == 1, links.first?.stringValue == expected,
+                  links.first?.childCount == 1, links.first?.children?.first?.kind == .text else {
+                throw ToolError("Appcast release notes must link to this release's immutable HTML asset.")
+            }
+        }
+    }
+    return notes
+}
+
 private struct RepositoryResponse: Decodable { let `private`: Bool }
 private struct FeedReleaseResponse: Decodable {
     struct Asset: Decodable { let name: String }
@@ -214,6 +251,7 @@ func publish(context: ToolContext, directory: URL, publishPublic: Bool) throws {
     guard try Data(contentsOf: sums) == Data(metadata.checksumText.utf8) else {
         throw ToolError("SHA256SUMS does not match release metadata.")
     }
+    let releaseNotes = try validateReleaseNotes(directory: directory, metadata: metadata)
     var environment = context.environment
     environment.removeValue(forKey: "OP_SERVICE_ACCOUNT_TOKEN")
     func run(_ arguments: [String]) throws -> String {
@@ -248,6 +286,7 @@ func publish(context: ToolContext, directory: URL, publishPublic: Bool) throws {
     let notes = "Talkless \(metadata.version) \(metadata.releaseChannel) (build \(metadata.buildNumber)) for Apple Silicon.\n\n"
         + "Developer ID signed and notarized ZIP and disk image. "
         + (metadata.updaterEnabled ? "Sparkle updates are enabled.\n" : "Automatic updates are disabled in this signed test release.\n")
+        + (releaseNotes.map { "\n## What's new\n" + $0.githubMarkdown } ?? "")
     var arguments = ["gh", "release", "create", metadata.tag, "--repo", repository, "--draft", "--title",
                      "Talkless \(metadata.version)", "--notes", notes]
     if metadata.releaseChannel == "beta" { arguments.append("--prerelease") }

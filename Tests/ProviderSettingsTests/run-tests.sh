@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/talkless-provider-tests.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 swiftc -swift-version 6 -parse-as-library \
+  "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/LLMProtocol.swift" \
   "$ROOT/Sources/Talkless/LLMAPITransport.swift" \
   "$ROOT/Sources/Talkless/LLMClient.swift" \
@@ -11,6 +12,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/CredentialStore.swift" \
   "$ROOT/Sources/Talkless/HUDAppearance.swift" \
   "$ROOT/Sources/Talkless/TranslationShortcut.swift" \
+  "$ROOT/Sources/Talkless/TranslationLanguages.swift" \
   "$ROOT/Sources/Talkless/Settings.swift" \
   "$ROOT/Tests/ProviderSettingsTests/HUDAppearanceTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/AlternateFinishTests.swift" \

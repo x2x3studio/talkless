@@ -34,11 +34,11 @@ struct DictionaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements.")
+            Text(L10n.tr("Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements."))
                 .font(.callout).foregroundStyle(.secondary)
-            Picker("Dictionary section", selection: $section) {
-                Text("My terms (\(settings.dictionaryTerms.count))").tag(Section.terms)
-                Text("Review (\(review.pendingCandidates.count))").tag(Section.review)
+            Picker(L10n.tr("Dictionary section"), selection: $section) {
+                Text(L10n.format("My terms (%lld)", settings.dictionaryTerms.count)).tag(Section.terms)
+                Text(L10n.format("Review (%lld)", review.pendingCandidates.count)).tag(Section.review)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -48,44 +48,44 @@ struct DictionaryView: View {
 
             if !message.isEmpty {
                 Text(message).font(.caption).foregroundStyle(.secondary)
-                    .accessibilityLabel("Dictionary status: \(message)")
+                    .accessibilityLabel(L10n.format("Dictionary status: %@", message))
             }
         }
         .sheet(item: $editor) { item in
             DictionaryTermEditor(original: item.original, settings: settings) { saved in
-                message = item.original == nil ? "Added “\(saved)” to My terms." : "Saved “\(saved)”."
+                message = item.original == nil ? L10n.format("Added “%@” to My terms.", saved) : L10n.format("Saved “%@”.", saved)
             }
         }
-        .alert("Delete this term?", isPresented: Binding(
+        .alert(L10n.tr("Delete this term?"), isPresented: Binding(
             get: { termToDelete != nil }, set: { if !$0 { termToDelete = nil } }
         )) {
-            Button("Cancel", role: .cancel) { termToDelete = nil }
-            Button("Delete", role: .destructive) {
+            Button(L10n.tr("Cancel"), role: .cancel) { termToDelete = nil }
+            Button(L10n.tr("Delete"), role: .destructive) {
                 if let term = termToDelete,
                    let updated = DictionaryTerms.replacing(term, with: nil, in: settings.dictionary) {
                     settings.dictionary = updated
-                    message = "Deleted “\(term)”. History is unchanged."
+                    message = L10n.format("Deleted “%@”. History is unchanged.", term)
                 }
                 termToDelete = nil
             }
         } message: {
-            Text("“\(termToDelete ?? "")” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.")
+            Text(L10n.format("“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.", termToDelete ?? ""))
         }
-        .alert("Reset dismissed suggestions?", isPresented: $showResetDismissals) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset dismissals") { review.resetDismissals(); message = "Dismissed spellings can appear in Review again." }
+        .alert(L10n.tr("Reset dismissed suggestions?"), isPresented: $showResetDismissals) {
+            Button(L10n.tr("Cancel"), role: .cancel) {}
+            Button(L10n.tr("Reset dismissals")) { review.resetDismissals(); message = L10n.tr("Dismissed spellings can appear in Review again.") }
         } message: {
-            Text("Previously dismissed spellings may reappear from your scanned history. No terms will be added automatically.")
+            Text(L10n.tr("Previously dismissed spellings may reappear from your scanned history. No terms will be added automatically."))
         }
     }
 
     private var termsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                TextField("Search terms", text: $search)
+                TextField(L10n.tr("Search terms"), text: $search)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: search) { _, _ in page = 0 }
-                Button("Add term…") { editor = TermEditor(original: nil) }
+                Button(L10n.tr("Add term…")) { editor = TermEditor(original: nil) }
             }
             List(visibleTerms, id: \.self) { term in
                 HStack(spacing: 12) {
@@ -94,32 +94,32 @@ struct DictionaryView: View {
                         .help(term)
                     Spacer(minLength: 8)
                     Button { editor = TermEditor(original: term) } label: { Image(systemName: "pencil") }
-                        .accessibilityLabel("Edit \(term)").help("Edit term")
+                        .accessibilityLabel(L10n.format("Edit %@", term)).help(L10n.tr("Edit term"))
                     Button { termToDelete = term } label: { Image(systemName: "trash") }
-                        .accessibilityLabel("Delete \(term)").help("Delete term")
+                        .accessibilityLabel(L10n.format("Delete %@", term)).help(L10n.tr("Delete term"))
                 }
                 .padding(.vertical, 5)
             }
             .listStyle(.inset)
             .overlay {
                 if filteredTerms.isEmpty {
-                    emptyState(title: search.isEmpty ? "Your spellings belong here" : "No matching terms",
-                               detail: search.isEmpty ? "Add a name, project, or technical term, or confirm a suggestion in Review." : "Try another search or add a new term.",
+                    emptyState(title: search.isEmpty ? L10n.tr("Your spellings belong here") : L10n.tr("No matching terms"),
+                               detail: search.isEmpty ? L10n.tr("Add a name, project, or technical term, or confirm a suggestion in Review.") : L10n.tr("Try another search or add a new term."),
                                symbol: "character.book.closed")
                 }
             }
             HStack {
-                Text("Capitalization is preserved. Existing terms are never shortened.")
+                Text(L10n.tr("Capitalization is preserved. Existing terms are never shortened."))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if filteredTerms.count > pageSize {
                     Button { page = max(0, currentPage - 1) } label: { Image(systemName: "chevron.left") }
-                        .disabled(currentPage == 0).accessibilityLabel("Previous terms page")
+                        .disabled(currentPage == 0).accessibilityLabel(L10n.tr("Previous terms page"))
                     Text("\(currentPage + 1) / \((filteredTerms.count + pageSize - 1) / pageSize)")
                         .font(.caption).monospacedDigit()
                     Button { page = currentPage + 1 } label: { Image(systemName: "chevron.right") }
                         .disabled((currentPage + 1) * pageSize >= filteredTerms.count)
-                        .accessibilityLabel("Next terms page")
+                        .accessibilityLabel(L10n.tr("Next terms page"))
                 }
             }
         }
@@ -128,12 +128,12 @@ struct DictionaryView: View {
     private var reviewContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 7) {
-                Toggle("Automatically find suggestions in local history", isOn: $settings.dictionaryReviewEnabled)
+                Toggle(L10n.tr("Automatically find suggestions in local history"), isOn: $settings.dictionaryReviewEnabled)
                     .toggleStyle(.switch).controlSize(.small)
-                Text("Off by default. Scanning compares raw dictation with saved AI-polished text on this Mac; it sends nothing and makes no AI requests. AI edits can be wrong—accept only spellings you recognize.")
+                Text(L10n.tr("Off by default. Scanning compares raw dictation with saved AI-polished text on this Mac; it sends nothing and makes no AI requests. AI edits can be wrong—accept only spellings you recognize."))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
-                    Button(review.isScanning ? "Scanning…" : "Scan history") {
+                    Button(review.isScanning ? L10n.tr("Scanning…") : L10n.tr("Scan history")) {
                         review.scanHistory()
                         message = ""
                     }
@@ -141,7 +141,7 @@ struct DictionaryView: View {
                     if review.isScanning { ProgressView().controlSize(.small) }
                     Spacer()
                     if review.dismissedCount > 0 {
-                        Button("Reset dismissed (\(review.dismissedCount))…") { showResetDismissals = true }
+                        Button(L10n.format("Reset dismissed (%lld)…", review.dismissedCount)) { showResetDismissals = true }
                             .font(.caption)
                     }
                 }
@@ -151,23 +151,23 @@ struct DictionaryView: View {
 
             List(review.pendingCandidates) { candidate in
                 DictionaryCandidateRow(candidate: candidate, accept: {
-                    if review.accept(candidate) { message = "Added “\(candidate.term)” to My terms. No replacement rule was created." }
+                    if review.accept(candidate) { message = L10n.format("Added “%@” to My terms. No replacement rule was created.", candidate.term) }
                 }, dismiss: {
                     review.dismiss(candidate)
-                    message = "Dismissed “\(candidate.term)”. It will stay hidden until you reset dismissals."
+                    message = L10n.format("Dismissed “%@”. It will stay hidden until you reset dismissals.", candidate.term)
                 })
             }
             .listStyle(.inset)
             .overlay {
                 if review.pendingCandidates.isEmpty, !review.isScanning {
-                    emptyState(title: review.hasScanned ? "No spellings to review" : "Your history stays unscanned",
-                               detail: review.hasScanned ? "Only small spelling changes are suggested. You can always add a term yourself." : "Choose Scan history for a one-time local scan, or turn on automatic suggestions.",
+                    emptyState(title: review.hasScanned ? L10n.tr("No spellings to review") : L10n.tr("Your history stays unscanned"),
+                               detail: review.hasScanned ? L10n.tr("Only small spelling changes are suggested. You can always add a term yourself.") : L10n.tr("Choose Scan history for a one-time local scan, or turn on automatic suggestions."),
                                symbol: "text.magnifyingglass")
                 }
             }
             Text(review.hasScanned
-                 ? "\(review.lastScanEntryCount) recent entries scanned · Up to 100 suggestions · Edits and translations excluded"
-                 : "Scans up to 500 recent entries · Suggestions are never accepted automatically")
+                 ? L10n.format("%lld recent entries scanned · Up to 100 suggestions · Edits and translations excluded", review.lastScanEntryCount)
+                 : L10n.tr("Scans up to 500 recent entries · Suggestions are never accepted automatically"))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -195,24 +195,24 @@ private struct DictionaryCandidateRow: View {
                 Text(candidate.term).font(.system(.headline, design: .monospaced))
                     .textSelection(.enabled)
                 Spacer()
-                Text("\(candidate.occurrenceCount) \(candidate.occurrenceCount == 1 ? "dictation" : "dictations")")
+                Text(L10n.format(candidate.occurrenceCount == 1 ? "%lld dictation" : "%lld dictations", candidate.occurrenceCount))
                     .font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 6) {
-                evidence(label: "Heard", text: candidate.correction.sourceSnippet)
-                evidence(label: "Polished", text: candidate.correction.outputSnippet)
+                evidence(label: L10n.tr("Heard"), text: candidate.correction.sourceSnippet)
+                evidence(label: L10n.tr("Polished"), text: candidate.correction.outputSnippet)
             }
             HStack {
-                Text(candidate.date, format: .dateTime.month().day())
+                Text(candidate.date, format: .dateTime.month().day().locale(L10n.locale))
                     .font(.caption).foregroundStyle(.secondary)
                 if !candidate.app.isEmpty {
                     Text("· \(candidate.app)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Button("Dismiss", action: dismiss).help("Hide this spelling until dismissals are reset")
-                Button("Accept", action: accept)
-                    .help("Add this spelling to My terms, not a replacement rule")
-                    .accessibilityLabel("Accept \(candidate.term) into My terms")
+                Button(L10n.tr("Dismiss"), action: dismiss).help(L10n.tr("Hide this spelling until dismissals are reset"))
+                Button(L10n.tr("Accept"), action: accept)
+                    .help(L10n.tr("Add this spelling to My terms, not a replacement rule"))
+                    .accessibilityLabel(L10n.format("Accept %@ into My terms", candidate.term))
             }
         }
         .padding(.vertical, 9)
@@ -244,23 +244,23 @@ private struct DictionaryTermEditor: View {
     }
 
     private var validation: String? {
-        guard let term = DictionaryTerms.validated(text) else { return "Enter one non-empty term, without line breaks." }
-        if settings.dictionaryTerms.contains(term), term != original { return "This exact spelling is already in My terms." }
+        guard let term = DictionaryTerms.validated(text) else { return L10n.tr("Enter one non-empty term, without line breaks.") }
+        if settings.dictionaryTerms.contains(term), term != original { return L10n.tr("This exact spelling is already in My terms.") }
         return nil
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(original == nil ? "Add a term" : "Edit term").font(.title2.weight(.semibold))
-            Text("Use the spelling you want Talkless to recognize. Capitalization and spaces within the term are kept.")
+            Text(original == nil ? L10n.tr("Add a term") : L10n.tr("Edit term")).font(.title2.weight(.semibold))
+            Text(L10n.tr("Use the spelling you want Talkless to recognize. Capitalization and spaces within the term are kept."))
                 .font(.callout).foregroundStyle(.secondary)
-            TextField("Name, project, or technical term", text: $text)
+            TextField(L10n.tr("Name, project, or technical term"), text: $text)
                 .textFieldStyle(.roundedBorder).focused($focused)
             if let validation { Text(validation).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(original == nil ? "Add term" : "Save changes") { save() }
+                Button(L10n.tr("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(original == nil ? L10n.tr("Add term") : L10n.tr("Save changes")) { save() }
                     .keyboardShortcut(.defaultAction).disabled(validation != nil)
             }
         }

@@ -21,6 +21,13 @@ let vendor = try read(".build/checkouts/mlx-audio-swift/Sources/MLXAudioSTT/Mode
 let vendorParser = section(vendor, from: "    private func extractLanguage(", to: "    static func mergeLanguages(")
 let aliases = section(vendor, from: "private let qwen3ASRLanguageAliases:", to: "func getFeatExtractOutputLengths(")
 let stub = #"""
+// Extracted parser/state fixtures use deterministic English, never application preferences.
+private enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
 private enum TalklessError: Error { case message(String) }
 private struct VendorConfig { let supportLanguages = ["Chinese", "English", "Japanese"] }
 private struct PinnedVendorParser {

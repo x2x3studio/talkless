@@ -32,6 +32,9 @@ private struct RecorderPreview: View {
 struct ShortcutRecorderTests {
     @MainActor
     static func main() {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         var assertions = 0
         func check(_ value: @autoclosure () -> Bool, _ description: String) {
             assertions += 1
@@ -276,6 +279,19 @@ struct ShortcutRecorderTests {
         button.flagsChanged(with: event(.flagsChanged, 55))
         check(recordedTranslations == [TranslationShortcut(keyCode: 17, modifiers: .command)] && button.capture == nil,
               "Native chord saves once after all release")
+        ApplicationEditMenu.install()
+        button.beginCapture(initialFlags: [])
+        let pasteKey = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                       timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                       characters: "v", charactersIgnoringModifiers: "v", isARepeat: false, keyCode: 9)!
+        NSApp.sendEvent(pasteKey)
+        check(button.capture != nil && recordedTranslations.count == 1,
+              "active recorder consumes Cmd+V before installed Edit menu")
+        button.keyUp(with: event(.keyUp, 9, .command))
+        button.flagsChanged(with: event(.flagsChanged, 55))
+        check(recordedTranslations.last == TranslationShortcut(keyCode: 9, modifiers: .command),
+              "Cmd+V records as a shortcut instead of editing while capturing")
+        recordedTranslations.removeLast()
         button.beginCapture(initialFlags: [])
         button.keyDown(with: event(.keyDown, 9, .option))
         ShortcutRecorder.cancelCapture()

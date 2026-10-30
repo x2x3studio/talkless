@@ -186,10 +186,10 @@ final class Diagnostics: @unchecked Sendable {
         exporting = true
         defer { exporting = false }
         let panel = NSSavePanel()
-        panel.title = "Export Talkless Diagnostics"
+        panel.title = L10n.tr("Export Talkless Diagnostics")
         panel.message = includeCrashReports
-            ? "Includes original macOS crash reports, which may contain personal information and file paths. Review the ZIP before sharing."
-            : "Exports local event logs and basic system information. No audio, transcripts, credentials, or crash reports."
+            ? L10n.tr("Includes original macOS crash reports, which may contain personal information and file paths. Review the ZIP before sharing.")
+            : L10n.tr("Exports local event logs and basic system information. No audio, transcripts, credentials, or crash reports.")
         panel.allowedContentTypes = [.zip]
         panel.canCreateDirectories = true
         let formatter = DateFormatter()
@@ -203,8 +203,8 @@ final class Diagnostics: @unchecked Sendable {
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Could Not Export Diagnostics"
-            alert.informativeText = "Check that the destination is writable and has enough free space, then try again."
+            alert.messageText = L10n.tr("Could Not Export Diagnostics")
+            alert.informativeText = L10n.tr("Check that the destination is writable and has enough free space, then try again.")
             alert.alertStyle = .warning
             alert.runModal()
         }

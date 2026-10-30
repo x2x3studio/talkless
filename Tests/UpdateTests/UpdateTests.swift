@@ -24,6 +24,8 @@ import Sparkle
 
 @main struct UpdateTests {
     @MainActor static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let suite = "Talkless.UpdateTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -38,6 +40,8 @@ import Sparkle
         let info: [String: Any] = [
             "CFBundleIdentifier": "test.talkless.updater",
             "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": "0.2.0-beta.1",
+            "CFBundleVersion": "42",
             "TalklessDefaultUpdateChannel": "beta",
             "SUEnableAutomaticChecks": true,
             "SUAutomaticallyUpdate": false,
@@ -67,6 +71,21 @@ import Sparkle
             scheduleAutomaticCheck: clock.schedule, isDictationActive: { busy })
         let sparkle = SPUStandardUpdaterController.instances.last!.updater
         precondition(controller.channel == .beta)
+        precondition(controller.installedVersion == "0.2.0-beta.1 (build 42)")
+        precondition(controller.status == nil, "Configured does not mean up to date")
+        precondition(controller.lastUpdateCheckDate == nil && !controller.isUpdateSessionInProgress)
+        precondition(controller.checkForUpdatesTitle == "Check for updates…")
+        let checkDate = Date(timeIntervalSince1970: 1_798_000_000)
+        sparkle.lastUpdateCheckDate = checkDate
+        precondition(controller.lastUpdateCheckDate == checkDate)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        var stateNotifications = 0
+        let stateObservation = controller.objectWillChange.sink { stateNotifications += 1 }
+        sparkle.lastUpdateCheckDate = checkDate.addingTimeInterval(1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        precondition(stateNotifications > 0, "Last-check KVO must refresh settings")
+        stateObservation.cancel()
+        sparkle.lastUpdateCheckDate = checkDate
         precondition(controller.automaticallyChecksForUpdates)
         precondition(controller.canChangeAutomaticChecks && controller.canCheckForUpdates)
         precondition(UpdateController.automaticCheckInterval == 1800)
@@ -86,6 +105,11 @@ import Sparkle
         expectError(1) { try controller.updater(sparkle, shouldProceedWithUpdate: SUAppcastItem(channel: nil), updateCheck: .updates) }
         busy = false
         sparkle.sessionInProgress = true
+        precondition(controller.isUpdateSessionInProgress && controller.status?.contains("in progress") == true)
+        precondition(controller.checkForUpdatesTitle == "Show update…", "Existing Sparkle windows remain accessible")
+        sparkle.canCheckForUpdates = false
+        precondition(controller.checkForUpdatesTitle == "Update in progress…")
+        sparkle.canCheckForUpdates = true
         clock.fire()
         controller.selectChannel(.stable)
         precondition(sparkle.backgroundChecks == 1 && controller.channel == .beta)
@@ -95,6 +119,27 @@ import Sparkle
         clock.fire()
         precondition(sparkle.backgroundChecks == 1)
         sparkle.canCheckForUpdates = true
+
+        let checkFailure = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        controller.updater(sparkle, didFinishUpdateCycleFor: .updatesInBackground, error: checkFailure)
+        precondition(controller.lastUpdateError != nil && controller.status?.contains("failed") == true)
+        precondition(controller.lastUpdateCheckDate == checkDate, "Failed attempts must not imply up-to-date status")
+        try controller.updater(sparkle, mayPerform: .updates)
+        precondition(controller.lastUpdateError == nil && controller.status == nil)
+        for code in [SUError.noUpdateError, .installationCanceledError, .installationAuthorizeLaterError] {
+            controller.updater(sparkle, didFinishUpdateCycleFor: .updates,
+                error: NSError(domain: SUSparkleErrorDomain, code: Int(code.rawValue)))
+            precondition(controller.lastUpdateError == nil && controller.status == nil)
+        }
+        controller.updater(sparkle, didFinishUpdateCycleFor: .updates, error: checkFailure)
+        controller.updater(sparkle, didFinishUpdateCycleFor: .updates, error: nil)
+        precondition(controller.lastUpdateError == nil)
+        controller.updater(sparkle, didFinishUpdateCycleFor: .updates,
+            error: NSError(domain: NSURLErrorDomain, code: Int(SUError.noUpdateError.rawValue)))
+        precondition(controller.lastUpdateError != nil, "Only Sparkle-domain informational outcomes are excluded")
+        controller.selectChannel(.stable)
+        precondition(controller.lastUpdateError == nil, "Do not carry errors to a different feed")
+        controller.selectChannel(.beta)
 
         let cancelledTick = clock.active[0]
         controller.setAutomaticallyChecksForUpdates(false)
@@ -195,6 +240,22 @@ import Sparkle
         precondition(!development.canCheckForUpdates && SPUStandardUpdaterController.instances.isEmpty)
         precondition(defaults.object(forKey: "TalklessAutomaticallyChecksForUpdates") == nil,
                      "Unconfigured development builds must not seed a release preference")
+        precondition(development.lastUpdateCheckDate == nil && !development.isUpdateSessionInProgress)
+        localization.interfaceLanguage = .simplifiedChinese
+        precondition(development.status == L10n.tr("Updates are not configured for this build."),
+                     "Unavailable status must follow live interface language changes")
+        precondition(development.status != "Updates are not configured for this build.")
+        localization.interfaceLanguage = .english
+        var noVersionInfo = info
+        noVersionInfo.removeValue(forKey: "CFBundleVersion")
+        let noBuild = UpdateController(bundle: try bundle(noVersionInfo, app: false), defaults: defaults,
+            scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
+        precondition(noBuild.installedVersion == "0.2.0-beta.1")
+        noVersionInfo.removeValue(forKey: "CFBundleShortVersionString")
+        let noVersion = UpdateController(bundle: try bundle(noVersionInfo, app: false), defaults: defaults,
+            scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
+        precondition(noVersion.installedVersion == "Development build")
+        print("PASS installed version, live language, last-attempt date KVO, session titles, and error outcomes")
         clear()
         SPUUpdater.failStart = true
         let failedClock = FakeClock()

@@ -20,24 +20,24 @@ enum LLMClient {
 
         var errorDescription: String? {
             switch self {
-            case .invalidURL: "Use an HTTPS API URL without credentials, query, or fragment. HTTP is allowed only for localhost."
-            case .missingKey: "Enter an API key for this language model service."
-            case .missingModel: "Select or enter a language model ID."
-            case .invalidModel: "The model ID is invalid for this API protocol."
-            case .invalidKey: "The API key contains invalid characters."
-            case .invalidTimeout: "The language model timeout must be greater than zero and at most 120 seconds."
-            case .invalidTokenLimit: "Set a positive output token limit (at least 16 for Responses). Anthropic requires a limit."
-            case .invalidResponse: "The language model returned an invalid response. Check the selected API protocol."
-            case .emptyResponse: "The language model returned no final text."
-            case .incomplete: "The language model response was incomplete. The original text has not been replaced."
-            case .refusal: "The language model declined this request. The original text has not been replaced."
-            case .unsupportedToolCall: "The language model requested a tool, which is not supported for text polishing."
-            case .unsupportedThinking: "Disabling thinking is not verified for this model and API URL. Use the model default or choose a supported non-reasoning model."
-            case .httpStatus(let status): "Language model service returned HTTP \(status). Check the API URL, key, model, and protocol."
-            case .redirect: "The API redirected outside its origin or changed the request method. Enter its final API URL instead."
-            case .timedOut: "The language model request timed out."
-            case .network: "Could not connect to the language model service."
-            case .paginationLimit: "The model list exceeded the pagination limit or returned an invalid cursor."
+            case .invalidURL: L10n.tr("Use an HTTPS API URL without credentials, query, or fragment. HTTP is allowed only for localhost.")
+            case .missingKey: L10n.tr("Enter an API key for this language model service.")
+            case .missingModel: L10n.tr("Select or enter a language model ID.")
+            case .invalidModel: L10n.tr("The model ID is invalid for this API protocol.")
+            case .invalidKey: L10n.tr("The API key contains invalid characters.")
+            case .invalidTimeout: L10n.tr("The language model timeout must be greater than zero and at most 120 seconds.")
+            case .invalidTokenLimit: L10n.tr("Set a positive output token limit (at least 16 for Responses). Anthropic requires a limit.")
+            case .invalidResponse: L10n.tr("The language model returned an invalid response. Check the selected API protocol.")
+            case .emptyResponse: L10n.tr("The language model returned no final text.")
+            case .incomplete: L10n.tr("The language model response was incomplete. The original text has not been replaced.")
+            case .refusal: L10n.tr("The language model declined this request. The original text has not been replaced.")
+            case .unsupportedToolCall: L10n.tr("The language model requested a tool, which is not supported for text polishing.")
+            case .unsupportedThinking: L10n.tr("Disabling thinking is not verified for this model and API URL. Use the model default or choose a supported non-reasoning model.")
+            case .httpStatus(let status): L10n.format("Language model service returned HTTP %d. Check the API URL, key, model, and protocol.", status)
+            case .redirect: L10n.tr("The API redirected outside its origin or changed the request method. Enter its final API URL instead.")
+            case .timedOut: L10n.tr("The language model request timed out.")
+            case .network: L10n.tr("Could not connect to the language model service.")
+            case .paginationLimit: L10n.tr("The model list exceeded the pagination limit or returned an invalid cursor.")
             }
         }
     }
@@ -126,9 +126,9 @@ enum LLMClient {
 
     static func thinkingGuidance(config: Config) -> String {
         if config.thinking == .disabled && supportsDisablingThinking(config: config) {
-            return "Talkless requests thinking off using this model's documented parameter."
+            return L10n.tr("Talkless requests thinking off using this model's documented parameter.")
         }
-        return "Talkless does not request extra thinking. Some models reason by default or cannot disable reasoning; choose a non-reasoning model for faster polishing."
+        return L10n.tr("Talkless does not request extra thinking. Some models reason by default or cannot disable reasoning; choose a non-reasoning model for faster polishing.")
     }
 
     static func endpointURL(baseURL: String, apiProtocol: LLMProtocol, model: String = "") throws -> URL {

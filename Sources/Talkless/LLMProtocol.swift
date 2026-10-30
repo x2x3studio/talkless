@@ -10,10 +10,10 @@ enum LLMProtocol: String, Codable, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .chatCompletions: "OpenAI Chat Completions"
-        case .responses: "OpenAI Responses"
-        case .geminiGenerateContent: "Gemini Generate Content"
-        case .anthropicMessages: "Anthropic Messages"
+        case .chatCompletions: L10n.tr("OpenAI Chat Completions")
+        case .responses: L10n.tr("OpenAI Responses")
+        case .geminiGenerateContent: L10n.tr("Gemini Generate Content")
+        case .anthropicMessages: L10n.tr("Anthropic Messages")
         }
     }
 }
@@ -26,9 +26,9 @@ enum LLMAuthMode: String, Codable, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .automatic: "Protocol default"
-        case .bearer: "Bearer token"
-        case .apiKey: "API key header"
+        case .automatic: L10n.tr("Protocol default")
+        case .bearer: L10n.tr("Bearer token")
+        case .apiKey: L10n.tr("API key header")
         }
     }
 }
@@ -40,8 +40,8 @@ enum LLMThinkingMode: String, Codable, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .modelDefault: "Model default"
-        case .disabled: "Disable thinking (supported models only)"
+        case .modelDefault: L10n.tr("Model default")
+        case .disabled: L10n.tr("Disable thinking (supported models only)")
         }
     }
 }

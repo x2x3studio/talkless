@@ -17,6 +17,9 @@ struct HistoryEntry {
 @main
 struct ActivityViewTests {
     @MainActor static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         var assertions = 0
         func check(_ condition: @autoclosure () -> Bool, _ message: String) {
             assertions += 1

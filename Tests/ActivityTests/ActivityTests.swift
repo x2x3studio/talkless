@@ -18,6 +18,9 @@ import Foundation
 struct ActivityTests {
     @MainActor
     static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("talkless-activity-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }

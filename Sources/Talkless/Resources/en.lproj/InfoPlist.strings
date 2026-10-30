@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "Talkless needs microphone access to transcribe your speech.";
+"NSSpeechRecognitionUsageDescription" = "Talkless uses on-device speech recognition to turn speech into text.";

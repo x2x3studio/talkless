@@ -9,6 +9,7 @@ xcrun swiftc -swift-version 6 -emit-library -emit-module -module-name Sparkle \
   -emit-module-path "$WORK/Sparkle.swiftmodule" -o "$WORK/libSparkle.dylib"
 xcrun swiftc -swift-version 6 -parse-as-library -I "$WORK" -L "$WORK" -lSparkle \
   -Xlinker -rpath -Xlinker "$WORK" \
+  "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/UpdateController.swift" \
   "$ROOT/Tests/UpdateTests/UpdateTests.swift" -o "$WORK/update-tests"
 "$WORK/update-tests" "$WORK/fixtures"
@@ -17,6 +18,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$WORK" -L "$WORK" -lSparkle 
 FRAMEWORKS="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64"
 if [ -d "$FRAMEWORKS/Sparkle.framework" ]; then
   xcrun swiftc -swift-version 6 -typecheck -F "$FRAMEWORKS" \
+    "$ROOT/Sources/Talkless/L10n.swift" \
     "$ROOT/Sources/Talkless/UpdateController.swift"
   printf '%s\n' 'PASS typecheck against the real pinned Sparkle framework'
 else

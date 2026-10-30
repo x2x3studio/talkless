@@ -1,5 +1,9 @@
 import AppKit
 
+let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+localization.interfaceLanguage = .english
+defer { withExtendedLifetime(localization) {} }
+
 var checks = 0
 @MainActor func check(_ condition: @autoclosure () -> Bool, _ message: String) {
     checks += 1

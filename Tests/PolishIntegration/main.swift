@@ -306,6 +306,9 @@ func safeError(_ error: Error) -> String {
 struct PolishIntegration {
     @MainActor
     static func main() async {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         let environment = ProcessInfo.processInfo.environment
         guard environment["TALKLESS_RUN_LIVE_TESTS"] == "1" else {
             print("SKIP: live polishing tests require TALKLESS_RUN_LIVE_TESTS=1.")

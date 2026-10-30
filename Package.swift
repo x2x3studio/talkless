@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Talkless",
+    defaultLocalization: "en",
     platforms: [.macOS(.v26)],
     dependencies: [
         .package(
@@ -22,6 +23,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Talkless",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         )

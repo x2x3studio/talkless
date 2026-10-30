@@ -3,6 +3,7 @@ import SwiftUI
 /// Provider-first API settings. Requests are started only by the two explicit action buttons.
 @MainActor
 struct AIServiceSettingsView: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject private var settings: AppSettings
 
     init(settings: AppSettings = .shared) {
@@ -64,12 +65,12 @@ struct AIServiceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Shared AI service") {
+            Section(L10n.tr("Shared AI service")) {
                 AIServiceStatusView(settings: settings)
             }
 
-            Section("API provider") {
-                Picker("Provider", selection: Binding(
+            Section(L10n.tr("API provider")) {
+                Picker(L10n.tr("Provider"), selection: Binding(
                     get: { provider },
                     set: { newProvider in
                         invalidateEndpointRequests()
@@ -80,25 +81,27 @@ struct AIServiceSettingsView: View {
                         Text(provider.title).tag(provider)
                     }
                 }
+                .id(localization.locale.identifier)
                 .pickerStyle(.menu)
-                .accessibilityLabel("API provider")
+                .accessibilityLabel(L10n.tr("API provider"))
 
                 protocolControl
 
                 if provider == .custom {
-                    TextField("Base URL", text: $settings.llmBaseURL,
+                    TextField(L10n.tr("Base URL"), text: $settings.llmBaseURL,
                               prompt: Text("https://api.example.com/v1"))
-                    Picker("Authentication", selection: $settings.llmAuthMode) {
+                    Picker(L10n.tr("Authentication"), selection: $settings.llmAuthMode) {
                         ForEach(LLMAuthMode.allCases, id: \.self) { mode in
                             Text(mode.label).tag(mode)
                         }
                     }
+                    .id(localization.locale.identifier)
                 }
 
-                SecureField("API key", text: $settings.llmAPIKey)
+                SecureField(L10n.tr("API key"), text: $settings.llmAPIKey)
                     .help(provider == .custom
-                          ? "Stored in your Mac's Keychain. Localhost endpoints can use an empty key."
-                          : "Stored in your Mac's Keychain.")
+                          ? L10n.tr("Stored in your Mac's Keychain. Localhost endpoints can use an empty key.")
+                          : L10n.tr("Stored in your Mac's Keychain."))
 
                 if let error = settings.llmCredentialSaveError {
                     Text(error)
@@ -111,16 +114,16 @@ struct AIServiceSettingsView: View {
 
                 if provider == .openRouter {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Free router limits and availability vary. Other models may be paid.")
+                        Text(L10n.tr("Free router limits and availability vary. Other models may be paid."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        DisclosureGroup("About OpenRouter free") {
+                        DisclosureGroup(L10n.tr("About OpenRouter free")) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key.")
+                                Text(L10n.tr("openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key."))
                                     .foregroundStyle(.secondary)
                                 HStack(spacing: 12) {
-                                    Link("Get an API key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
-                                    Link("About the free router", destination: URL(string: "https://openrouter.ai/openrouter/free")!)
+                                    Link(L10n.tr("Get an API key"), destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                                    Link(L10n.tr("About the free router"), destination: URL(string: "https://openrouter.ai/openrouter/free")!)
                                 }
                             }
                             .font(.caption)
@@ -131,16 +134,16 @@ struct AIServiceSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
-                        Button(fetching ? "Fetching…" : "Fetch Models") { fetchModels() }
+                        Button(fetching ? L10n.tr("Fetching…") : L10n.tr("Fetch Models")) { fetchModels() }
                             .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .help("Fetch available models from this provider.")
+                            .help(L10n.tr("Fetch available models from this provider."))
                         if fetching { ProgressView().controlSize(.small) }
-                        Button(testing ? "Testing…" : "Test Connection") { testConnection() }
+                        Button(testing ? L10n.tr("Testing…") : L10n.tr("Test Connection")) { testConnection() }
                             .disabled(testing || fetching || !settings.llmConfigured)
-                            .help("Send a short test prompt using the current provider and model.")
+                            .help(L10n.tr("Send a short test prompt using the current provider and model."))
                         if testing { ProgressView().controlSize(.small) }
                     }
-                    Text("Runs only when clicked. Your provider may charge for tests.")
+                    Text(L10n.tr("Runs only when clicked. Your provider may charge for tests."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -148,11 +151,11 @@ struct AIServiceSettingsView: View {
                 if let modelStatus { statusView(modelStatus) }
                 if let connectionStatus { statusView(connectionStatus) }
 
-                DisclosureGroup("Data sent to AI") {
-                    Text("Test Connection sends only a fixed “Reply with OK” prompt—not your dictation, dictionary, or writing instructions.")
+                DisclosureGroup(L10n.tr("Data sent to AI")) {
+                    Text(L10n.tr("Test Connection sends only a fixed “Reply with OK” prompt—not your dictation, dictionary, or writing instructions."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Talkless does not request extra thinking; non-reasoning models may respond faster.")
+                    Text(L10n.tr("Talkless does not request extra thinking; non-reasoning models may respond faster."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -173,20 +176,21 @@ struct AIServiceSettingsView: View {
     @ViewBuilder
     private var protocolControl: some View {
         if provider == .openAI || provider == .custom {
-            Picker("Protocol", selection: $settings.llmProtocol) {
+            Picker(L10n.tr("Protocol"), selection: $settings.llmProtocol) {
                 ForEach(provider.protocolOptions, id: \.self) { apiProtocol in
                     Text(apiProtocol.label).tag(apiProtocol)
                 }
             }
+            .id(localization.locale.identifier)
         } else {
-            LabeledContent("Protocol", value: settings.llmProtocol.label)
+            LabeledContent(L10n.tr("Protocol"), value: settings.llmProtocol.label)
         }
     }
 
     @ViewBuilder
     private var modelControls: some View {
         if !remoteModels.isEmpty {
-            Picker("Model", selection: Binding(
+            Picker(L10n.tr("Model"), selection: Binding(
                 get: {
                     if !manualModelEntry, remoteModels.contains(where: { $0.id == settings.llmModel }) {
                         return ModelSelection.remote(settings.llmModel)
@@ -207,15 +211,16 @@ struct AIServiceSettingsView: View {
                     Text(modelTitle(model)).tag(ModelSelection.remote(model.id))
                 }
                 Divider()
-                Text("Enter model ID…").tag(ModelSelection.manual)
+                Text(L10n.tr("Enter model ID…")).tag(ModelSelection.manual)
             }
+            .id(localization.locale.identifier)
         }
 
         if remoteModels.isEmpty || manualModelEntry || !remoteModels.contains(where: { $0.id == settings.llmModel }) {
             VStack(alignment: .leading, spacing: 6) {
-                TextField("Model ID", text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
+                TextField(L10n.tr("Model ID"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
                 if remoteModels.isEmpty && modelStatus == nil {
-                    Text("Enter a model ID or fetch available models.")
+                    Text(L10n.tr("Enter a model ID or fetch available models."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -250,11 +255,11 @@ struct AIServiceSettingsView: View {
                 remoteModels = models
                 manualModelEntry = !models.contains(where: { $0.id == settings.llmModel })
                 modelStatus = .success(models.isEmpty
-                    ? "No models were listed. Enter a model ID manually."
-                    : "Fetched \(models.count) models. You can also enter a model ID manually.")
+                    ? L10n.tr("No models were listed. Enter a model ID manually.")
+                    : L10n.format("Fetched %d models. You can also enter a model ID manually.", models.count))
             } catch {
                 guard !Task.isCancelled, fetchRequestID == requestID, endpointIdentity == identity else { return }
-                modelStatus = .failure("Could not fetch models: \(error.localizedDescription) You can enter a model ID manually.")
+                modelStatus = .failure(L10n.format("Could not fetch models: %@ You can enter a model ID manually.", error.localizedDescription))
             }
             fetchRequestID = nil
             fetchTask = nil
@@ -280,11 +285,11 @@ struct AIServiceSettingsView: View {
                 )
                 guard !Task.isCancelled, testRequestID == requestID,
                       endpointIdentity == identity, settings.llmModel == model else { return }
-                connectionStatus = .success("Connection successful. The model returned a response.")
+                connectionStatus = .success(L10n.tr("Connection successful. The model returned a response."))
             } catch {
                 guard !Task.isCancelled, testRequestID == requestID,
                       endpointIdentity == identity, settings.llmModel == model else { return }
-                connectionStatus = .failure("Connection failed: \(error.localizedDescription)")
+                connectionStatus = .failure(L10n.format("Connection failed: %@", error.localizedDescription))
             }
             testRequestID = nil
             testTask = nil
@@ -313,6 +318,7 @@ struct AIServiceSettingsView: View {
 /// Feature pages provide navigation without starting requests or changing feature toggles.
 @MainActor
 struct AIServiceStatusView: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject private var settings: AppSettings
     private let onConfigureAI: (() -> Void)?
 
@@ -328,19 +334,19 @@ struct AIServiceStatusView: View {
                 .foregroundStyle(configured ? Color.secondary : Color.orange)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(configured ? "Configuration complete" : "Setup needed")
+                Text(configured ? L10n.tr("Configuration complete") : L10n.tr("Setup needed"))
                     .font(.body.weight(.medium))
                 Text(configured
-                     ? "Connection is not checked automatically."
-                     : "Check your provider, API key, and model.")
+                     ? L10n.tr("Connection is not checked automatically.")
+                     : L10n.tr("Check your provider, API key, and model."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if let onConfigureAI {
-                Button("AI service…", action: onConfigureAI)
-                    .help("Configure the shared provider and model, or test the connection.")
+                Button(L10n.tr("AI service…"), action: onConfigureAI)
+                    .help(L10n.tr("Configure the shared provider and model, or test the connection."))
             }
         }
         .padding(.vertical, 4)

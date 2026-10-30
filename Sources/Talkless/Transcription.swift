@@ -46,7 +46,7 @@ final class AppleSpeechSession: TranscriptionSession, @unchecked Sendable {
 
     private func setUp(locale: Locale, contextualStrings: [String], onStatus: @escaping @MainActor @Sendable (String) -> Void) async throws {
         guard let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
-            throw TalklessError.message("Apple on-device recognition does not support \(locale.identifier)")
+            throw TalklessError.message(L10n.format("Apple on-device recognition does not support %@", locale.identifier))
         }
         let transcriber = SpeechTranscriber(
             locale: supported,
@@ -62,7 +62,7 @@ final class AppleSpeechSession: TranscriptionSession, @unchecked Sendable {
         }
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
-            throw TalklessError.message("Cannot determine the audio format required for recognition")
+            throw TalklessError.message(L10n.tr("Cannot determine the audio format required for recognition"))
         }
 
         let analyzer = SpeechAnalyzer(modules: modules)
@@ -158,7 +158,7 @@ final class AppleSpeechSession: TranscriptionSession, @unchecked Sendable {
     /// Download the model in advance to avoid delaying the first dictation.
     static func prepareAssets(locale: Locale) async throws {
         guard let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
-            throw TalklessError.message("Apple on-device recognition does not support \(locale.identifier)")
+            throw TalklessError.message(L10n.format("Apple on-device recognition does not support %@", locale.identifier))
         }
         let transcriber = SpeechTranscriber(locale: supported, preset: .transcription)
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -225,7 +225,7 @@ final class CloudTranscriptionSession: TranscriptionSession, @unchecked Sendable
     static func transcribe(samples: [Float], config: Config, session: URLSession = .shared) async throws -> String {
         guard let url = URL(string: config.baseURL.trimmingCharacters(in: .whitespaces))?
             .appendingPathComponent("audio/transcriptions") else {
-            throw TalklessError.message("Invalid speech recognition API URL")
+            throw TalklessError.message(L10n.tr("Invalid speech recognition API URL"))
         }
         let boundary = "talkless-\(UUID().uuidString)"
         var body = Data()
@@ -260,7 +260,7 @@ enum HTTP {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data.prefix(300), encoding: .utf8) ?? ""
-            throw TalklessError.message("HTTP \(http.statusCode): \(body)")
+            throw TalklessError.message(L10n.format("HTTP %d: %@", http.statusCode, body))
         }
     }
 }

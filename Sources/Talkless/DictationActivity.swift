@@ -82,14 +82,14 @@ final class DictationActivityStore: ObservableObject {
             // New installations track from now; existing transcript history is never imported.
         } catch {
             // A damaged/unsupported file cannot establish earlier coverage.
-            readError = "Activity data could not be read. Tracking restarted from now."
+            readError = L10n.tr("Activity data could not be read. Tracking restarted from now.")
         }
         snapshot = loaded
         errorMessage = readError
         prune(&loaded, at: instant)
         snapshot = loaded
         // Persist the baseline immediately, even before the first dictation.
-        if !persist(loaded) { errorMessage = "Activity data could not be saved." }
+        if !persist(loaded) { errorMessage = L10n.tr("Activity data could not be saved.") }
     }
 
     func dayKey(for date: Date) -> String {
@@ -166,7 +166,7 @@ final class DictationActivityStore: ObservableObject {
             // Retry pending counts with the next write, while still telling the UI they are
             // not durable. Reset is different: do not claim a clear that failed on disk.
             if keepOnFailure { snapshot = updated }
-            errorMessage = "Activity data could not be saved. Some dictations may be missing."
+            errorMessage = L10n.tr("Activity data could not be saved. Some dictations may be missing.")
             return false
         }
         snapshot = updated

@@ -22,6 +22,9 @@ import AppKit
 
 @main struct MenuIconTests {
     @MainActor static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         _ = NSApplication.shared
         var rendered: [Data] = []
         for state in MenuBarIcon.State.allCases {
@@ -71,5 +74,6 @@ func run(_ executable: String, _ arguments: [String]) throws {
 }
 let binary = directory.appendingPathComponent("menu-icon-tests")
 try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library", source.path,
+    root.appendingPathComponent("Sources/Talkless/L10n.swift").path,
     root.appendingPathComponent("Sources/Talkless/MenuBarIcon.swift").path, "-o", binary.path])
 try run(binary.path, Array(CommandLine.arguments.dropFirst()))

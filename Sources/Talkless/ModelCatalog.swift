@@ -47,10 +47,19 @@ struct ModelManifest: Codable, Equatable, Sendable {
 struct CatalogModel: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
-    let summary: String
+    private let summaryKey: String
+    var summary: String { L10n.tr(summaryKey) }
     let isRecommended: Bool
     let manifest: ModelManifest
     var totalBytes: Int64 { manifest.totalBytes }
+
+    init(id: String, name: String, summary: String, isRecommended: Bool, manifest: ModelManifest) {
+        self.id = id
+        self.name = name
+        self.summaryKey = summary
+        self.isRecommended = isRecommended
+        self.manifest = manifest
+    }
 }
 
 enum ModelDownloadSource: Codable, Equatable, Sendable {
@@ -63,7 +72,7 @@ enum ModelDownloadSource: Codable, Equatable, Sendable {
         switch self {
         case .huggingFace: "Hugging Face"
         case .hfMirror: "HF Mirror"
-        case .custom: "Custom Mirror"
+        case .custom: L10n.tr("Custom Mirror")
         }
     }
 
@@ -99,16 +108,16 @@ enum ModelManagementError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidManifest: "The model manifest is invalid."
-        case .invalidSource: "Use an HTTPS mirror URL without credentials, a query, or a fragment."
-        case .unknownModel: "This model is not in the managed catalogue."
-        case .busy: "Wait for the current model operation to finish, or cancel its download."
-        case .notInstalled: "Download and verify this model before using it."
-        case .unsafePath: "The model folder contains an unsafe path or symbolic link. No files were removed."
-        case .unmanagedDirectory: "This folder is not a verified Talkless-managed model. Move it yourself before downloading here."
-        case .corruptFile(let name): "Verification failed for \(name). Retry to download a clean copy."
-        case .download(let message): "Model download failed: \(message)"
-        case .coordinationRequired: "Stop dictation and unload the active model before changing it."
+        case .invalidManifest: L10n.tr("The model manifest is invalid.")
+        case .invalidSource: L10n.tr("Use an HTTPS mirror URL without credentials, a query, or a fragment.")
+        case .unknownModel: L10n.tr("This model is not in the managed catalogue.")
+        case .busy: L10n.tr("Wait for the current model operation to finish, or cancel its download.")
+        case .notInstalled: L10n.tr("Download and verify this model before using it.")
+        case .unsafePath: L10n.tr("The model folder contains an unsafe path or symbolic link. No files were removed.")
+        case .unmanagedDirectory: L10n.tr("This folder is not a verified Talkless-managed model. Move it yourself before downloading here.")
+        case .corruptFile(let name): L10n.format("Verification failed for %@. Retry to download a clean copy.", name)
+        case .download(let message): L10n.format("Model download failed: %@", message)
+        case .coordinationRequired: L10n.tr("Stop dictation and unload the active model before changing it.")
         }
     }
 }
@@ -120,7 +129,7 @@ enum ModelCatalog {
     // 2026-10-30. It can redirect to Hugging Face; it is not guaranteed to bypass network
     // restrictions. Every downloaded byte is still checked against this HF manifest.
     // No ModelScope entry: the reference app's Q8 GGUF mirror is not these MLX weights.
-    static let mirrorNotice = "HF Mirror serves the same pinned files and may redirect to Hugging Face. Availability depends on your network."
+    static var mirrorNotice: String { L10n.tr("HF Mirror serves the same pinned files and may redirect to Hugging Face. Availability depends on your network.") }
 
     /// HF API /api/models/{repository}/revision/{revision}?blobs=true, checked 2026-10-30.
     /// Weight checksums are LFS SHA-256, not Git blob IDs. Small-file SHA-256 values

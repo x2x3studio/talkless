@@ -7,16 +7,16 @@ enum DictationActivityMetric: String, CaseIterable, Identifiable {
     var id: Self { self }
     var title: String {
         switch self {
-        case .characters: "Characters"
-        case .dictations: "Dictations"
-        case .minutes: "Minutes"
+        case .characters: L10n.tr("Characters")
+        case .dictations: L10n.tr("Dictations")
+        case .minutes: L10n.tr("Minutes")
         }
     }
     var explanation: String {
         switch self {
-        case .characters: "Characters in final dictation output, not words or tokens."
-        case .dictations: "Completed dictations. Edits and translations are not included."
-        case .minutes: "Recorded audio time for completed dictations."
+        case .characters: L10n.tr("Characters in final dictation output, not words or tokens.")
+        case .dictations: L10n.tr("Completed dictations. Edits and translations are not included.")
+        case .minutes: L10n.tr("Recorded audio time for completed dictations.")
         }
     }
     var legendLabels: [String] {
@@ -52,6 +52,8 @@ struct DictationActivityCell: Identifiable {
         case tracked = "Tracked"
         case today = "So far today"
         case future = "Future"
+
+        var title: String { L10n.tr(rawValue) }
     }
 
     let date: Date
@@ -64,23 +66,23 @@ struct DictationActivityCell: Identifiable {
         guard let total else { return "—" }
         let value: String
         switch metric {
-        case .characters: value = total.characters.formatted()
-        case .dictations: value = total.dictations.formatted()
+        case .characters: value = total.characters.formatted(.number.locale(L10n.locale))
+        case .dictations: value = total.dictations.formatted(.number.locale(L10n.locale))
         case .minutes:
             value = total.duration > 0 && total.duration < 6
-                ? "<0.1" : (total.duration / 60).formatted(.number.precision(.fractionLength(1)))
+                ? "<0.1" : (total.duration / 60).formatted(.number.precision(.fractionLength(1)).locale(L10n.locale))
         }
         return value
     }
 
     var readout: String {
         guard let total else {
-            return coverage == .future ? "\(day) · Future date" : "\(day) · Not recorded — tracking had not started"
+            return coverage == .future ? L10n.format("%@ · Future date", day) : L10n.format("%@ · Not recorded — tracking had not started", day)
         }
-        let seconds = total.duration.formatted(.number.precision(.fractionLength(0...2)))
-        let status = coverage == .partial ? " · Since tracking began"
-            : coverage == .today ? " · So far today" : ""
-        return "\(day) · \(total.characters.formatted()) characters · \(total.dictations.formatted()) dictations · \(seconds) seconds\(status)"
+        let seconds = total.duration.formatted(.number.precision(.fractionLength(0...2)).locale(L10n.locale))
+        let status = coverage == .partial ? L10n.tr(" · Since tracking began")
+            : coverage == .today ? L10n.tr(" · So far today") : ""
+        return L10n.format("%@ · %@ characters · %@ dictations · %@ seconds%@", day, total.characters.formatted(.number.locale(L10n.locale)), total.dictations.formatted(.number.locale(L10n.locale)), seconds, status)
     }
 }
 
@@ -124,6 +126,12 @@ enum DictationActivityLayout {
         }
     }
 
+    static func weekdayLabels(calendar: Calendar) -> [String] {
+        var displayCalendar = calendar
+        displayCalendar.locale = L10n.locale
+        return displayCalendar.veryShortStandaloneWeekdaySymbols
+    }
+
     static func monthLabel(week: Int, cells: [DictationActivityCell], calendar: Calendar) -> String? {
         let start = week * 7
         guard start < cells.count else { return nil }
@@ -134,7 +142,7 @@ enum DictationActivityLayout {
         else { return nil }
         // The final column cannot hold a month label; the explicit date range still names its dates.
         guard week == 0 || start + 7 < cells.count else { return nil }
-        return date.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US"),
+        return date.formatted(Date.FormatStyle(locale: L10n.locale,
                                                calendar: calendar, timeZone: calendar.timeZone).month(.abbreviated))
     }
 }
@@ -206,55 +214,55 @@ struct DictationActivityView: View {
                                                        days: store.days, trackingStartedAt: store.trackingStartedAt)
             content(cells: cells, calendar: calendar, now: now)
         }
-        .confirmationDialog("Clear daily activity?", isPresented: $confirmsReset, titleVisibility: .visible) {
-            Button("Clear activity", role: .destructive) {
+        .confirmationDialog(L10n.tr("Clear daily activity?"), isPresented: $confirmsReset, titleVisibility: .visible) {
+            Button(L10n.tr("Clear activity"), role: .destructive) {
                 resetFailed = !store.reset()
                 if !resetFailed { selection = nil }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.tr("Cancel"), role: .cancel) {}
         } message: {
-            Text("This permanently clears daily totals and starts a new tracking baseline. Transcript history is not deleted.")
+            Text(L10n.tr("This permanently clears daily totals and starts a new tracking baseline. Transcript history is not deleted."))
         }
-        .alert("Activity could not be cleared", isPresented: $resetFailed) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.tr("Activity could not be cleared"), isPresented: $resetFailed) {
+            Button(L10n.tr("OK"), role: .cancel) {}
         } message: {
-            Text("Your existing totals were kept. Check available disk space and try again.")
+            Text(L10n.tr("Your existing totals were kept. Check available disk space and try again."))
         }
     }
 
     private func content(cells: [DictationActivityCell], calendar: Calendar, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .center, spacing: 12) {
-                Text("Activity")
+                Text(L10n.tr("Activity"))
                     .font(.system(size: 20, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Picker("Date range", selection: $weeks) {
-                    Text("Last 3 months").tag(13)
-                    Text("Last 6 months").tag(26)
-                    Text("Last year").tag(52)
+                Picker(L10n.tr("Date range"), selection: $weeks) {
+                    Text(L10n.tr("Last 3 months")).tag(13)
+                    Text(L10n.tr("Last 6 months")).tag(26)
+                    Text(L10n.tr("Last year")).tag(52)
                 }
                 .labelsHidden()
                 .fixedSize()
                 .controlSize(.small)
                 Menu {
-                    Button(showsTable ? "Show calendar" : "Show daily table") { showsTable.toggle() }
-                    Button("About these statistics") { showsInfo = true }
+                    Button(showsTable ? L10n.tr("Show calendar") : L10n.tr("Show daily table")) { showsTable.toggle() }
+                    Button(L10n.tr("About these statistics")) { showsInfo = true }
                     Divider()
-                    Button("Clear activity…", role: .destructive) { confirmsReset = true }
+                    Button(L10n.tr("Clear activity…"), role: .destructive) { confirmsReset = true }
                 } label: {
                     Image(systemName: "ellipsis").frame(width: 20, height: 20)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .accessibilityLabel("Activity options")
+                .accessibilityLabel(L10n.tr("Activity options"))
                 .popover(isPresented: $showsInfo) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("About activity").font(.headline)
-                        Text("Counts completed dictation only. Characters are final text, not words or tokens. Edits and translations are excluded.")
-                        Text("Tracking began \(store.trackingStartedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, calendar: calendar, timeZone: calendar.timeZone))). Earlier days were not recorded. The first day and today may be partial.")
-                        Text("Dates use \(store.timeZoneIdentifier). Totals stay on this Mac and contain no transcript text. Clearing history does not clear activity.")
+                        Text(L10n.tr("About activity")).font(.headline)
+                        Text(L10n.tr("Counts completed dictation only. Characters are final text, not words or tokens. Edits and translations are excluded."))
+                        Text(L10n.format("Tracking began %@. Earlier days were not recorded. The first day and today may be partial.", store.trackingStartedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L10n.locale, calendar: calendar, timeZone: calendar.timeZone))))
+                        Text(L10n.format("Dates use %@. Totals stay on this Mac and contain no transcript text. Clearing history does not clear activity.", store.timeZoneIdentifier))
                     }
                     .font(.callout)
                     .padding(18)
@@ -303,11 +311,11 @@ struct DictationActivityView: View {
         let activeDays = totals.filter { $0.dictations > 0 }.count
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 0) {
-                summaryMetric(.characters, value: characters.formatted(.number.precision(.fractionLength(0))), label: "Characters")
-                summaryMetric(.dictations, value: dictations.formatted(.number.precision(.fractionLength(0))), label: "Dictations")
-                summaryMetric(.minutes, value: durationLabel(minutes), label: "Recorded time")
+                summaryMetric(.characters, value: characters.formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), label: L10n.tr("Characters"))
+                summaryMetric(.dictations, value: dictations.formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), label: L10n.tr("Dictations"))
+                summaryMetric(.minutes, value: durationLabel(minutes), label: L10n.tr("Recorded time"))
             }
-            Text("\(activeDays) active \(activeDays == 1 ? "day" : "days") in this period")
+            Text(L10n.format(activeDays == 1 ? "%lld active day in this period" : "%lld active days in this period", activeDays))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -333,21 +341,21 @@ struct DictationActivityView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Show daily \(item.title.lowercased())")
-        .accessibilityLabel("\(label): \(value). Show in calendar.")
+        .help(L10n.format("Show daily %@", item.title.lowercased()))
+        .accessibilityLabel(L10n.format("%@: %@. Show in calendar.", label, value))
         .accessibilityAddTraits(metric == item ? .isSelected : [])
     }
 
     private func durationLabel(_ minutes: Double) -> String {
         if minutes >= 60 {
-            return "\((minutes / 60).rounded(.down).formatted(.number.precision(.fractionLength(0))))h \(minutes.truncatingRemainder(dividingBy: 60).rounded(.down).formatted(.number.precision(.fractionLength(0))))m"
+            return L10n.format("%@h %@m", (minutes / 60).rounded(.down).formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), minutes.truncatingRemainder(dividingBy: 60).rounded(.down).formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)))
         }
-        if minutes > 0 && minutes < 1 { return "<1m" }
-        return "\(Int(minutes))m"
+        if minutes > 0 && minutes < 1 { return L10n.tr("<1m") }
+        return L10n.format("%lldm", Int(minutes))
     }
 
     private func dateLabel(_ date: Date, calendar: Calendar, includeYear: Bool = false) -> String {
-        let style = Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone)
+        let style = Date.FormatStyle(locale: L10n.locale, calendar: calendar, timeZone: calendar.timeZone)
             .month(.abbreviated).day()
         return date.formatted(includeYear ? style.year() : style)
     }
@@ -355,22 +363,22 @@ struct DictationActivityView: View {
     private func dayDetails(_ cell: DictationActivityCell?, calendar: Calendar, now: Date) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             if let cell {
-                Text(calendar.isDate(cell.date, inSameDayAs: now) ? "Today" : dateLabel(cell.date, calendar: calendar))
+                Text(calendar.isDate(cell.date, inSameDayAs: now) ? L10n.tr("Today") : dateLabel(cell.date, calendar: calendar))
                     .font(.system(size: 11, weight: .medium))
                 Spacer(minLength: 8)
                 if let total = cell.total {
-                    Text("\(total.characters.formatted()) characters · \(total.dictations) \(total.dictations == 1 ? "dictation" : "dictations") · \(durationLabel(total.duration / 60))")
+                    Text(L10n.format(total.dictations == 1 ? "%@ characters · %lld dictation · %@" : "%@ characters · %lld dictations · %@", total.characters.formatted(.number.locale(L10n.locale)), total.dictations, durationLabel(total.duration / 60)))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Not recorded").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L10n.tr("Not recorded")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
         }
         .frame(minHeight: 18)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Selected day")
-        .accessibilityValue(cell?.readout ?? "No activity data")
+        .accessibilityLabel(L10n.tr("Selected day"))
+        .accessibilityValue(cell?.readout ?? L10n.tr("No activity data"))
     }
 
     private func heatmap(cells: [DictationActivityCell], calendar: Calendar) -> some View {
@@ -378,7 +386,7 @@ struct DictationActivityView: View {
             HStack(alignment: .top, spacing: 4) {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 20)
-                    ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, label in
+                    ForEach(Array(DictationActivityLayout.weekdayLabels(calendar: calendar).enumerated()), id: \.offset) { _, label in
                         Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
                             .frame(width: 12, height: cellPitch)
                     }
@@ -401,7 +409,7 @@ struct DictationActivityView: View {
         }
         .defaultScrollAnchor(.trailing)
         .defaultScrollAnchor(.leading, for: .alignment)
-        .accessibilityLabel("Daily \(metric.title.lowercased()) calendar, Sunday through Saturday")
+        .accessibilityLabel(L10n.format("Daily %@ calendar, Sunday through Saturday", metric.title.lowercased()))
     }
 
     private func dayButton(_ cell: DictationActivityCell, cells: [DictationActivityCell]) -> some View {
@@ -456,34 +464,34 @@ struct DictationActivityView: View {
 
     private var legend: some View {
         HStack(spacing: 4) {
-            Text("Less").padding(.trailing, 2)
+            Text(L10n.tr("Less")).padding(.trailing, 2)
             ForEach(0..<5, id: \.self) { bucket in
                 swatch(bucket: bucket)
-                    .help(metric == .minutes && bucket == 1 ? "More than 0 and less than 1 minute per day" : "\(metric.legendLabels[bucket]) \(metric.title.lowercased()) per day")
+                    .help(metric == .minutes && bucket == 1 ? L10n.tr("More than 0 and less than 1 minute per day") : L10n.format("%@ %@ per day", metric.legendLabels[bucket], metric.title.lowercased()))
             }
-            Text("More").padding(.leading, 2)
+            Text(L10n.tr("More")).padding(.leading, 2)
         }
         .font(.system(size: 10))
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(metric.title) per day. Not recorded; \(metric.legendLabels.joined(separator: "; ")).")
+        .accessibilityLabel(L10n.format("%@ per day. Not recorded; %@.", metric.title, metric.legendLabels.joined(separator: "; ")))
     }
 
     private func activityTable(cells: [DictationActivityCell]) -> some View {
         Table(Array(cells.reversed()), selection: $selection) {
-            TableColumn("Date") { cell in Text(cell.day) }.width(82)
-            TableColumn("Characters") { cell in Text(cell.formatted(.characters)).frame(maxWidth: .infinity, alignment: .trailing) }
+            TableColumn(L10n.tr("Date")) { cell in Text(cell.day) }.width(82)
+            TableColumn(L10n.tr("Characters")) { cell in Text(cell.formatted(.characters)).frame(maxWidth: .infinity, alignment: .trailing) }
                 .width(min: 68, ideal: 74)
-            TableColumn("Dictations") { cell in Text(cell.formatted(.dictations)).frame(maxWidth: .infinity, alignment: .trailing) }
+            TableColumn(L10n.tr("Dictations")) { cell in Text(cell.formatted(.dictations)).frame(maxWidth: .infinity, alignment: .trailing) }
                 .width(min: 60, ideal: 66)
-            TableColumn("Minutes") { cell in Text(cell.formatted(.minutes)).frame(maxWidth: .infinity, alignment: .trailing) }
+            TableColumn(L10n.tr("Minutes")) { cell in Text(cell.formatted(.minutes)).frame(maxWidth: .infinity, alignment: .trailing) }
                 .width(min: 56, ideal: 60)
-            TableColumn("Coverage") { cell in Text(cell.coverage.rawValue).foregroundStyle(.secondary) }
+            TableColumn(L10n.tr("Coverage")) { cell in Text(cell.coverage.title).foregroundStyle(.secondary) }
                 .width(min: 86, ideal: 98)
         }
         .font(.caption)
         .monospacedDigit()
         .frame(height: 230)
-        .accessibilityLabel("Daily activity table. Not recorded and future values are not zero. Since start means the first day of tracking.")
+        .accessibilityLabel(L10n.tr("Daily activity table. Not recorded and future values are not zero. Since start means the first day of tracking."))
     }
 }

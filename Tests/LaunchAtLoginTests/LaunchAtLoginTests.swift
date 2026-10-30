@@ -35,6 +35,9 @@ private final class FakeLoginService: LaunchAtLoginService {
 @main
 struct LaunchAtLoginTests {
     @MainActor static func main() async {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         await lifecycleAndApproval()
         await failuresAndAvailability()
         await serialUpdates()

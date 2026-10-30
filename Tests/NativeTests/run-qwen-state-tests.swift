@@ -29,6 +29,13 @@ let sessionProtocol = transcription.components(separatedBy: "// MARK: - On-devic
 let stub = #"""
 import AVFoundation
 import Foundation
+// Extracted state-machine fixtures use deterministic English, never application preferences.
+private enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
 private enum TalklessError: Error { case message(String) }
 private actor QwenModelRuntime {
     static let shared = QwenModelRuntime()

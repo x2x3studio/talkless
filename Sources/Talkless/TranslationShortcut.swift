@@ -19,24 +19,24 @@ struct TranslationShortcut: Codable, Equatable, Sendable {
     static let disabled = Self(keyCode: nil, modifiers: [])
 
     var title: String {
-        guard let keyCode else { return "Disabled" }
+        guard let keyCode else { return L10n.tr("Disabled") }
         return (modifiers.contains(.control) ? "⌃" : "")
             + (modifiers.contains(.option) ? "⌥" : "")
             + (modifiers.contains(.shift) ? "⇧" : "")
             + (modifiers.contains(.command) ? "⌘" : "")
-            + (Self.keyNames[keyCode] ?? "Key \(keyCode)")
+            + (Self.keyNames[keyCode] ?? L10n.format("Key %d", Int(keyCode)))
     }
 
     var validationError: String? {
         guard let keyCode else {
-            return modifiers.isEmpty ? nil : "A disabled shortcut cannot have modifiers."
+            return modifiers.isEmpty ? nil : L10n.tr("A disabled shortcut cannot have modifiers.")
         }
         guard Self.keyNames[keyCode] != nil else {
-            return "Use a letter, number, punctuation, arrow, Space, Tab, or Return key."
+            return L10n.tr("Use a letter, number, punctuation, arrow, Space, Tab, or Return key.")
         }
         guard modifiers.subtracting(.all).isEmpty,
               !modifiers.intersection([.command, .control, .option]).isEmpty else {
-            return "Include Command, Control, or Option with a non-modifier key."
+            return L10n.tr("Include Command, Control, or Option with a non-modifier key.")
         }
         // These common macOS shortcuts may never reach local capture or Carbon registration.
         let reserved = (keyCode == 49 && (modifiers == .command || modifiers == [.command, .option]
@@ -46,7 +46,7 @@ struct TranslationShortcut: Codable, Equatable, Sendable {
             || (keyCode == 2 && modifiers == [.command, .option])
             || (keyCode == 12 && modifiers == [.command, .control])
             || ([123, 124, 125, 126].contains(keyCode) && modifiers == .control)
-        return reserved ? "That combination is reserved by macOS. Record a different shortcut." : nil
+        return reserved ? L10n.tr("That combination is reserved by macOS. Record a different shortcut.") : nil
     }
 
     private static let keyNames: [UInt16: String] = [

@@ -215,8 +215,9 @@ func verifySigningConfiguration(_ info: [String: Any], version: String, build: S
 func release(context: ToolContext, version: String, build: String) throws {
     try validateVersion(version, build: build)
     let channel = context.environment["RELEASE_CHANNEL", default: "beta"]
-    _ = try releaseTag(version: version, build: build, channel: channel)
+    let tag = try releaseTag(version: version, build: build, channel: channel)
     let configuration = try UpdaterConfiguration(environment: context.environment)
+    let releaseNotes = try pendingReleaseNotes(context: context, tag: tag)
     try requireSigningTools(["op", "security", "codesign", "xcrun", "swift", "ditto", "hdiutil", "git"], context: context)
     var environment = context.environment
     environment.removeValue(forKey: "OP_SERVICE_ACCOUNT_TOKEN")
@@ -236,6 +237,7 @@ func release(context: ToolContext, version: String, build: String) throws {
     defer { try? FileManager.default.removeItem(at: secretDirectory) }
     let stage = try signingDirectory(parent: releases, prefix: ".talkless-release-")
     defer { try? FileManager.default.removeItem(at: stage) }
+    try releaseNotes.write(to: stage, version: version, build: build, channel: channel)
     let session = SigningSession(context: context, directory: secretDirectory, environment: environment)
     defer { session.close() }
     print("Preparing a temporary signing session (credential output is suppressed).")

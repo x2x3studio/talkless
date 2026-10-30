@@ -12,6 +12,16 @@ These are the configured release paths, not a guarantee that the latest source c
 - Local `release-macos.sh` builds artifacts only. Local `publish-release.sh` defaults to a draft; the trusted workflow explicitly passes `--publish` and `PUBLIC_RELEASE_ACK=x2x3studio/talkless`.
 - Self-hosted release jobs never execute pull-request code. The unique `talkless-macos-arm64` runner serializes full release jobs and preserves every queued main/tag request. Do not add another runner with this release label without a publication lock. GitHub concurrency groups are deliberately not used: they replace older pending runs even with cancellation disabled. Build numbers are assigned when a job actually starts.
 
+## Required bilingual release notes
+
+Before every beta or stable release, update both root changelogs: [CHANGELOG.md](../CHANGELOG.md) in English and [CHANGELOG.zh-Hans.md](../CHANGELOG.zh-Hans.md) in Simplified Chinese. Each must contain exactly one literal `## Unreleased` heading, kept in English in both files. Its body accepts only blank lines, optional `### ` headings and single-line `- ` plain-text bullets. Each heading must be followed by at least one bullet before another heading or the section end; each language needs at least one bullet. Inline Markdown, links, images and HTML are not rendered. Move older entries below another `## ` heading; only Unreleased is published.
+
+Notes must be human-written and specific to the release. Before accessing signing credentials, the build rejects unchanged pending notes in either language against the most recent other local release tag containing that changelog. Keep local release tags available (CI uses `fetch-depth: 0`); this offline check cannot detect missing tags. Stable releases also need updated notes, not an unchanged beta copy.
+
+Each build snapshots both languages into version/build/channel-specific `release-notes.md` and safely escaped `release-notes.html`. The HTML includes both language sections and local navigation, with no scripts or remote resources. GitHub's release body uses the same snapshot. Sparkle's standard update window loads the HTML through `sparkle:releaseNotesLink` at the immutable version-tag asset URL, not a mutable source changelog. Publication validates hashes, snapshot identity, HTML rendering and appcast links before network access. Previously built schema 1 artifacts remain supported; new schema 2 builds require both note files.
+
+Source, tests and documentation remain English except the approved `en.lproj`/`zh-Hans.lproj` app string catalogs and root `CHANGELOG.zh-Hans.md`; do not put translations inline in Swift or English documentation.
+
 ## Prerequisites and current setup
 
 An Apple Silicon Mac needs Xcode command-line tools, Swift compatible with `Package.swift`, 1Password CLI (`op`), and GitHub CLI (`gh`). Build/sign/install/publish tooling uses Shell plus the standalone Swift package in `Tools/ReleaseTool`, without Python. Separate audio regression tests and optional fixture generation still use Python. Use pinned package dependencies and a clean, committed checkout. Do not run another app build against the same checkout during a release.
@@ -89,8 +99,9 @@ Artifacts in `dist/releases/0.1.0-1/` are:
 
 - `Talkless-0.1.0-1-arm64.zip`
 - `Talkless-0.1.0-1-arm64.dmg`
-- `SHA256SUMS` (ZIP, DMG, and generated feeds)
-- `release-metadata.json` (version/build/channel, commit, signing/notarization status, updater URLs, artifact sizes/hashes; no wall-clock fields or secrets)
+- `release-notes.md` and `release-notes.html` (bilingual snapshots for this version/build/channel)
+- `SHA256SUMS` (ZIP, DMG, both note files, and generated feeds)
+- `release-metadata.json` (schema 2; version/build/channel, commit, signing/notarization status, updater URLs, artifact sizes/hashes including both note files; no wall-clock fields or secrets)
 - With updates enabled: `appcast-beta.xml` for beta; **both** `appcast.xml` and `appcast-beta.xml` for stable.
 
 “Deterministic metadata” means stable serialization for the same inputs and final artifact bytes. Signing timestamps and notarization do not yield byte-for-byte reproducible archives. Never re-sign, repackage, staple, or otherwise modify final artifacts after checksums/appcast generation. Publishing rechecks hashes. Failed builds leave no promoted release directory; `dist/Talkless.app` may remain for diagnosis but is not itself a release artifact.

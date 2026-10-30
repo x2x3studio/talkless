@@ -1,6 +1,8 @@
 # Recording diagnostics
 
-Settings > System provides **Export Diagnostics**, **Open Logs**, and **Open Crash Reports**. Exporting creates a local ZIP and never uploads it. Relaunch after a crash before exporting so the previous unclean-session marker is recorded.
+**Settings > System > Diagnostics** provides **Export diagnostics…**, **Open logs**, and **Open crash reports**. Exporting creates a local ZIP and never uploads it. Relaunch after a crash before exporting so the previous unclean-session marker is recorded.
+
+These labels follow **Settings > System > Language** (Follow System, English or Simplified Chinese); structured event names and metadata remain stable, not translated. For interface or translation issues, report the interface choice and the separate translation source/target and primary/secondary choices without sharing private text. For update issues, include the installed version/build, channel and displayed status from **Settings > System > Updates**. **Last checked** means the last attempt, not necessarily a successful check; release notes appear in Sparkle's standard update window.
 
 Local structured event logs retain up to three 5 MB files. Events cover application start/stop, hotkey press/release, recording start/stop/errors, model loading, recognition completion, cancellation and paste decisions. Critical lifecycle checkpoints are flushed synchronously. Audio callbacks do not write per-frame logs.
 
@@ -12,7 +14,7 @@ The Swift 6 audio tap previously inherited MainActor isolation from its setup me
 
 A second preflight checks that the default Core Audio input device exists and exposes input channels before constructing AVAudioEngine. Without a microphone, an apparently valid fallback format can otherwise reach exception-prone tap installation. The app now reports the missing device instead. Device disconnection races in the older macOS audio API remain a limitation.
 
-Tap/hold classification uses the physical Core Graphics event timestamps, not callback-processing time. Cold audio initialization must not turn a short tap into a long hold. Release diagnostics record only the physical duration in milliseconds; a 100 ms tap with 450 ms delayed startup remains hands-free in the regression harness.
+Recording uses an explicit Hold to talk or Tap to toggle mode captured at startup, not duration-based tap/hold classification. Hold always finishes on release; Toggle finishes on the next press. Release diagnostics use physical Core Graphics event timestamps rather than callback-processing time, so cold audio initialization does not inflate the recorded key duration. See [recording modes](../README.md#dictation-and-shortcuts).
 
 ## Regression checks
 

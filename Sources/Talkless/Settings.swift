@@ -12,10 +12,10 @@ enum TriggerKey: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .fn: return "Fn / Globe"
-        case .rightOption: return "Right Option ⌥"
-        case .rightCommand: return "Right Command ⌘"
-        case .rightControl: return "Right Control ⌃"
+        case .fn: return L10n.tr("Fn / Globe")
+        case .rightOption: return L10n.tr("Right Option ⌥")
+        case .rightCommand: return L10n.tr("Right Command ⌘")
+        case .rightControl: return L10n.tr("Right Control ⌃")
         }
     }
 
@@ -37,8 +37,8 @@ enum RecordingGestureMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .hold: "Hold to talk"
-        case .toggle: "Tap to toggle"
+        case .hold: L10n.tr("Hold to talk")
+        case .toggle: L10n.tr("Tap to toggle")
         }
     }
 }
@@ -60,8 +60,8 @@ enum AlternateFinishKey: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: "Automatic"
-        case .disabled: "Disabled"
+        case .automatic: L10n.tr("Automatic")
+        case .disabled: L10n.tr("Disabled")
         case .fn: TriggerKey.fn.title
         case .rightOption: TriggerKey.rightOption.title
         case .rightCommand: TriggerKey.rightCommand.title
@@ -77,7 +77,7 @@ enum AlternateFinishKey: String, CaseIterable, Identifiable {
 
     func title(for primary: TriggerKey) -> String {
         guard self == .automatic, let key = resolved(for: primary) else { return title }
-        return "\(title) (\(key.title))"
+        return L10n.format("%@ (%@)", title, key.title)
     }
 }
 
@@ -93,9 +93,9 @@ enum ASREngine: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .qwen: return "Qwen3-ASR (local, offline)"
-        case .apple: return "Apple on-device recognition (offline)"
-        case .openAICompatible: return "Cloud Whisper-compatible API"
+        case .qwen: return L10n.tr("Qwen3-ASR (local, offline)")
+        case .apple: return L10n.tr("Apple on-device recognition (offline)")
+        case .openAICompatible: return L10n.tr("Cloud Whisper-compatible API")
         }
     }
 }
@@ -108,10 +108,10 @@ enum OutputLanguage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .original: return "Keep original language"
-        case .chinese: return "Simplified Chinese"
-        case .english: return "English"
-        case .japanese: return "Japanese"
+        case .original: return L10n.tr("Keep original language")
+        case .chinese: return L10n.tr("Simplified Chinese")
+        case .english: return L10n.tr("English")
+        case .japanese: return L10n.tr("Japanese")
         }
     }
 
@@ -185,7 +185,7 @@ final class AppSettings: ObservableObject {
     func resetTriggerKey() -> String? {
         guard !isTriggerKeyDefault else { return nil }
         guard alternateFinishKey.triggerKey != Self.defaultTriggerKey else {
-            return "\(Self.defaultTriggerKey.title) is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts."
+            return L10n.format("%@ is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts.", Self.defaultTriggerKey.title)
         }
         triggerKey = Self.defaultTriggerKey
         return nil
@@ -226,17 +226,17 @@ final class AppSettings: ObservableObject {
         if useCustomQwenDirectory {
             let path = (qwenModelDirectory as NSString).expandingTildeInPath
             guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw TalklessError.message("Choose a local model folder in Speech recognition settings.")
+                throw TalklessError.message(L10n.tr("Choose a local model folder in Speech recognition settings."))
             }
             return URL(fileURLWithPath: path)
         }
         let manager = ModelManager.shared
         guard !manager.isChecking else {
-            throw TalklessError.message("Checking downloaded model files. Try again in a moment.")
+            throw TalklessError.message(L10n.tr("Checking downloaded model files. Try again in a moment."))
         }
         guard let directory = manager.installedDirectory(manager.activeModelID) else {
-            let name = ModelCatalog.model(id: manager.activeModelID)?.name ?? "the selected model"
-            throw TalklessError.message("Download \(name) in Speech recognition settings before starting dictation.")
+            let name = ModelCatalog.model(id: manager.activeModelID)?.name ?? L10n.tr("the selected model")
+            throw TalklessError.message(L10n.format("Download %@ in Speech recognition settings before starting dictation.", name))
         }
         return directory
     }
@@ -261,7 +261,23 @@ final class AppSettings: ObservableObject {
     /// If text is selected when dictation starts, treat speech as an instruction to edit it.
     @Published var voiceEditEnabled: Bool { didSet { save(voiceEditEnabled, "voiceEditEnabled") } }
     @Published var appToneEnabled: Bool { didSet { save(appToneEnabled, "appToneEnabled") } }
-    @Published var translateTarget: String { didSet { save(translateTarget, "translateTarget") } }
+    private static let translationLanguagesKey = "translationLanguages.v1"
+    @Published var translationLanguages: TranslationLanguagePreferences {
+        didSet {
+            if let data = try? JSONEncoder().encode(translationLanguages) {
+                save(data, Self.translationLanguagesKey)
+            }
+        }
+    }
+    /// Compatibility for integrations using the former free-text target. New UI and
+    /// translation requests use translationLanguages and resolve Auto against the text.
+    var translateTarget: String {
+        get {
+            if let name = translationLanguages.target.promptName { return name }
+            return TranslationLanguages.resolvedPrimary(preferences: translationLanguages).englishName
+        }
+        set { translationLanguages.target = TranslationLanguages.selection(legacyValue: newValue) }
+    }
     /// One term per line: proper nouns, names, technical terms, etc.
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
     /// Local suggestion mining is opt-in; it never sends history to a service.
@@ -328,7 +344,17 @@ final class AppSettings: ObservableObject {
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         voiceEditEnabled = d.object(forKey: "voiceEditEnabled") as? Bool ?? false
         appToneEnabled = d.object(forKey: "appToneEnabled") as? Bool ?? true
-        translateTarget = d.string(forKey: "translateTarget") ?? "Simplified Chinese"
+        let storedLanguages = d.data(forKey: Self.translationLanguagesKey)
+            .flatMap { try? JSONDecoder().decode(TranslationLanguagePreferences.self, from: $0) }
+        var languages = storedLanguages
+            ?? TranslationLanguagePreferences.migrated(legacyTarget: d.string(forKey: "translateTarget"))
+        languages.normalizePreferredLanguages()
+        translationLanguages = languages
+        // Do not rewrite an unchanged preference on every launch (JSON key order is
+        // unspecified). Persist migration once so the old text cannot reappear.
+        if storedLanguages != languages, let data = try? JSONEncoder().encode(languages) {
+            d.set(data, forKey: Self.translationLanguagesKey)
+        }
         dictionary = d.string(forKey: "dictionary") ?? ""
         dictionaryReviewEnabled = d.object(forKey: "dictionaryReviewEnabled") as? Bool ?? false
         customInstructions = d.string(forKey: "customInstructions") ?? ""
@@ -425,10 +451,10 @@ final class AppSettings: ObservableObject {
     }
 
     private func credentialErrorMessage(_ error: Error, saving: Bool) -> String {
-        let detail = (error as? CredentialStoreError)?.errorDescription ?? "Check Keychain access for Talkless."
+        let detail = (error as? CredentialStoreError)?.errorDescription ?? L10n.tr("Check Keychain access for Talkless.")
         return saving
-            ? "The API key could not be saved to Keychain. It is available for this session only; any previous saved key is unchanged. \(detail)"
-            : "The API key could not be read from Keychain. The saved key has not been changed. \(detail)"
+            ? L10n.format("The API key could not be saved to Keychain. It is available for this session only; any previous saved key is unchanged. %@", detail)
+            : L10n.format("The API key could not be read from Keychain. The saved key has not been changed. %@", detail)
     }
 
     private func save(_ value: Any, _ key: String) {

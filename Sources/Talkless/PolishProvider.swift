@@ -18,7 +18,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .openRouter: return "OpenRouter"
         case .gemini: return "Gemini"
         case .anthropic: return "Anthropic"
-        case .custom: return "Custom"
+        case .custom: return L10n.tr("Custom")
         }
     }
 
@@ -53,7 +53,7 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 
     var modelPlaceholder: String {
-        self == .deepSeek ? "deepseek-chat" : "Fetch models or enter a model ID"
+        self == .deepSeek ? "deepseek-chat" : L10n.tr("Fetch models or enter a model ID")
     }
 
     /// Only OpenRouter has an explicit starter route; saved model choices are never replaced.

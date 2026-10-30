@@ -120,6 +120,9 @@ private struct APITests {
         try await LLMClient.fetchModels(config: config, timeout: 2, sessionConfiguration: MockProtocol.configuration)
     }
     static func main() async throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         let tests: [(String, () async throws -> Void)] = [
             ("bundleVersionUserAgentAndSafeFallback", testUserAgent),
             ("cloudTranscriptionHeadersAndPayload", testCloudTranscription),

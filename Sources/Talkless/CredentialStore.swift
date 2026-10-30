@@ -69,6 +69,6 @@ struct CredentialStoreError: LocalizedError {
     let status: OSStatus
 
     var errorDescription: String? {
-        "Keychain access failed (\(status)). Check that Keychain is unlocked and this Talkless build uses the same signing identity."
+        L10n.format("Keychain access failed (%d). Check that Keychain is unlocked and this Talkless build uses the same signing identity.", status)
     }
 }

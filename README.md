@@ -31,11 +31,13 @@ For local testing with the release identity and a fixed installation path, quit 
 Settings opens to **Dictation**. The sidebar is organized by task:
 
 - **Dictation:** microphone, recording mode and keys, AI polishing, output language, app-aware tone, selected-text voice editing, and additional instructions.
-- **Translation:** selected-text target language and shortcut, separate from dictation's output language.
+- **Translation:** selected-text source/target languages, automatic direction, preferred languages and shortcut, separate from dictation's output language.
 - **Speech recognition:** recognition engine and local speech models.
 - **AI service:** shared provider, protocol, credentials and model for polishing, translation and voice editing; no master AI enable toggle.
 - **Dictionary**, **Overlay**, and **History:** terms and review, HUD appearance, and saved text.
-- **System:** permissions, launch at login, updates and diagnostics.
+- **System:** interface language, permissions, launch at login, updates and diagnostics.
+
+**Settings > System > Language > Interface language** offers Follow System (the default), English and Simplified Chinese. Changes apply without restarting and affect the interface only, not speech recognition, dictation output, translation languages or provider settings. Follow System chooses a supported interface language from macOS preferences, falling back to English; it does not treat Traditional Chinese as Simplified Chinese.
 
 The menu bar menu lists the current dictation, alternate-finish, and enabled translation shortcuts as informational rows. Its only actions are Settings, Check for Updates, and Quit; recording and translation are invoked using their shortcuts.
 
@@ -64,7 +66,17 @@ Press the alternate key by itself or while holding the primary dictation key. It
 
 ## Selected-text translation
 
-Select text in the foreground app, then use the configurable translation shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace actions. Translation requires a configured **AI service**, not the dictation polishing toggle. **Settings > Translation** contains the target language and shortcut; its target language is independent of dictation's output language. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; clearing it disables the translation shortcut and removes its menu reference row.
+Select text in the foreground app, then use the configurable translation shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace Original actions. Translation requires a configured **AI service**, not the dictation polishing toggle. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; clearing it disables the shortcut and removes its menu reference row.
+
+**Settings > Translation** and the translation panel share remembered source and target choices, both initially **Auto**. They are independent of the interface and dictation output languages:
+
+- Source Auto detects the language locally. Short, mixed or uncertain text may remain unidentified; target Auto then uses the primary language. Choose an explicit source to correct detection.
+- Target Auto translates into the primary language, or into the secondary language when the source already belongs to the primary language's family. Primary Auto follows the first supported macOS language, falling back to English. Secondary Auto uses English, or Simplified Chinese when primary is English. A duplicated primary/secondary family uses that same alternate fallback.
+- Simplified and Traditional Chinese count as one family for Auto direction. Explicit targets still allow script conversion. An exact source/target match returns the original text without a provider request.
+
+Language menus offer 50 curated choices, with 13 preferred by default, plus **More languages**. In Settings, **Manage languages…** lets you search and save a preferred list; Cancel discards edits, and primary, secondary and currently selected languages stay accessible even when unchecked. This is a menu catalog, not a guarantee of provider language support or translation quality.
+
+Changing a language or using Swap languages in the panel remembers the choices and translates the **original selection** again, not the previous result. These explicit actions can make another provider request and incur charges; opening settings or changing the interface language does not. Closing the panel or making a newer request cancels pending work and discards stale results. Swap is unavailable when the source is unknown or both resolved languages are identical.
 
 ## Recognition
 
@@ -111,7 +123,9 @@ Daily totals are retained for 400 calendar days in local `activity.json`, using 
 
 **Settings > System > Updates** offers Stable and Beta channels. Returning to Stable does not downgrade an installed beta. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks during dictation or another update session wait until the next interval; manual checking remains available when idle. You choose when to download and install. Turning off automatic checks does not cancel an update already in progress. Local builds without valid update feed URLs and a signing public key cannot check for updates.
 
-The [release workflow](docs/releasing.md) defaults to Beta for trusted pushes to `main`; Stable requires an explicit version tag. Publication still depends on a successful release job.
+The page also shows the installed version/build and **Last checked**, which records the last attempt, including unsuccessful checks, not proof that the app is current. **Show update…** returns to an active update window when available. Sparkle retains its standard release-note, download and install UI; new releases provide versioned English and Simplified Chinese notes.
+
+The [release workflow](docs/releasing.md) defaults to Beta for trusted pushes to `main`; Stable requires an explicit version tag. Both require reviewed [English](CHANGELOG.md) and [Simplified Chinese](CHANGELOG.zh-Hans.md) changelog entries. Publication still depends on a successful release job.
 
 ## Local data and privacy
 
@@ -125,7 +139,7 @@ Local Qwen recognition does not upload audio. Optional cloud recognition sends a
 
 ## Reproducible checks
 
-Model weights, generated recordings, local results, dependencies, and build products are excluded from Git. Swift packages are locked in `Package.resolved`; third-party source is fetched rather than committed. All first-party source, documentation, and UI copy is English; Mandarin recognition remains supported.
+Model weights, generated recordings, local results, dependencies, and build products are excluded from Git. Swift packages are locked in `Package.resolved`; third-party source is fetched rather than committed. First-party source, tests and documentation stay English, except approved `Localizable.strings` and `InfoPlist.strings` under `Sources/Talkless/Resources/en.lproj/` and `zh-Hans.lproj/`, and the root `CHANGELOG.zh-Hans.md`. UI translations belong in those catalogs, not inline source text; Mandarin recognition remains supported.
 
 Run the model-free regression suite (no paid provider calls, microphone recording, or ASR model downloads). It requires the selected Xcode toolchain and Python 3; first-time SwiftPM dependency resolution can require network access.
 

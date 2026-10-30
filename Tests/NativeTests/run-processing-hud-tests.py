@@ -24,6 +24,14 @@ def method(name):
 STUBS = r'''
 import Foundation
 
+// Extracted controller fixtures use deterministic English without preferences or resources.
+enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
+
 enum HUDModel {
     enum Phase: Equatable { case working, recognizing, polishing, editing, hidden, error(String) }
 }

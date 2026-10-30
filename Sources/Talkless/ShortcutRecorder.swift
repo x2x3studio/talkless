@@ -30,7 +30,7 @@ struct ShortcutRecorder: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                     if let defaultValue {
-                        Text("Default: \(defaultValue)")
+                        Text(L10n.format("Default: %@", defaultValue))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -48,15 +48,15 @@ struct ShortcutRecorder: View {
                 )
                 .frame(width: 230, height: 28)
                 if let onReset {
-                    Button("Reset") {
+                    Button(L10n.tr("Reset")) {
                         Self.cancelCapture()
                         message = onReset()
                         isError = message != nil
                     }
                     .controlSize(.small)
                     .disabled(isDefault)
-                    .help("Restore the default for \(title.lowercased())")
-                    .accessibilityLabel("Reset \(title)")
+                    .help(L10n.format("Restore the default for %@", title.lowercased()))
+                    .accessibilityLabel(L10n.format("Reset %@", title))
                 }
             }
             if let message {
@@ -72,9 +72,9 @@ struct ShortcutRecorder: View {
 /// Validation is independent of preferences so rejected recordings never get persisted.
 enum ShortcutRecorderRules {
     static func primaryError(_ key: TriggerKey?, alternate: AlternateFinishKey) -> String? {
-        guard let key else { return "The dictation key cannot be cleared. Press Fn or a right-side modifier." }
+        guard let key else { return L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier.") }
         if alternate.triggerKey == key {
-            return "\(key.title) is already the alternate finish key. Record a different key."
+            return L10n.format("%@ is already the alternate finish key. Record a different key.", key.title)
         }
         // Existing Automatic preferences adapt to the new primary key rather than collide.
         return nil
@@ -83,7 +83,7 @@ enum ShortcutRecorderRules {
     static func alternateError(_ key: TriggerKey?, primary: TriggerKey) -> String? {
         guard let key else { return nil }
         if key == primary {
-            return "\(key.title) is already the dictation key. Record a different key."
+            return L10n.format("%@ is already the dictation key. Record a different key.", key.title)
         }
         return nil
     }
@@ -96,7 +96,7 @@ struct ShortcutCaptureState {
     }
 
     private(set) var pendingKey: TriggerKey?
-    private(set) var message = "Press Fn or a right-side modifier. Esc cancels."
+    private(set) var message = L10n.tr("Press Fn or a right-side modifier. Esc cancels.")
     private(set) var isError = false
     private var heldKeys: Set<UInt16> = []
     private var invalidGesture = false
@@ -108,7 +108,7 @@ struct ShortcutCaptureState {
     init(allowsClearing: Bool, initialFlags: NSEvent.ModifierFlags = []) {
         self.allowsClearing = allowsClearing
         waitingForInitialRelease = Self.heldModifiers(initialFlags) != 0
-        if waitingForInitialRelease { message = "Release held keys, then press Fn or a right-side modifier." }
+        if waitingForInitialRelease { message = L10n.tr("Release held keys, then press Fn or a right-side modifier.") }
     }
 
     static func key(for keyCode: UInt16) -> TriggerKey? {
@@ -154,7 +154,7 @@ struct ShortcutCaptureState {
         if waitingForInitialRelease {
             if modifiers == 0 {
                 waitingForInitialRelease = false
-                message = "Press Fn or a right-side modifier. Esc cancels."
+                message = L10n.tr("Press Fn or a right-side modifier. Esc cancels.")
             }
             return .waiting
         }
@@ -165,7 +165,7 @@ struct ShortcutCaptureState {
         if let pendingKey {
             if modifiers & ~Self.mask(for: pendingKey) != 0 || !heldKeys.isEmpty {
                 invalidGesture = true
-                reject("Use one key by itself, not a keyboard combination. Release the keys and try again.")
+                reject(L10n.tr("Use one key by itself, not a keyboard combination. Release the keys and try again."))
             } else if keyCode == UInt16(pendingKey.keyCode), !Self.isDown(pendingKey, flags: flags) {
                 self.pendingKey = nil
                 return .record(pendingKey)
@@ -173,32 +173,32 @@ struct ShortcutCaptureState {
             return .waiting
         }
         if keyCode == 57 {
-            reject("Caps Lock is not supported. Press Fn or a right-side modifier.")
+            reject(L10n.tr("Caps Lock is not supported. Press Fn or a right-side modifier."))
             return .waiting
         }
         guard modifiers != 0 else { return .waiting }
         guard let key = Self.key(for: keyCode), Self.isDown(key, flags: flags) else {
             let name: String
             switch keyCode {
-            case 55: name = "Left Command ⌘"
-            case 58: name = "Left Option ⌥"
-            case 59: name = "Left Control ⌃"
-            case 56: name = "Left Shift ⇧"
-            case 60: name = "Right Shift ⇧"
-            default: name = "That key"
+            case 55: name = L10n.tr("Left Command ⌘")
+            case 58: name = L10n.tr("Left Option ⌥")
+            case 59: name = L10n.tr("Left Control ⌃")
+            case 56: name = L10n.tr("Left Shift ⇧")
+            case 60: name = L10n.tr("Right Shift ⇧")
+            default: name = L10n.tr("That key")
             }
             invalidGesture = true
-            reject("\(name) is not supported. Press Fn or a right-side Command, Option, or Control key.")
+            reject(L10n.format("%@ is not supported. Press Fn or a right-side Command, Option, or Control key.", name))
             return .waiting
         }
         guard modifiers & ~Self.mask(for: key) == 0, heldKeys.isEmpty else {
             invalidGesture = true
-            reject("Use one key by itself, not a keyboard combination. Release the keys and try again.")
+            reject(L10n.tr("Use one key by itself, not a keyboard combination. Release the keys and try again."))
             return .waiting
         }
         pendingKey = key
         isError = false
-        message = "Release \(key.title) to save. Esc cancels."
+        message = L10n.format("Release %@ to save. Esc cancels.", key.title)
         return .waiting
     }
 
@@ -208,20 +208,20 @@ struct ShortcutCaptureState {
         if keyCode == 53 {
             pendingCancel = true
             pendingKey = nil
-            message = "Release Esc to cancel."
+            message = L10n.tr("Release Esc to cancel.")
             isError = false
         } else if (keyCode == 51 || keyCode == 117), Self.heldModifiers(flags) == 0 {
             pendingKey = nil
             if allowsClearing {
                 pendingClear = true
-                message = "Release Delete to disable alternate finish."
+                message = L10n.tr("Release Delete to disable alternate finish.")
                 isError = false
             } else {
-                reject("The dictation key cannot be cleared. Press Fn or a right-side modifier.")
+                reject(L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier."))
             }
         } else {
             invalidGesture = true
-            reject("That key or combination is not supported. Press Fn or a right-side modifier by itself.")
+            reject(L10n.tr("That key or combination is not supported. Press Fn or a right-side modifier by itself."))
         }
         return .waiting
     }
@@ -304,12 +304,12 @@ final class ShortcutRecorderButton: NSButton {
 
     func refreshTitle() {
         if let capture {
-            title = capture.pendingTitle.map { "\($0) …" } ?? "Press a key…"
+            title = capture.pendingTitle.map { "\($0) …" } ?? L10n.tr("Press a key…")
         } else {
             title = currentValue
         }
-        toolTip = capture == nil ? "Click, then press a key to change this shortcut."
-            : "Esc cancels.\(allowsClearing ? " Delete disables this shortcut." : "")"
+        toolTip = capture == nil ? L10n.tr("Click, then press a key to change this shortcut.")
+            : L10n.tr("Esc cancels.") + (allowsClearing ? L10n.tr(" Delete disables this shortcut.") : "")
         setAccessibilityValue(title)
     }
 
@@ -323,7 +323,7 @@ final class ShortcutRecorderButton: NSButton {
         previousResponder = window.firstResponder
         guard window.makeFirstResponder(self) else { return }
         guard setCaptureActive(true) else {
-            onStatus("Finish dictation before changing shortcuts.", true)
+            onStatus(L10n.tr("Finish dictation before changing shortcuts."), true)
             window.makeFirstResponder(previousResponder)
             return
         }

@@ -33,6 +33,9 @@ final class DictionaryMemoryDefaults: UserDefaults, @unchecked Sendable {
 struct DictionaryTests {
     @MainActor
     static func main() async throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         var assertions = 0
         func check(_ value: @autoclosure () -> Bool, _ description: String) {
             assertions += 1

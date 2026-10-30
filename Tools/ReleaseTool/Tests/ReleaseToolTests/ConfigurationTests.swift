@@ -47,6 +47,21 @@ final class ConfigurationTests: XCTestCase {
             XCTAssertThrowsError(try calendarVersion(ref: ref, now: fixed), ref)
         }
     }
+    func testLocalizationResourceHygieneAllowlistIsNarrow() {
+        for locale in ["en", "zh-Hans"] {
+            for table in ["Localizable", "InfoPlist"] {
+                XCTAssertTrue(isLocalizationResource("Sources/Talkless/Resources/\(locale).lproj/\(table).strings"))
+            }
+        }
+        for path in ["Sources/Talkless/L10n.swift", "README.md", "Tests/zh-Hans.lproj/Localizable.strings",
+                     "Sources/Talkless/Resources/zh-Hans.lproj/Notes.md",
+                     "Sources/Talkless/Resources/zh-Hans.lproj/../L10n.swift",
+                     "Sources/Talkless/Resources/zh-Hans.lproj/nested/Localizable.strings",
+                     "Sources/Talkless/Resources/fr.lproj/Localizable.strings"] {
+            XCTAssertFalse(isLocalizationResource(path), path)
+        }
+    }
+
     func testResourcePatchingIsIdempotent() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

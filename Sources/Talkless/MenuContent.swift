@@ -4,7 +4,7 @@ import AppKit
 @MainActor
 enum MenuContent {
     struct State {
-        var dictationKeyTitle = "Fn / Globe"
+        var dictationKeyTitle = L10n.tr("Fn / Globe")
         var holdToTalk = true
         var alternateFinishKeyTitle: String?
         var polishEnabled = false
@@ -95,22 +95,22 @@ enum MenuContent {
             menu.addItem(item)
         }
 
-        let gesture = state.holdToTalk ? "hold" : "toggle"
+        let gesture = state.holdToTalk ? L10n.tr("hold") : L10n.tr("toggle")
         let dictationHelp = state.holdToTalk
-            ? "Hold \(state.dictationKeyTitle) to talk; release to finish."
-            : "Tap \(state.dictationKeyTitle) to start; tap again to finish."
-        shortcut("Dictation (\(gesture))", key: state.dictationKeyTitle,
-                 help: dictationHelp + " Esc cancels recording or processing.")
+            ? L10n.format("Hold %@ to talk; release to finish.", state.dictationKeyTitle)
+            : L10n.format("Tap %@ to start; tap again to finish.", state.dictationKeyTitle)
+        shortcut(L10n.format("Dictation (%@)", gesture), key: state.dictationKeyTitle,
+                 help: dictationHelp + L10n.tr(" Esc cancels recording or processing."))
         if let key = state.alternateFinishKeyTitle {
             let defaultHelp = state.polishEnabled
-                ? "AI is currently on by default, so alternate finish skips AI."
-                : "AI is currently off by default, so alternate finish uses AI."
-            shortcut("Alternate finish", key: key, help:
-                "Finish dictation with the opposite AI setting from the start of the recording. " + defaultHelp)
+                ? L10n.tr("AI is currently on by default, so alternate finish skips AI.")
+                : L10n.tr("AI is currently off by default, so alternate finish uses AI.")
+            shortcut(L10n.tr("Alternate finish"), key: key, help:
+                L10n.tr("Finish dictation with the opposite AI setting from the start of the recording. ") + defaultHelp)
         }
         if let key = state.translationShortcutTitle {
-            shortcut("Translate selection", key: key,
-                     help: "Select text in another app, then press \(key) to translate it.")
+            shortcut(L10n.tr("Translate selection"), key: key,
+                     help: L10n.format("Select text in another app, then press %@ to translate it.", key))
         }
         let width = max(300, shortcutRows.map(\.preferredWidth).max() ?? 0)
         for row in shortcutRows {
@@ -120,10 +120,10 @@ enum MenuContent {
         }
 
         menu.addItem(.separator())
-        menu.addItem(action("Settings…", actions.openSettings, key: ","))
+        menu.addItem(action(L10n.tr("Settings…"), actions.openSettings, key: ","))
         // Preserve UpdateController's target, enabled state, and status explanation.
-        menu.addItem(updateItem ?? label("Check for Updates…", toolTip: "Updates are not configured for this build."))
+        menu.addItem(updateItem ?? label(L10n.tr("Check for Updates…"), toolTip: L10n.tr("Updates are not configured for this build.")))
         menu.addItem(.separator())
-        menu.addItem(action("Quit Talkless", actions.quit, key: "q"))
+        menu.addItem(action(L10n.tr("Quit Talkless"), actions.quit, key: "q"))
     }
 }

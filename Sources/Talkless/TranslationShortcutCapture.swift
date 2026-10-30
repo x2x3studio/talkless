@@ -4,7 +4,7 @@ import AppKit
 struct TranslationShortcutCapture {
     enum Result: Equatable { case waiting, record(TranslationShortcut), cancel }
     private(set) var pendingShortcut: TranslationShortcut?
-    private(set) var message = "Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears."
+    private(set) var message = L10n.tr("Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears.")
     private(set) var isError = false
     private var heldKeys: Set<UInt16> = []
     private var waitingForRelease: Bool
@@ -13,7 +13,7 @@ struct TranslationShortcutCapture {
 
     init(initialFlags: NSEvent.ModifierFlags = []) {
         waitingForRelease = Self.hasModifiers(initialFlags)
-        if waitingForRelease { message = "Release held keys, then press a shortcut." }
+        if waitingForRelease { message = L10n.tr("Release held keys, then press a shortcut.") }
     }
 
     private static func hasModifiers(_ flags: NSEvent.ModifierFlags) -> Bool {
@@ -38,7 +38,7 @@ struct TranslationShortcutCapture {
     mutating func flagsChanged(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Result {
         if let pendingShortcut, !Self.modifiers(flags).subtracting(pendingShortcut.modifiers).isEmpty || flags.contains(.function) {
             invalidGesture = true
-            reject("The combination changed. Release all keys and try again.")
+            reject(L10n.tr("The combination changed. Release all keys and try again."))
         }
         return finishIfReleased(flags)
     }
@@ -48,14 +48,14 @@ struct TranslationShortcutCapture {
         if keyCode == 53 {
             cancelling = true
             pendingShortcut = nil
-            message = "Release all keys to cancel."
+            message = L10n.tr("Release all keys to cancel.")
             isError = false
             return .waiting
         }
         guard !cancelling, !waitingForRelease, !invalidGesture, !isRepeat else { return .waiting }
         guard heldKeys.count == 1 else {
             invalidGesture = true
-            reject("Use one non-modifier key with modifiers. Release all keys and try again.")
+            reject(L10n.tr("Use one non-modifier key with modifiers. Release all keys and try again."))
             return .waiting
         }
         let shortcut: TranslationShortcut
@@ -66,13 +66,13 @@ struct TranslationShortcutCapture {
         }
         if flags.contains(.function) {
             invalidGesture = true
-            reject("Fn combinations are not supported. Use Command, Control, or Option.")
+            reject(L10n.tr("Fn combinations are not supported. Use Command, Control, or Option."))
         } else if let error = shortcut.validationError {
             invalidGesture = true
             reject(error)
         } else {
             pendingShortcut = shortcut
-            message = shortcut == .disabled ? "Release Delete to disable translation shortcut." : "Release \(shortcut.title) to save. Esc cancels."
+            message = shortcut == .disabled ? L10n.tr("Release Delete to disable translation shortcut.") : L10n.format("Release %@ to save. Esc cancels.", shortcut.title)
             isError = false
         }
         return .waiting

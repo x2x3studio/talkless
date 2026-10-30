@@ -52,10 +52,14 @@ final class PublicationTests: XCTestCase {
         for ext in ["zip", "dmg"] {
             try archive.write(to: directory.appendingPathComponent(stem + "." + ext))
         }
+        try ReleaseNotes(changelog: "## Unreleased\n\n### Changed\n- Clearer update details.",
+                         chineseChangelog: "## Unreleased\n- \u{66f4}\u{65b0}\u{8bf4}\u{660e}")
+            .write(to: directory, version: version, build: build, channel: channel)
         if updater {
             let appcast = try makeAppcast(version: version, build: build, minimumOS: "15.0",
                                          downloadURL: config.downloadBaseURL! + "/" + stem + ".zip",
-                                         signature: fixtureSignature, length: UInt64(archive.count))
+                                         signature: fixtureSignature, length: UInt64(archive.count),
+                                         releaseNotesURL: config.downloadBaseURL! + "/" + ReleaseNotes.htmlName)
             for name in try feedNames(channel: channel) { try appcast.write(to: directory.appendingPathComponent(name)) }
         }
         return try writeMetadata(stage: directory, version: version, build: build, channel: channel,
@@ -140,7 +144,7 @@ final class PublicationTests: XCTestCase {
         let url = "https://example.com/a&b.zip"
         func make() throws -> Data {
             try makeAppcast(version: version, build: build, minimumOS: "15.0", downloadURL: url,
-                            signature: fixtureSignature, length: 1234)
+                            signature: fixtureSignature, length: 1234, releaseNotesURL: "https://example.com/a&b/release-notes.html")
         }
         let data = try make()
         XCTAssertEqual(data, try make())
@@ -148,6 +152,11 @@ final class PublicationTests: XCTestCase {
         let enclosure = try XCTUnwrap(document.nodes(forXPath: "/rss/channel/item/enclosure").first as? XMLElement)
         XCTAssertEqual(enclosure.attribute(forName: "url")?.stringValue, url)
         XCTAssertEqual(enclosure.attribute(forName: "length")?.stringValue, "1234")
+        let item = try XCTUnwrap(document.nodes(forXPath: "/rss/channel/item").first as? XMLElement)
+        XCTAssertEqual(item.elements(forLocalName: "releaseNotesLink", uri: sparkleNamespace).first?.stringValue,
+                       "https://example.com/a&b/release-notes.html")
+        XCTAssertThrowsError(try makeAppcast(version: version, build: build, minimumOS: "15.0", downloadURL: url,
+                                             signature: fixtureSignature, length: 1, releaseNotesURL: "http://example.com/notes"))
         XCTAssertThrowsError(try makeAppcast(version: version, build: build, minimumOS: "15.0", downloadURL: url,
                                              signature: "bad", length: 1))
     }
@@ -184,6 +193,13 @@ final class PublicationTests: XCTestCase {
         XCTAssertTrue(runner.calls[0].sensitive)
         XCTAssertNil(runner.calls[0].environment["OP_SERVICE_ACCOUNT_TOKEN"])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: stage.path).sorted(), ["appcast-beta.xml", "appcast.xml"])
+        for name in try feedNames(channel: "stable") {
+            let data = try Data(contentsOf: stage.appendingPathComponent(name))
+            let document = try XMLDocument(data: data)
+            let item = try XCTUnwrap(document.nodes(forXPath: "/rss/channel/item").first as? XMLElement)
+            XCTAssertEqual(item.elements(forLocalName: "releaseNotesLink", uri: sparkleNamespace).first?.stringValue,
+                           config.downloadBaseURL! + "/" + ReleaseNotes.htmlName)
+        }
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("verify-sparkle.swift").path))
         XCTAssertNoThrow(try verifySparkleSignature(archive: archive, signature: signature, publicKey: env["SPARKLE_PUBLIC_KEY"]!))
         try Data("Modified archive".utf8).write(to: archive)
@@ -198,6 +214,8 @@ final class PublicationTests: XCTestCase {
         XCTAssertEqual(Set(object.keys), ["schema_version", "product", "version", "build_number", "tag", "release_channel", "architecture",
                                           "source_commit", "signing_identity", "team_id", "notarized", "stapled", "updater_enabled",
                                           "update_feed_url", "beta_update_feed_url", "download_base_url", "files"])
+        XCTAssertEqual(metadata.schemaVersion, 2)
+        XCTAssertTrue(ReleaseNotes.assetNames.isSubset(of: Set(metadata.files.keys)))
         XCTAssertTrue(object["update_feed_url"] is NSNull)
         XCTAssertTrue(object["beta_update_feed_url"] is NSNull)
         XCTAssertTrue(object["download_base_url"] is NSNull)
@@ -247,6 +265,10 @@ final class PublicationTests: XCTestCase {
                 XCTAssertTrue(create.contains("--draft"))
                 XCTAssertEqual(create.contains("--prerelease"), channel == "beta")
                 XCTAssertFalse(create.contains("--clobber"))
+                for name in ReleaseNotes.assetNames { XCTAssertTrue(create.contains(directory.appendingPathComponent(name).path)) }
+                let body = create[try XCTUnwrap(create.firstIndex(of: "--notes")) + 1]
+                XCTAssertTrue(body.contains("## What's new"))
+                XCTAssertTrue(body.contains("- Clearer update details\\."))
                 if publicPublish {
                     XCTAssertTrue(runner.calls[2].arguments.contains("--draft=false"))
                     XCTAssertTrue(runner.calls[2].arguments.contains(channel == "stable" ? "--latest" : "--latest=false"))
@@ -272,12 +294,20 @@ final class PublicationTests: XCTestCase {
     }
 
     func testChangedAssetsAndAllowlistRejectBeforeNetwork() throws {
-        for mutation in ["archive", "checksum", "symlink", "extra", "metadata-symlink"] {
+        for mutation in ["archive", "checksum", "symlink", "extra", "metadata-symlink", "notes-html", "notes-markdown", "notes-missing", "notes-symlink"] {
             let directory = try temporaryDirectory()
             let metadata = try fixture(directory)
             let archive = directory.appendingPathComponent(metadata.assetStem + ".zip")
             switch mutation {
             case "archive": try Data("tampered".utf8).write(to: archive)
+            case "notes-html": try Data("<script>unsafe</script>".utf8).write(to: directory.appendingPathComponent(ReleaseNotes.htmlName))
+            case "notes-markdown": try Data("- tampered".utf8).write(to: directory.appendingPathComponent(ReleaseNotes.markdownName))
+            case "notes-missing": try FileManager.default.removeItem(at: directory.appendingPathComponent(ReleaseNotes.htmlName))
+            case "notes-symlink":
+                let notes = directory.appendingPathComponent(ReleaseNotes.htmlName)
+                let original = try temporaryDirectory().appendingPathComponent("notes")
+                try FileManager.default.moveItem(at: notes, to: original)
+                try FileManager.default.createSymbolicLink(at: notes, withDestinationURL: original)
             case "checksum": try Data("wrong".utf8).write(to: directory.appendingPathComponent("SHA256SUMS"))
             case "symlink":
                 let original = try temporaryDirectory().appendingPathComponent("archive")
@@ -308,6 +338,12 @@ final class PublicationTests: XCTestCase {
             XCTAssertEqual(Array(calls[calls.count - 2].prefix(3)), ["gh", "release", "edit"])
             XCTAssertEqual(Array(calls.last!.prefix(4)), ["gh", "release", "upload", "updates"])
             XCTAssertTrue(calls.last!.contains("--clobber"))
+            let createIndex = try XCTUnwrap(calls.firstIndex { $0.prefix(3) == ["gh", "release", "create"] })
+            XCTAssertLessThan(createIndex, calls.count - 2)
+            for name in ReleaseNotes.assetNames {
+                XCTAssertTrue(calls[createIndex].contains(directory.appendingPathComponent(name).path))
+                XCTAssertFalse(calls.last!.contains(directory.appendingPathComponent(name).path))
+            }
             let uploaded = Set(calls.last!.filter { $0.hasSuffix(".xml") }.map { URL(fileURLWithPath: $0).lastPathComponent })
             XCTAssertEqual(uploaded, try feedNames(channel: channel))
             XCTAssertEqual(calls.filter { $0.prefix(3) == ["gh", "release", "download"] }.count, 2)
@@ -333,6 +369,76 @@ final class PublicationTests: XCTestCase {
             XCTAssertThrowsError(try publish(context: context(directory, runner: runner), directory: directory, publishPublic: true))
             XCTAssertFalse(runner.calls.contains { $0.arguments.prefix(3) == ["gh", "release", "create"] })
         }
+    }
+
+    func testNotesAreValidatedLocallyAndNeverFetchedBeforeAcknowledgement() throws {
+        let directory = try temporaryDirectory()
+        try fixture(directory, updater: true)
+        let runner = PublicationMockRunner()
+        configureGitHub(runner)
+        XCTAssertThrowsError(try publish(context: context(directory, runner: runner, acknowledged: false),
+                                         directory: directory, publishPublic: true))
+        XCTAssertTrue(runner.calls.isEmpty)
+        XCTAssertThrowsError(try publish(context: context(directory, runner: runner, acknowledged: false),
+                                         directory: directory, publishPublic: false))
+        XCTAssertEqual(runner.calls.map(\.arguments), [["gh", "api", "repos/\(ToolContext.repository)"]])
+    }
+
+    func testNotesRenderingAndTaggedLinksCheckedEvenWithMatchingHashes() throws {
+        for mutation in ["unsafe-html", "wrong-link", "missing-link"] {
+            let directory = try temporaryDirectory()
+            try fixture(directory, updater: true)
+            if mutation == "unsafe-html" {
+                try Data("<script>bad()</script>".utf8).write(to: directory.appendingPathComponent(ReleaseNotes.htmlName))
+            } else {
+                let feed = directory.appendingPathComponent("appcast-beta.xml")
+                let text = try String(contentsOf: feed, encoding: .utf8)
+                let changed = mutation == "wrong-link"
+                    ? text.replacingOccurrences(of: ReleaseNotes.htmlName, with: "README.md")
+                    : text.replacingOccurrences(of: #"\s*<sparkle:releaseNotesLink>.*?</sparkle:releaseNotesLink>"#, with: "", options: .regularExpression)
+                try Data(changed.utf8).write(to: feed)
+            }
+            // Recompute digests to ensure semantic checks, not only hashes, reject the artifact.
+            let metadataPath = directory.appendingPathComponent("release-metadata.json")
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: metadataPath)) as? [String: Any])
+            var files = try XCTUnwrap(object["files"] as? [String: Any])
+            let name = mutation == "unsafe-html" ? ReleaseNotes.htmlName : "appcast-beta.xml"
+            let file = directory.appendingPathComponent(name)
+            files[name] = ["sha256": try sha256(file), "size": try Data(contentsOf: file).count]
+            object["files"] = files
+            let data = try JSONSerialization.data(withJSONObject: object)
+            try data.write(to: metadataPath)
+            let metadata = try JSONDecoder().decode(ReleaseMetadata.self, from: data)
+            try Data(metadata.checksumText.utf8).write(to: directory.appendingPathComponent("SHA256SUMS"))
+            let runner = PublicationMockRunner()
+            XCTAssertThrowsError(try publish(context: context(directory, runner: runner), directory: directory, publishPublic: true), mutation)
+            XCTAssertTrue(runner.calls.isEmpty, mutation)
+        }
+    }
+
+    func testSchemaOneWithoutNotesRemainsPublishableButSchemaTwoRequiresNotes() throws {
+        let directory = try temporaryDirectory()
+        try fixture(directory)
+        let path = directory.appendingPathComponent("release-metadata.json")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+        var files = try XCTUnwrap(object["files"] as? [String: Any])
+        for name in ReleaseNotes.assetNames {
+            files.removeValue(forKey: name)
+            try FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+        object["files"] = files
+        XCTAssertThrowsError(try JSONDecoder().decode(ReleaseMetadata.self, from: JSONSerialization.data(withJSONObject: object)))
+        object["schema_version"] = 1
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let metadata = try JSONDecoder().decode(ReleaseMetadata.self, from: data)
+        try data.write(to: path)
+        try Data(metadata.checksumText.utf8).write(to: directory.appendingPathComponent("SHA256SUMS"))
+        let runner = PublicationMockRunner()
+        configureGitHub(runner)
+        XCTAssertNoThrow(try publish(context: context(directory, runner: runner), directory: directory, publishPublic: true))
+        XCTAssertFalse(runner.calls.contains { $0.arguments.contains(directory.appendingPathComponent(ReleaseNotes.htmlName).path) })
+        object["schema_version"] = 3
+        XCTAssertThrowsError(try JSONDecoder().decode(ReleaseMetadata.self, from: JSONSerialization.data(withJSONObject: object)))
     }
 
     func testExistingReleaseAndPublishFailureNeverOverwriteAssetsOrFeeds() throws {

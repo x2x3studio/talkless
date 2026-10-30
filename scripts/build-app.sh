@@ -41,10 +41,23 @@ fi
 # MLX first searches next to the executable; keep a real file, not a development symlink.
 cp "$ROOT/.build/metal/mlx.metallib" "$APP/Contents/MacOS/mlx.metallib"
 cp "$ROOT/.build/metal/mlx.metallib" "$BIN/mlx.metallib"
-# Preserve any SwiftPM resources used by transitive dependencies.
+# Preserve app localization and SwiftPM resources used by transitive dependencies.
 for bundle in "$BIN"/*.bundle; do
     [[ -d "$bundle" ]] || continue
     ditto "$bundle" "$APP/Contents/Resources/$(basename "$bundle")"
+done
+# Permission prompts are localized by macOS from the main app, not the SwiftPM bundle.
+for language in en zh-Hans; do
+    # SwiftPM canonicalizes localization directory names to lowercase.
+    PACKAGED_LANGUAGE="$(printf '%s' "$language" | tr '[:upper:]' '[:lower:]')"
+    LOCALIZED="$APP/Contents/Resources/Talkless_Talkless.bundle/$PACKAGED_LANGUAGE.lproj/Localizable.strings"
+    if [[ ! -f "$LOCALIZED" ]]; then
+        printf 'Missing packaged localization: %s\n' "$LOCALIZED" >&2
+        exit 1
+    fi
+    mkdir -p "$APP/Contents/Resources/$language.lproj"
+    cp "$ROOT/Sources/Talkless/Resources/$language.lproj/InfoPlist.strings" \
+        "$APP/Contents/Resources/$language.lproj/InfoPlist.strings"
 done
 plutil -lint "$APP/Contents/Info.plist"
 

@@ -27,7 +27,11 @@ The preset uses `https://openrouter.ai/api/v1/chat/completions` with model `open
 
 **Settings > Dictation** opens by default and holds microphone selection, recording mode and keys. Its **AI processing** section contains the polishing toggle, output language, app-aware tone, and additional instructions; **Voice editing** contains the selected-text editing toggle. Output language applies when dictation uses AI polishing, including a one-off alternate finish. Polishing and voice editing are off by default for new users.
 
-**Settings > Translation** holds the selected-text translation target language and shortcut, with an independent shortcut Reset. This target is separate from dictation's output language. Translation requires a configured AI service, not enabled dictation polishing. See [selected-text translation](../README.md#selected-text-translation).
+**Settings > Translation** holds source/target choices (both default to Auto), primary/secondary languages for automatic direction, preferred language menus and the shortcut, with an independent shortcut Reset. Source detection runs locally; target Auto uses primary unless the source is already in that language family, then secondary. Primary Auto follows the first supported macOS language or English; secondary Auto uses English, or Simplified Chinese when primary is English. Uncertain detection falls back to primary, not an extra detection API call. Simplified and Traditional Chinese share a family for Auto direction but remain distinct explicit targets.
+
+The panel remembers source/target changes in these same settings. Changing or swapping languages explicitly retranslates the original selection and may incur another provider charge; closing the panel or starting a newer request cancels pending work and rejects stale results. An exact source/target match needs no provider request. Opening language settings or editing the preferred list sends nothing. The 50-language catalog and 13 default preferred choices are menu conveniences, not a provider capability promise. See [selected-text translation](../README.md#selected-text-translation) for direction and menu details.
+
+Translation requires a configured AI service, not enabled dictation polishing. Its languages are separate from dictation's output language and **Settings > System > Language**, whose Follow System, English and Simplified Chinese choices affect only the interface.
 
 ## Per-dictation choice
 

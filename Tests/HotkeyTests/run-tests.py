@@ -38,7 +38,7 @@ def method(name):
 
 
 fields = []
-for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled",
+for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled", "recordingAlternateFinishKey",
              "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
     match = re.search(r"^    private (?:var|let) " + name + r"\b[^\n]*", controller, re.M)
     assert match, f"Missing production field: {name}"
@@ -50,6 +50,13 @@ error_callback = re.search(
 assert error_callback, "Missing production Qwen error callback"
 
 STUBS = r'''
+// Extracted controller fixtures use deterministic English without preferences or resources.
+enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
 @MainActor enum TestKeyboardState {
     static var flags: CGEventFlags = []
     static var heldKeys: Set<Int64> = []
@@ -608,7 +615,7 @@ TESTS = r'''
 source = (hotkeys + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1))
           + "\n".join(fields) + "\n"
           + "\n".join(method(name) for name in
-                      ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish",
+                      ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish", "refreshRecordingHint",
                        "setShortcutCaptureActive", "updateTranslationShortcut", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
                        "escapePressed", "cancel"))
           + TESTS)

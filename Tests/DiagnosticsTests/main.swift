@@ -1,5 +1,9 @@
 import Foundation
 
+let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+localization.interfaceLanguage = .english
+defer { withExtendedLifetime(localization) {} }
+
 // Compiles the actual application logger. Every log/report path is explicitly injected:
 // no access to user logs, crash reports, microphones, credentials, or UI is needed.
 func require(_ condition: @autoclosure () throws -> Bool, _ message: String) {

@@ -56,23 +56,23 @@ final class AudioRecorder: @unchecked Sendable {
         // Set this engine's input only, before reading formats or building its converter.
         // Pin even System default to the device resolved for this recording session.
         guard let audioUnit = input.audioUnit else {
-            throw TalklessError.message("Cannot configure the microphone audio input")
+            throw TalklessError.message(L10n.tr("Cannot configure the microphone audio input"))
         }
         let status = AudioUnitSetProperty(
             audioUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
             &device, UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         guard status == noErr else {
-            throw TalklessError.message("Cannot use the selected microphone (Core Audio error \(status)). Reconnect it or choose another microphone in Settings › Dictation › Audio.")
+            throw TalklessError.message(L10n.format("Cannot use the selected microphone (Core Audio error %d). Reconnect it or choose another microphone in Settings › Dictation › Audio.", status))
         }
         // The input scope reflects hardware; the output scope may still cache the previous
         // device's client format. Input nodes cannot convert between those formats.
         let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            throw TalklessError.message("No available microphone found")
+            throw TalklessError.message(L10n.tr("No available microphone found"))
         }
         guard let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
-            throw TalklessError.message("Cannot convert the microphone audio format")
+            throw TalklessError.message(L10n.tr("Cannot convert the microphone audio format"))
         }
         let sessionID = UUID()
         lock.withLock {
@@ -123,7 +123,7 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func configurationChanged(sessionID: UUID) {
-        let message = "Microphone recording was interrupted because the audio device changed or disconnected. Check your microphone and start again."
+        let message = L10n.tr("Microphone recording was interrupted because the audio device changed or disconnected. Check your microphone and start again.")
         let shouldReport = lock.withLock {
             guard self.sessionID == sessionID, accepting else { return false }
             accepting = false

@@ -166,7 +166,7 @@ struct ReleaseMetadata: Codable, Equatable, Sendable {
 
     init(version: String, build: String, channel: String, sourceCommit: String,
          configuration: UpdaterConfiguration, files: [String: ReleaseFile]) throws {
-        schemaVersion = 1
+        schemaVersion = 2
         product = "Talkless"
         self.version = version
         buildNumber = build
@@ -235,13 +235,14 @@ struct ReleaseMetadata: Codable, Equatable, Sendable {
 
     func expectedAssetNames() throws -> Set<String> {
         var expected: Set<String> = [assetStem + ".zip", assetStem + ".dmg"]
+        if schemaVersion >= 2 { expected.formUnion(ReleaseNotes.assetNames) }
         if updaterEnabled { expected.formUnion(try feedNames(channel: releaseChannel)) }
         return expected
     }
 
     func validate() throws {
         try validateVersion(version, build: buildNumber)
-        guard schemaVersion == 1, product == "Talkless", architecture == "arm64",
+        guard [1, 2].contains(schemaVersion), product == "Talkless", architecture == "arm64",
               signingIdentity == ToolContext.signingIdentity, teamID == ToolContext.teamID,
               notarized, stapled else {
             throw ToolError("Release metadata does not describe a signed, notarized Talkless arm64 release.")
@@ -279,6 +280,7 @@ func writeMetadata(stage: URL, version: String, build: String, channel: String, 
     _ = try releaseTag(version: version, build: build, channel: channel)
     let stem = "Talkless-\(version)-\(build)-arm64"
     var expected: Set<String> = [stem + ".zip", stem + ".dmg"]
+    expected.formUnion(ReleaseNotes.assetNames)
     if configuration.isEnabled { expected.formUnion(try feedNames(channel: channel)) }
     let paths = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: nil)
     guard Set(paths.map(\.lastPathComponent)) == expected else {
@@ -293,6 +295,7 @@ func writeMetadata(stage: URL, version: String, build: String, channel: String, 
     }
     let metadata = try ReleaseMetadata(version: version, build: build, channel: channel,
                                        sourceCommit: sourceCommit, configuration: configuration, files: files)
+    _ = try validateReleaseNotes(directory: stage, metadata: metadata)
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     var data = try encoder.encode(metadata)

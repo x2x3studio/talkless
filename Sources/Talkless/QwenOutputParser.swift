@@ -24,7 +24,7 @@ enum QwenOutputError: LocalizedError {
     case invalidHeader
 
     var errorDescription: String? {
-        "Qwen returned an incomplete recognition header; no text was inserted. Please try again."
+        L10n.tr("Qwen returned an incomplete recognition header; no text was inserted. Please try again.")
     }
 }
 

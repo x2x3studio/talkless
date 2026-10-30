@@ -12,6 +12,8 @@ import SwiftUI
 
 @main
 struct HUDTests {
+    // The launcher appends a process-only preference override after optional snapshot arguments.
+    static var testArguments: [String] { Array(CommandLine.arguments.dropLast(2)) }
     @MainActor @discardableResult
     static func snapshot(_ model: HUDModel, name: String,
                          reduceTransparency: Bool = false, reduceMotion: Bool = true) throws -> NSBitmapImageRep {
@@ -58,17 +60,20 @@ struct HUDTests {
             preconditionFailure("Could not render the HUD")
         }
         hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        if CommandLine.arguments.count == 2 {
+        if testArguments.count == 2 {
             guard let png = bitmap.representation(using: .png, properties: [:]) else {
                 preconditionFailure("Could not encode the HUD snapshot")
             }
-            let output = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("\(name).png")
+            let output = URL(fileURLWithPath: testArguments[1]).appendingPathComponent("\(name).png")
             try png.write(to: output)
         }
         return bitmap
     }
 
     @MainActor static func main() throws {
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        localization.interfaceLanguage = .english
+        defer { withExtendedLifetime(localization) {} }
         _ = NSApplication.shared
         var caretReads = 0
         let updates = CurrentValueSubject<HUDAppearance, Never>(HUDAppearance())
@@ -242,9 +247,14 @@ func run(_ executable: String, _ arguments: [String]) throws {
 }
 let binary = directory.appendingPathComponent("hud-tests")
 try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library", source.path,
+    root.appendingPathComponent("Sources/Talkless/L10n.swift").path,
+    root.appendingPathComponent("Sources/Talkless/TranslationLanguages.swift").path,
+    root.appendingPathComponent("Sources/Talkless/LanguagePickerView.swift").path,
     root.appendingPathComponent("Sources/Talkless/HUDAppearance.swift").path,
     root.appendingPathComponent("Sources/Talkless/Overlay.swift").path,
     root.appendingPathComponent("Sources/Talkless/OverlaySettingsView.swift").path,
     root.appendingPathComponent("Sources/Talkless/CaretPosition.swift").path,
     root.appendingPathComponent("Sources/Talkless/TextIO.swift").path, "-o", binary.path])
-try run(binary.path, Array(CommandLine.arguments.dropFirst()))
+// Overlay settings observe the production shared localization object. Override its read
+// through NSArgumentDomain only; never write the user's persisted language preference.
+try run(binary.path, Array(CommandLine.arguments.dropFirst()) + ["-interfaceLanguage", "english"])

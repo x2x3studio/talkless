@@ -8,8 +8,8 @@ struct HUDAppearance: Equatable, Codable, Sendable {
         var id: Self { self }
         var title: String {
             switch self {
-            case .translucent: "Translucent"
-            case .solid: "Solid"
+            case .translucent: L10n.tr("Translucent")
+            case .solid: L10n.tr("Solid")
             }
         }
     }

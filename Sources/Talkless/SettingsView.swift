@@ -19,14 +19,14 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .dictation: "Dictation"
-        case .translation: "Translation"
-        case .models: "Speech recognition"
-        case .aiService: "AI service"
-        case .dictionary: "Dictionary"
-        case .overlay: "Overlay"
-        case .history: "History"
-        case .system: "System"
+        case .dictation: L10n.tr("Dictation")
+        case .translation: L10n.tr("Translation")
+        case .models: L10n.tr("Speech recognition")
+        case .aiService: L10n.tr("AI service")
+        case .dictionary: L10n.tr("Dictionary")
+        case .overlay: L10n.tr("Overlay")
+        case .history: L10n.tr("History")
+        case .system: L10n.tr("System")
         }
     }
 
@@ -45,14 +45,14 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .dictation: "Choose how you record and how your words are processed."
-        case .translation: "Translate selected text, independently of dictation."
-        case .models: "Choose how audio becomes text."
-        case .aiService: "One AI connection for polishing, translation, and voice editing."
-        case .dictionary: "Review and manage preferred spellings."
-        case .overlay: "Preview and customize recording feedback."
-        case .history: "Your recent dictations, edits, and translations."
-        case .system: "Permissions, updates, and troubleshooting."
+        case .dictation: L10n.tr("Choose how you record and how your words are processed.")
+        case .translation: L10n.tr("Translate selected text, independently of dictation.")
+        case .models: L10n.tr("Choose how audio becomes text.")
+        case .aiService: L10n.tr("One AI connection for polishing, translation, and voice editing.")
+        case .dictionary: L10n.tr("Review and manage preferred spellings.")
+        case .overlay: L10n.tr("Preview and customize recording feedback.")
+        case .history: L10n.tr("Your recent dictations, edits, and translations.")
+        case .system: L10n.tr("Permissions, updates, and troubleshooting.")
         }
     }
 }
@@ -60,6 +60,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var localization = LocalizationSettings.shared
     var updateController: UpdateController? = nil
     @State private var selection: SettingsSection? = .dictation
 
@@ -71,7 +72,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Talkless")
                         .font(.system(size: 17, weight: .semibold))
-                    Text("Settings")
+                    Text(L10n.tr("Settings"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -88,6 +89,8 @@ struct SettingsView: View {
                     .padding(.vertical, 5)
                     .tag(section)
                 }
+                // Rebuild native rows when their localized titles change; selection stays above the list.
+                .id(localization.locale.identifier)
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
             }
@@ -137,6 +140,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .windowBackgroundColor))
         }
+        .environment(\.locale, localization.locale)
         .tint(SettingsAppearance.accent)
         .frame(minWidth: 800, idealWidth: 900, minHeight: 580, idealHeight: 660)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowModels"))) { _ in
@@ -148,6 +152,7 @@ struct SettingsView: View {
 // MARK: - Dictation and system
 
 private struct DictationSettingsTab: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
     let onConfigureAI: () -> Void
@@ -158,11 +163,11 @@ private struct DictationSettingsTab: View {
 
     private var permissionMessage: String {
         if !microphoneGranted && !accessibilityGranted {
-            return "Allow microphone and Accessibility access to dictate."
+            return L10n.tr("Allow microphone and Accessibility access to dictate.")
         }
         return microphoneGranted
-            ? "Allow Accessibility access for shortcuts and text insertion."
-            : "Allow microphone access to record your voice."
+            ? L10n.tr("Allow Accessibility access for shortcuts and text insertion.")
+            : L10n.tr("Allow microphone access to record your voice.")
     }
 
     var body: some View {
@@ -174,45 +179,46 @@ private struct DictationSettingsTab: View {
                             .foregroundStyle(.orange)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Permission needed").font(.headline)
+                            Text(L10n.tr("Permission needed")).font(.headline)
                             Text(permissionMessage)
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 4)
-                        Button("Open permissions") { onPermissions() }
+                        Button(L10n.tr("Open permissions")) { onPermissions() }
                             .fixedSize()
                     }
                 }
             }
             AudioInputSettingsView(settings: settings)
 
-            Section("Recording") {
+            Section(L10n.tr("Recording")) {
                 HStack {
                     Picker(selection: $settings.recordingGestureMode) {
                         ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Recording mode")
-                            Text("Default: \(AppSettings.defaultRecordingGestureMode.title)")
+                            Text(L10n.tr("Recording mode"))
+                            Text(L10n.format("Default: %@", AppSettings.defaultRecordingGestureMode.title))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    Button("Reset") {
+                    .id(localization.locale.identifier)
+                    Button(L10n.tr("Reset")) {
                         ShortcutRecorder.cancelCapture()
                         settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
                     }
                     .controlSize(.small)
                     .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
-                    .help("Restore \(AppSettings.defaultRecordingGestureMode.title). Shortcuts and other settings are unchanged.")
-                    .accessibilityLabel("Reset recording mode")
+                    .help(L10n.format("Restore %@. Shortcuts and other settings are unchanged.", AppSettings.defaultRecordingGestureMode.title))
+                    .accessibilityLabel(L10n.tr("Reset recording mode"))
                 }
                 .disabled(controller.state != .idle)
-                Text("Hold: release to finish. Tap: press again to finish. Escape cancels.")
+                Text(L10n.tr("Hold: release to finish. Tap: press again to finish. Escape cancels."))
                     .font(.caption).foregroundStyle(.secondary)
 
                 ShortcutRecorder(
-                    title: "Dictation key", value: settings.triggerKey.title,
+                    title: L10n.tr("Dictation key"), value: settings.triggerKey.title,
                     defaultValue: AppSettings.defaultTriggerKey.title,
                     isDefault: settings.isTriggerKeyDefault,
                     setCaptureActive: controller.setShortcutCaptureActive,
@@ -221,19 +227,19 @@ private struct DictationSettingsTab: View {
                     if let error = ShortcutRecorderRules.primaryError(key, alternate: settings.alternateFinishKey) {
                         return error
                     }
-                    guard let key else { return "The dictation key cannot be cleared." }
+                    guard let key else { return L10n.tr("The dictation key cannot be cleared.") }
                     settings.triggerKey = key
                     return nil
                 }
                 .disabled(controller.state != .idle)
-                .help("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
+                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only."))
                 if settings.triggerKey == .fn || settings.effectiveAlternateFinishKey == .fn {
-                    Text("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel.")
+                    Text(L10n.tr("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel."))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ShortcutRecorder(
-                    title: "Alternate finish key",
+                    title: L10n.tr("Alternate finish key"),
                     value: settings.alternateFinishKey.title(for: settings.triggerKey),
                     defaultValue: settings.defaultAlternateFinishKeyTitle,
                     isDefault: settings.isAlternateFinishKeyDefault,
@@ -245,7 +251,7 @@ private struct DictationSettingsTab: View {
                     }
                     if let key {
                         guard let alternate = AlternateFinishKey(rawValue: key.rawValue) else {
-                            return "That key is not supported for alternate finish."
+                            return L10n.tr("That key is not supported for alternate finish.")
                         }
                         settings.alternateFinishKey = alternate
                     } else {
@@ -254,23 +260,23 @@ private struct DictationSettingsTab: View {
                     return nil
                 }
                 .disabled(controller.state != .idle)
-                .help("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish.")
+                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish."))
                 Text(settings.polishEnabled
-                     ? "Alternate finish skips AI for this recording."
-                     : "Alternate finish uses AI for this recording.")
+                     ? L10n.tr("Alternate finish skips AI for this recording.")
+                     : L10n.tr("Alternate finish uses AI for this recording."))
                     .font(.caption).foregroundStyle(.secondary)
                 if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
-                    Text("Record a different key from the dictation key. Alternate finish is disabled while they match.")
+                    Text(L10n.tr("Record a different key from the dictation key. Alternate finish is disabled while they match."))
                         .font(.caption).foregroundStyle(.orange)
                 }
                 HStack {
                     Spacer()
-                    Button("Reset recording shortcuts") {
+                    Button(L10n.tr("Reset recording shortcuts")) {
                         ShortcutRecorder.cancelCapture()
                         settings.restoreRecordingShortcutDefaults()
                     }
                     .disabled(settings.areRecordingShortcutsDefault || controller.state != .idle)
-                    .help("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged.")
+                    .help(L10n.tr("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged."))
                 }
             }
 
@@ -286,6 +292,7 @@ private struct DictationSettingsTab: View {
 }
 
 private struct SystemSettingsTab: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
     var updateController: UpdateController?
     @State private var accessibility = DictationController.accessibilityGranted
@@ -294,15 +301,27 @@ private struct SystemSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Permissions") {
+            Section(L10n.tr("Language")) {
+                Picker(L10n.tr("Interface language"), selection: $localization.interfaceLanguage) {
+                    ForEach(InterfaceLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                }
+                .id(localization.locale.identifier)
+                Text(L10n.tr("Changes the interface only, not speech recognition, output, or translation languages."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section(L10n.tr("Permissions")) {
                 PermissionRow(
-                    title: "Accessibility", detail: "Keyboard shortcuts and text insertion",
+                    title: L10n.tr("Accessibility"), detail: L10n.tr("Keyboard shortcuts and text insertion"),
                     granted: accessibility && controller.hotkeyActive
                 ) {
                     DictationController.requestAccessibility()
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
-                PermissionRow(title: "Microphone", detail: "Record your voice", granted: microphone == .authorized) {
+                PermissionRow(title: L10n.tr("Microphone"), detail: L10n.tr("Record your voice"), granted: microphone == .authorized) {
                     if microphone == .notDetermined {
                         AVCaptureDevice.requestAccess(for: .audio) { _ in }
                     } else {
@@ -314,7 +333,7 @@ private struct SystemSettingsTab: View {
             LaunchAtLoginSettingsView()
 
             if let updateController {
-                UpdatesSection(updater: updateController, controller: controller)
+                UpdateSettingsView(updater: updateController, controller: controller)
             }
             DiagnosticsSection()
         }
@@ -328,19 +347,20 @@ private struct SystemSettingsTab: View {
 }
 
 private struct DiagnosticsSection: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @State private var includeCrashReports = false
     @State private var exporting = false
 
     var body: some View {
-        Section("Diagnostics") {
-            Text("Logs exclude audio, transcripts, API keys, and request contents. Nothing is uploaded automatically.")
+        Section(L10n.tr("Diagnostics")) {
+            Text(L10n.tr("Logs exclude audio, transcripts, API keys, and request contents. Nothing is uploaded automatically."))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle("Include recent macOS crash reports", isOn: $includeCrashReports)
+            Toggle(L10n.tr("Include recent macOS crash reports"), isOn: $includeCrashReports)
                 .disabled(exporting)
-                .help("Include native backtraces from the last 7 days. An unclean exit can also mean Force Quit or power loss.")
+                .help(L10n.tr("Include native backtraces from the last 7 days. An unclean exit can also mean Force Quit or power loss."))
             if includeCrashReports {
-                Text("Crash reports from the last 7 days may include personal information and file paths. Review them before sharing.")
+                Text(L10n.tr("Crash reports from the last 7 days may include personal information and file paths. Review them before sharing."))
                     .font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -348,14 +368,14 @@ private struct DiagnosticsSection: View {
                 HStack(spacing: 8) { diagnosticActions }
                 VStack(alignment: .leading, spacing: 8) { diagnosticActions }
             }
-            Text("After a crash, relaunch Talkless and export diagnostics.")
+            Text(L10n.tr("After a crash, relaunch Talkless and export diagnostics."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder private var diagnosticActions: some View {
         HStack(spacing: 8) {
-            Button(exporting ? "Exporting…" : "Export diagnostics…") {
+            Button(exporting ? L10n.tr("Exporting…") : L10n.tr("Export diagnostics…")) {
                 exporting = true
                 Task { @MainActor in
                     await Diagnostics.shared.exportDiagnostics(includeCrashReports: includeCrashReports)
@@ -365,47 +385,14 @@ private struct DiagnosticsSection: View {
             .disabled(exporting)
             if exporting { ProgressView().controlSize(.small) }
         }
-        Button("Open logs") { Diagnostics.shared.revealAppLogs() }
-            .help("Local app and recording lifecycle logs rotate automatically, up to 15 MB.")
-        Button("Open crash reports") { Diagnostics.shared.openCrashReports() }
-    }
-}
-
-private struct UpdatesSection: View {
-    @ObservedObject var updater: UpdateController
-    @ObservedObject var controller: DictationController
-
-    var body: some View {
-        Section("Updates") {
-            Picker("Update channel", selection: Binding(get: { updater.channel }, set: { updater.selectChannel($0) })) {
-                ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
-            }
-            .disabled(!updater.canChangeChannel)
-            Text("Beta includes prereleases. Returning to Stable does not downgrade Talkless.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Automatically check for updates", isOn: Binding(
-                get: { updater.automaticallyChecksForUpdates },
-                set: { updater.setAutomaticallyChecksForUpdates($0) }
-            ))
-            .disabled(!updater.canChangeAutomaticChecks)
-            .help("Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress.")
-            Text("Checks every 30 minutes. You choose when to download and install.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Check for updates…") { updater.checkForUpdates(nil) }
-                .disabled(controller.state != .idle || !updater.canCheckForUpdates)
-            if let status = updater.status {
-                Text(status).font(.caption).foregroundStyle(.secondary)
-            }
-            if updater.canChangeAutomaticChecks && !updater.canChangeChannel {
-                Text("Finish or dismiss the current update before changing channels.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
+        Button(L10n.tr("Open logs")) { Diagnostics.shared.revealAppLogs() }
+            .help(L10n.tr("Local app and recording lifecycle logs rotate automatically, up to 15 MB."))
+        Button(L10n.tr("Open crash reports")) { Diagnostics.shared.openCrashReports() }
     }
 }
 
 private struct PermissionRow: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     let title: String
     let detail: String
     let granted: Bool
@@ -415,7 +402,7 @@ private struct PermissionRow: View {
         HStack(spacing: 10) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .foregroundStyle(granted ? .green : .orange)
-                .accessibilityLabel(granted ? "Allowed" : "Access needed")
+                .accessibilityLabel(granted ? L10n.tr("Allowed") : L10n.tr("Access needed"))
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                 Text(detail)
@@ -424,9 +411,9 @@ private struct PermissionRow: View {
             }
             Spacer(minLength: 8)
             if !granted {
-                Button("Grant access", action: action)
+                Button(L10n.tr("Grant access"), action: action)
                     .fixedSize()
-                    .accessibilityLabel("Grant \(title) access")
+                    .accessibilityLabel(L10n.format("Grant %@ access", title))
             }
         }
     }
@@ -435,6 +422,8 @@ private struct PermissionRow: View {
 // MARK: - Speech Recognition
 
 private struct SpeechTab: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
+    @Environment(\.locale) private var interfaceLocale
     @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
     @ObservedObject var modelManager = ModelManager.shared
@@ -453,9 +442,10 @@ private struct SpeechTab: View {
     var body: some View {
         Form {
             Section {
-                Picker("Recognition engine", selection: $settings.asrEngine) {
+                Picker(L10n.tr("Recognition engine"), selection: $settings.asrEngine) {
                     ForEach(ASREngine.allCases) { Text($0.title).tag($0) }
                 }
+                .id(localization.locale.identifier)
                 .disabled(controlsDisabled)
             }
 
@@ -463,48 +453,49 @@ private struct SpeechTab: View {
                 ModelManagementView(controller: controller)
 
                 Section {
-                    DisclosureGroup("Advanced") {
-                        Toggle("Use a custom model folder", isOn: $settings.useCustomQwenDirectory)
+                    DisclosureGroup(L10n.tr("Advanced")) {
+                        Toggle(L10n.tr("Use a custom model folder"), isOn: $settings.useCustomQwenDirectory)
                         if settings.useCustomQwenDirectory {
-                            TextField("Model folder", text: $settings.qwenModelDirectory)
+                            TextField(L10n.tr("Model folder"), text: $settings.qwenModelDirectory)
                                 .textFieldStyle(.roundedBorder)
                             HStack {
-                                Button("Choose Folder…") { chooseModelDirectory() }
-                                Button("Use Downloaded Models") {
+                                Button(L10n.tr("Choose Folder…")) { chooseModelDirectory() }
+                                Button(L10n.tr("Use Downloaded Models")) {
                                     settings.useCustomQwenDirectory = false
                                 }
                             }
-                            Text("A Qwen3 ASR MLX folder with its configuration, tokenizer, and safetensors weights. Talkless does not manage or delete this folder.")
+                            Text(L10n.tr("A Qwen3 ASR MLX folder with its configuration, tokenizer, and safetensors weights. Talkless does not manage or delete this folder."))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .disabled(controlsDisabled)
                 }
             } else if settings.asrEngine == .apple {
-                Section("Apple On-device Recognition") {
-                    Picker("Language", selection: $settings.speechLocale) {
+                Section(L10n.tr("Apple On-device Recognition")) {
+                    Picker(L10n.tr("Language"), selection: $settings.speechLocale) {
                         if locales.isEmpty {
                             Text(settings.speechLocale).tag(settings.speechLocale)
                         }
                         ForEach(locales, id: \.identifier) { locale in
-                            Text(Locale(identifier: "en").localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
+                            Text(interfaceLocale.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
                                 .tag(locale.identifier)
                         }
                     }
+                    .id(localization.locale.identifier)
                     .disabled(downloadingAppleModel || controlsDisabled)
                     HStack {
-                        Button("Download Speech Model") { download() }
+                        Button(L10n.tr("Download Speech Model")) { download() }
                             .disabled(downloadingAppleModel || controlsDisabled)
                         if downloadingAppleModel { ProgressView().controlSize(.small) }
                         Text(downloadStatus).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("On-device recognition with live previews while you speak.")
+                    Text(L10n.tr("On-device recognition with live previews while you speak."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                Section("Cloud recognition") {
+                Section(L10n.tr("Cloud recognition")) {
                     HStack {
-                        Text("Presets")
+                        Text(L10n.tr("Presets"))
                         ForEach(presets, id: \.0) { preset in
                             Button(preset.0) {
                                 settings.asrBaseURL = preset.1
@@ -512,10 +503,10 @@ private struct SpeechTab: View {
                             }
                         }
                     }
-                    TextField("API URL", text: $settings.asrBaseURL)
-                    SecureField("API Key", text: $settings.asrAPIKey)
-                    TextField("Model", text: $settings.asrModel)
-                    Text("Uploads the full recording for transcription after you finish. Audio is not saved locally.")
+                    TextField(L10n.tr("API URL"), text: $settings.asrBaseURL)
+                    SecureField(L10n.tr("API Key"), text: $settings.asrAPIKey)
+                    TextField(L10n.tr("Model"), text: $settings.asrModel)
+                    Text(L10n.tr("Uploads the full recording for transcription after you finish. Audio is not saved locally."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -529,7 +520,7 @@ private struct SpeechTab: View {
 
     private func chooseModelDirectory() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a Local Qwen Model Folder"
+        panel.title = L10n.tr("Choose a Local Qwen Model Folder")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
@@ -541,13 +532,13 @@ private struct SpeechTab: View {
 
     private func download() {
         downloadingAppleModel = true
-        downloadStatus = "Downloading…"
+        downloadStatus = L10n.tr("Downloading…")
         let locale = Locale(identifier: settings.speechLocale)
         Task {
             defer { downloadingAppleModel = false }
             do {
                 try await AppleSpeechSession.prepareAssets(locale: locale)
-                downloadStatus = "Ready"
+                downloadStatus = L10n.tr("Ready")
             } catch {
                 downloadStatus = error.localizedDescription
             }
@@ -566,6 +557,7 @@ private struct DictionaryTab: View {
 // MARK: - History
 
 private struct HistoryTab: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var history = HistoryStore.shared
     @State private var confirmClear = false
 
@@ -576,12 +568,12 @@ private struct HistoryTab: View {
                 Divider()
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Recent history").font(.headline)
-                        Text("\(history.entries.count) saved entries")
+                        Text(L10n.tr("Recent history")).font(.headline)
+                        Text(L10n.format("%d saved entries", history.entries.count))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Clear history…") { confirmClear = true }
+                    Button(L10n.tr("Clear history…")) { confirmClear = true }
                         .disabled(history.entries.isEmpty)
                 }
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -590,29 +582,30 @@ private struct HistoryTab: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                             .contextMenu {
-                                Button("Copy Result") { TextIO.copyToClipboard(entry.output) }
-                                Button("Copy Raw Transcript") { TextIO.copyToClipboard(entry.raw) }
+                                Button(L10n.tr("Copy Result")) { TextIO.copyToClipboard(entry.output) }
+                                Button(L10n.tr("Copy Raw Transcript")) { TextIO.copyToClipboard(entry.raw) }
                                 Divider()
-                                Button("Delete") { history.delete(entry) }
+                                Button(L10n.tr("Delete")) { history.delete(entry) }
                             }
                         Divider()
                     }
                     if history.entries.isEmpty {
-                        Text("No history yet").foregroundStyle(.secondary)
+                        Text(L10n.tr("No history yet")).foregroundStyle(.secondary)
                     }
                 }
             }
         }
-        .alert("Clear saved history?", isPresented: $confirmClear) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear history", role: .destructive) { history.clear() }
+        .alert(L10n.tr("Clear saved history?"), isPresented: $confirmClear) {
+            Button(L10n.tr("Cancel"), role: .cancel) {}
+            Button(L10n.tr("Clear history"), role: .destructive) { history.clear() }
         } message: {
-            Text("This deletes saved transcripts. Daily activity totals are kept separately; use Clear activity to remove those too.")
+            Text(L10n.tr("This deletes saved transcripts. Daily activity totals are kept separately; use Clear activity to remove those too."))
         }
     }
 }
 
 private struct HistoryRow: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
     let entry: HistoryEntry
 
     var body: some View {
@@ -636,9 +629,9 @@ private struct HistoryRow: View {
 
     private var kindTitle: String {
         switch entry.kind {
-        case .dictation: return "Dictation"
-        case .edit: return "Voice Edit"
-        case .translation: return "Translation"
+        case .dictation: return L10n.tr("Dictation")
+        case .edit: return L10n.tr("Voice Edit")
+        case .translation: return L10n.tr("Translation")
         }
     }
 }

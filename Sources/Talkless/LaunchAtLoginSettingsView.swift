@@ -6,8 +6,8 @@ struct LaunchAtLoginSettingsView: View {
     @StateObject private var controller = LaunchAtLoginController()
 
     var body: some View {
-        Section("Startup") {
-            Toggle("Launch at login", isOn: Binding(
+        Section(L10n.tr("Startup")) {
+            Toggle(L10n.tr("Launch at login"), isOn: Binding(
                 get: { controller.isRequested },
                 set: { enabled in
                     Task { await controller.setEnabled(enabled) }
@@ -15,20 +15,20 @@ struct LaunchAtLoginSettingsView: View {
             ))
             .disabled(!controller.canChange)
 
-            Text("Start Talkless automatically when you log in to your Mac.")
+            Text(L10n.tr("Start Talkless automatically when you log in to your Mac."))
                 .font(.caption).foregroundStyle(.secondary)
 
             if controller.isUpdating {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Updating login item…").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.tr("Updating login item…")).font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let message = controller.statusMessage {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
             if controller.needsApproval {
-                Button("Open Login Items") { controller.openLoginItems() }
+                Button(L10n.tr("Open Login Items")) { controller.openLoginItems() }
                     .disabled(controller.isUpdating)
             }
             if let error = controller.errorMessage {
@@ -36,6 +36,9 @@ struct LaunchAtLoginSettingsView: View {
             }
         }
         .onAppear { controller.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)) { _ in
+            controller.refresh()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             controller.refresh()
         }

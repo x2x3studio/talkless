@@ -15,6 +15,16 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "Sources/Talkless/AudioRecorder.swift"
 DEVICES = ROOT / "Sources/Talkless/AudioInputDevice.swift"
 
+LOCALIZATION_STUB = r'''
+// Extracted recorder fixtures use deterministic English without preferences or resources.
+enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
+'''
+
 HARNESS = r'''
 private enum TestHardware {
     nonisolated(unsafe) static var device: AudioDeviceID = 42
@@ -311,7 +321,7 @@ def tap_sil(source, directory, name):
 
 with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
     directory = Path(work)
-    source = SOURCE.read_text() + "\n" + DEVICES.read_text()
+    source = SOURCE.read_text() + "\n" + DEVICES.read_text() + LOCALIZATION_STUB
     current = tap_sil(source, directory, "current")
     assert "// Isolation: nonisolated" in current
     assert "swift_task_isCurrentExecutor" not in current
