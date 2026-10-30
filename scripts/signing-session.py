@@ -428,16 +428,10 @@ def local_install(no_updater: bool = False) -> None:
                         require((current_stat.st_dev, current_stat.st_ino, current_stat.st_mtime_ns)
                                 == (original_stat.st_dev, original_stat.st_ino, original_stat.st_mtime_ns),
                                 "Installed app changed during the build; refusing to overwrite it.")
-                        backup_root = Path.home() / "Library/Application Support/Talkless/LocalBuildBackups"
-                        require(backup_root.resolve() == backup_root.absolute(), "Backup directory must not contain symlinks.")
-                        backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-                        backup = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=backup_root))
-                        run(["ditto", str(target), str(backup / "Talkless.app")])
-                        local_app_info(backup / "Talkless.app")
-                        print(f"Previous app backed up to {backup / 'Talkless.app'}", flush=True)
                     else:
                         require(not os.path.lexists(target), "An app appeared at the install destination during the build.")
                     require_talkless_stopped()
+                    # The old app exists only for this transaction; successful installs retain no backup.
                     previous = stage / "Previous-Talkless.app"
                     try:
                         if existing:
