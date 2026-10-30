@@ -161,10 +161,15 @@ private struct GeneralTab: View {
                 }
             }
 
+            AudioInputSettingsView(settings: settings)
+
             Section("Keyboard shortcuts") {
                 ShortcutRecorder(
                     title: "Dictation key", value: settings.triggerKey.title,
-                    setCaptureActive: controller.setShortcutCaptureActive
+                    defaultValue: AppSettings.defaultTriggerKey.title,
+                    isDefault: settings.isTriggerKeyDefault,
+                    setCaptureActive: controller.setShortcutCaptureActive,
+                    onReset: settings.resetTriggerKey
                 ) { key in
                     if let error = ShortcutRecorderRules.primaryError(key, alternate: settings.alternateFinishKey) {
                         return error
@@ -176,16 +181,17 @@ private struct GeneralTab: View {
                 .disabled(controller.state != .idle)
                 Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("Hold to talk, or tap for hands-free dictation. Esc cancels.")
-                    .font(.caption).foregroundStyle(.secondary)
                 if settings.triggerKey == .fn || settings.effectiveAlternateFinishKey == .fn {
                     Text("For Fn, set the Globe key action to Do Nothing in System Settings › Keyboard to prevent the emoji panel from opening.")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 ShortcutRecorder(
                     title: "Alternate finish key",
-                    value: settings.effectiveAlternateFinishKey?.title ?? "Disabled",
-                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive
+                    value: settings.alternateFinishKey.title(for: settings.triggerKey),
+                    defaultValue: settings.defaultAlternateFinishKeyTitle,
+                    isDefault: settings.isAlternateFinishKeyDefault,
+                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
+                    onReset: settings.resetAlternateFinishKey
                 ) { key in
                     if let error = ShortcutRecorderRules.alternateError(key, primary: settings.triggerKey) {
                         return error
@@ -208,9 +214,32 @@ private struct GeneralTab: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
                 LabeledContent("Translate selection", value: "⌃⌥T")
+                HStack {
+                    Spacer()
+                    Button("Restore defaults") {
+                        ShortcutRecorder.cancelCapture()
+                        settings.restoreShortcutDefaults()
+                    }
+                    .disabled(settings.areShortcutsDefault || controller.state != .idle)
+                    .help("Restore the dictation key to Fn / Globe and alternate finish to Automatic. Other settings are unchanged.")
+                }
             }
 
             Section("Behavior") {
+                HStack {
+                    Picker("Recording mode", selection: $settings.recordingGestureMode) {
+                        ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    Button("Reset") {
+                        ShortcutRecorder.cancelCapture()
+                        settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
+                    }
+                    .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
+                    .accessibilityLabel("Reset recording mode")
+                }
+                .disabled(controller.state != .idle)
+                Text("Default: Automatic. Hold ends when you release; Toggle ends on the next press. Automatic supports both. Escape cancels. Changes apply to the next recording.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Edit selected text with your voice", isOn: $settings.voiceEditEnabled)
                     .help("Select text, then dictate an instruction such as Make it more formal")
                 Toggle("Adapt tone to the current app", isOn: $settings.appToneEnabled)

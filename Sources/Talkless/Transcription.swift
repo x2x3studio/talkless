@@ -221,7 +221,8 @@ final class CloudTranscriptionSession: TranscriptionSession, @unchecked Sendable
         }
     }
 
-    static func transcribe(samples: [Float], config: Config) async throws -> String {
+    /// Session injection keeps transport tests offline; production retains the shared session.
+    static func transcribe(samples: [Float], config: Config, session: URLSession = .shared) async throws -> String {
         guard let url = URL(string: config.baseURL.trimmingCharacters(in: .whitespaces))?
             .appendingPathComponent("audio/transcriptions") else {
             throw TalklessError.message("Invalid speech recognition API URL")
@@ -241,11 +242,12 @@ final class CloudTranscriptionSession: TranscriptionSession, @unchecked Sendable
 
         var request = URLRequest(url: url, timeoutInterval: 60)
         request.httpMethod = "POST"
+        request.setValue(LLMAPITransport.userAgent(), forHTTPHeaderField: "User-Agent")
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try HTTP.check(response, data)
         struct Reply: Decodable { let text: String }
         return try JSONDecoder().decode(Reply.self, from: data).text

@@ -29,6 +29,8 @@ final class DictationController: ObservableObject {
     private var generation = 0
     private var pressedAt: CGEventTimestamp?
     private var handsFree = false
+    /// Snapshotted before setup so a settings change only affects the next recording.
+    private var recordingGestureMode: RecordingGestureMode = .automatic
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
     private var editSelection: String?
@@ -158,6 +160,8 @@ final class DictationController: ObservableObject {
         switch state {
         case .idle:
             pressedAt = timestamp
+            recordingGestureMode = settings.recordingGestureMode
+            handsFree = recordingGestureMode == .toggle
             startRecording()
             if state != .recording { pressedAt = nil }
         case .recording where handsFree:
@@ -173,11 +177,18 @@ final class DictationController: ObservableObject {
         let duration = timestamp - start
         Diagnostics.shared.record(event: "hotkey_release", metadata: ["duration_ms": String(duration / 1_000_000)])
         guard state == .recording, !handsFree else { return }
-        if duration < tapThreshold {
-            handsFree = true
-            hud.show(.listening(handsFree: true))
-        } else {
+        switch recordingGestureMode {
+        case .hold:
             stopAndProcess()
+        case .toggle:
+            break
+        case .automatic:
+            if duration < tapThreshold {
+                handsFree = true
+                hud.show(.listening(handsFree: true))
+            } else {
+                stopAndProcess()
+            }
         }
     }
 
@@ -190,7 +201,9 @@ final class DictationController: ObservableObject {
     private func comboKeyPressed(at timestamp: CGEventTimestamp) {
         // The user is holding the trigger for a shortcut (such as Fn+arrow), not dictation.
         guard let start = pressedAt, timestamp >= start else { return }
-        if state == .recording, !handsFree, timestamp - start < 1_000_000_000 {
+        // Toggle is hands-free from the start, but its initial held press can still be a shortcut.
+        if state == .recording, (!handsFree || recordingGestureMode == .toggle),
+           timestamp - start < 1_000_000_000 {
             cancel()
         }
     }
@@ -213,9 +226,9 @@ final class DictationController: ObservableObject {
         switch state {
         case .idle:
             pressedAt = nil
-            startRecording()
+            recordingGestureMode = settings.recordingGestureMode
             handsFree = true
-            if state == .recording { hud.show(.listening(handsFree: true)) }
+            startRecording()
         case .recording:
             stopAndProcess()
         case .processing:
@@ -227,6 +240,7 @@ final class DictationController: ObservableObject {
 
     private func startRecording() {
         guard !shortcutCaptureActive else { return }
+        let audioInputDeviceUID = settings.audioInputDeviceUID
         Diagnostics.shared.record(event: "recording_start", metadata: ["engine": settings.asrEngine.rawValue])
         guard !changingModel else { return }
         if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
@@ -254,7 +268,6 @@ final class DictationController: ObservableObject {
         }
 
         generation += 1
-        handsFree = false
         targetApp = NSWorkspace.shared.frontmostApplication
         previewText = ""
         context = targetApp.map {
@@ -317,8 +330,13 @@ final class DictationController: ObservableObject {
         self.session = session
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
+        recorder.onError = { [weak self] message in
+            guard let self, self.generation == generation, self.state == .recording else { return }
+            self.cancel()
+            self.hud.show(.error(message))
+        }
         do {
-            try recorder.start()
+            try recorder.start(deviceUID: audioInputDeviceUID)
             Diagnostics.shared.record(event: "recording_started")
         } catch {
             Diagnostics.shared.record(event: "recording_error", metadata: ["error_code": String((error as NSError).code)])
@@ -332,7 +350,7 @@ final class DictationController: ObservableObject {
         configureRecordingFinish()
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
-        hud.show(.listening(handsFree: false))
+        hud.show(.listening(handsFree: handsFree))
     }
 
     private func configureRecordingFinish() {
@@ -356,6 +374,11 @@ final class DictationController: ObservableObject {
         hotkeys.armAlternateFinish(nil)
         Diagnostics.shared.record(event: "recording_stop")
         let samples = recorder.stop()
+        if let interruption = recorder.interruptionError {
+            cancel()
+            hud.show(.error(interruption))
+            return
+        }
         let duration = Double(samples.count) / AudioRecorder.sampleRate
         state = .processing
         hud.show(.recognizing)

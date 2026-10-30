@@ -39,6 +39,7 @@ enum HUDModel {
 }
 struct AudioRecorder {
     static let sampleRate = 16_000.0
+    var interruptionError: String?
     func stop() -> [Float] { [0] }
 }
 @MainActor final class FakeSession {
@@ -112,9 +113,17 @@ struct HistoryEntry {
     var lastTranscript = ""
     var session: FakeSession? = FakeSession()
     var processingTask: Task<Void, Never>?
-    let recorder = AudioRecorder()
+    var recorder = AudioRecorder()
     let hud = FakeHUD()
     let history = FakeHistory()
+    var cancelled = false
+    func cancel() {
+        cancelled = true
+        generation += 1
+        session = nil
+        state = .idle
+        hud.show(.hidden)
+    }
 '''
 
 TESTS = r'''
@@ -165,6 +174,15 @@ TESTS = r'''
         print("PASS \(name)")
     }
     @MainActor static func main() async {
+        let interrupted = ProcessingHarness()
+        interrupted.recorder.interruptionError = "Microphone disconnected"
+        TextIO.inserted = []
+        LLMClient.calls = 0
+        interrupted.stopAndProcess()
+        precondition(interrupted.cancelled && interrupted.processingTask == nil)
+        precondition(interrupted.hud.phases == [.hidden, .error("Microphone disconnected")])
+        precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && interrupted.history.entries.isEmpty)
+        print("PASS interrupted recording never processes or pastes a partial transcript")
         await check("configured polish", phases: [.recognizing, .polishing, .hidden])
         await check("disabled polish", enabled: false, phases: [.recognizing, .hidden])
         await check("unconfigured polish", configured: false, phases: [.recognizing, .hidden])

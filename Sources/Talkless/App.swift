@@ -221,7 +221,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let hint = NSMenuItem(title: "Hold \(settings.triggerKey.title) to talk; tap for hands-free", action: nil, keyEquivalent: "")
+        let gestureHint: String
+        switch settings.recordingGestureMode {
+        case .automatic: gestureHint = "Hold \(settings.triggerKey.title) to talk; tap for hands-free"
+        case .hold: gestureHint = "Hold \(settings.triggerKey.title) to talk; release to finish"
+        case .toggle: gestureHint = "Press \(settings.triggerKey.title) to start; press again to finish"
+        }
+        let hint = NSMenuItem(title: gestureHint, action: nil, keyEquivalent: "")
         hint.isEnabled = false
         menu.addItem(hint)
 

@@ -28,6 +28,8 @@ Polishing keys use a stable macOS Keychain service. Existing legacy plaintext po
 
 **Test Connection** is explicit and sends only a fixed short test request, not the user's transcript, dictionary or instructions. The provider may charge for it. No request is sent just by choosing a provider, entering a key, or enabling the panel. Fetch Models uses the configured provider's authenticated models endpoint.
 
+LLM generation, model discovery, and cloud-ASR requests send an explicit `User-Agent: Talkless/<CFBundleShortVersionString>`, using the installed app's human-readable version rather than its build number. CFNetwork and Darwin versions are not appended. Unversioned development/test executables use `Talkless/0.1.0`.
+
 No extra thinking is requested. Thinking is explicitly disabled only for exact provider/model combinations with verified parameter support; otherwise the client omits the field and shows guidance that the model may reason by default. Unknown custom proxies are not given guessed provider-specific flags. The app does not promise that every model can disable reasoning.
 
 ## Dictionary review

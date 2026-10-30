@@ -58,7 +58,43 @@ struct ProviderSettingsTests {
         }
         assertions += try testHUDAppearance()
         assertions += testAlternateFinishKey()
+        assertions += testShortcutDefaults()
         let persistenceKey = "polishProviderSettings.v1"
+
+        // Recording interaction is independent of key bindings and defaults to the legacy dual gesture.
+        let gestureDefaults = MemoryDefaults()
+        let gestures = settings(gestureDefaults)
+        check(gestures.recordingGestureMode == .automatic, "fresh recording mode preserves Automatic")
+        check(AppSettings.defaultRecordingGestureMode == .automatic, "recording reset default is Automatic")
+        check(RecordingGestureMode.allCases == [.automatic, .hold, .toggle], "all recording interactions are selectable")
+        for mode in RecordingGestureMode.allCases {
+            check(mode.id == mode.rawValue && !mode.title.isEmpty, "recording interaction has a stable picker identity and title")
+            gestures.recordingGestureMode = mode
+            check(gestureDefaults.string(forKey: "recordingGestureMode") == mode.rawValue, "recording mode persists its raw value")
+            check(settings(gestureDefaults).recordingGestureMode == mode, "recording mode survives relaunch")
+        }
+        gestureDefaults.values["recordingGestureMode"] = "unknown-mode"
+        check(settings(gestureDefaults).recordingGestureMode == .automatic, "unknown recording mode safely falls back")
+        gestureDefaults.values["recordingGestureMode"] = 123
+        check(settings(gestureDefaults).recordingGestureMode == .automatic, "malformed recording mode safely falls back")
+        gestureDefaults.values = ["triggerKey": "rightControl", "alternateFinishKey": "rightOption"]
+        let existingGestures = settings(gestureDefaults)
+        check(existingGestures.recordingGestureMode == .automatic, "existing installations retain dual gesture")
+        existingGestures.recordingGestureMode = .hold
+        check(existingGestures.triggerKey == .rightControl && existingGestures.alternateFinishKey == .rightOption,
+              "changing interaction leaves custom key bindings untouched")
+        existingGestures.recordingGestureMode = AppSettings.defaultRecordingGestureMode
+        check(settings(gestureDefaults).recordingGestureMode == .automatic, "reset recording mode persists Automatic")
+
+        let audioDefaults = MemoryDefaults()
+        let audioSettings = settings(audioDefaults)
+        check(audioSettings.audioInputDeviceUID == nil, "fresh audio input follows the system default")
+        audioSettings.audioInputDeviceUID = "synthetic-input-uid"
+        check(audioDefaults.string(forKey: "audioInputDeviceUID") == "synthetic-input-uid", "audio input UID is persisted")
+        check(settings(audioDefaults).audioInputDeviceUID == "synthetic-input-uid", "audio input selection survives relaunch")
+        audioSettings.audioInputDeviceUID = nil
+        check(audioDefaults.object(forKey: "audioInputDeviceUID") == nil, "resetting audio input removes the saved UID")
+        check(settings(audioDefaults).audioInputDeviceUID == nil, "reset audio input follows system default after relaunch")
 
         // Dictionary normalization is stable and case-sensitive, without rewriting the editor.
         let dictionaryDefaults = MemoryDefaults()

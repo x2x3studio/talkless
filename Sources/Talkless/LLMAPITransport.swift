@@ -2,6 +2,16 @@ import Foundation
 
 /// URL and transport policy shared by generation and explicit model discovery.
 enum LLMAPITransport {
+    /// Release bundles supply a dotted numeric version; standalone development builds may not.
+    /// Reject malformed metadata rather than placing whitespace or control characters in a header.
+    static func userAgent(version: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) -> String {
+        guard let version, !version.isEmpty, version.utf8.count <= 64,
+              version.split(separator: ".", omittingEmptySubsequences: false).allSatisfy({ component in
+                  !component.isEmpty && component.utf8.allSatisfy { (48...57).contains($0) }
+              }) else { return "Talkless/0.1.0" }
+        return "Talkless/\(version)"
+    }
+
     static func endpoint(baseURL: String, apiProtocol: LLMProtocol, model: String?, models: Bool) throws -> URL {
         var components = try validatedBase(baseURL)
         var path = components.percentEncodedPath
@@ -91,6 +101,7 @@ enum LLMAPITransport {
         let key = config.apiKey.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty || isLoopback(url) else { throw LLMClient.ClientError.missingKey }
         var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue(userAgent(), forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if !key.isEmpty {
             switch config.authMode {

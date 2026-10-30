@@ -12,6 +12,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 controller = (ROOT / "Sources/Talkless/DictationController.swift").read_text()
+settings = (ROOT / "Sources/Talkless/Settings.swift").read_text()
+gesture_mode = settings.split("enum RecordingGestureMode:", 1)[1].split("\nenum ", 1)[0]
+gesture_mode = "enum RecordingGestureMode:" + gesture_mode
 hotkeys = (ROOT / "Sources/Talkless/Hotkeys.swift").read_text()
 hotkeys = hotkeys.split("/// A standard keyboard shortcut", 1)[0]
 hotkeys = hotkeys.replace("private func handle(type:", "func handle(type:")
@@ -35,7 +38,8 @@ def method(name):
 
 
 fields = []
-for name in ("pressedAt", "tapThreshold", "recordingPolishEnabled", "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
+for name in ("pressedAt", "tapThreshold", "recordingGestureMode", "recordingPolishEnabled",
+             "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
     match = re.search(r"^    private (?:var|let) " + name + r"\b[^\n]*", controller, re.M)
     assert match, f"Missing production field: {name}"
     fields.append(match.group().replace("private ", "", 1))
@@ -66,6 +70,7 @@ enum TriggerKey {
     var title: String { String(describing: self) }
 }
 struct Settings {
+    var recordingGestureMode: RecordingGestureMode = .automatic
     var polishEnabled = true
     var triggerKey: TriggerKey = .fn
     var effectiveAlternateFinishKey: TriggerKey? = .rightOption
@@ -83,6 +88,10 @@ struct Settings {
 }
 @MainActor final class FakeRecorder { func stop() {} }
 @MainActor final class FakeSession { func cancel() {} }
+@MainActor final class FakeTranslationPanel {
+    var isVisible = false
+    func close() { isVisible = false }
+}
 @MainActor final class GestureHarness {
     enum State { case idle, recording, processing }
     var state: State = .idle
@@ -97,10 +106,12 @@ struct Settings {
     var handsFree = false
     var generation = 0
     let hud = FakeHUD()
+    let translationPanel = FakeTranslationPanel()
     let recorder = FakeRecorder()
     var session: FakeSession?
     var processingTask: Task<Void, Never>?
     var startupDelay: TimeInterval = 0
+    var onSetup: (() -> Void)?
     var starts = 0
     var stops = 0
     var oppositeStops = 0
@@ -115,15 +126,11 @@ struct Settings {
         monitor.onRelease = { [weak self] in self?.triggerReleased(at: $0) }
         monitor.onComboKey = { [weak self] in self?.comboKeyPressed(at: $0) }
         monitor.onAlternateFinish = { [weak self] in self?.alternateFinishPressed(at: $0) }
-        monitor.onEscape = { [weak self] in
-            guard let self, self.state != .idle else { return false }
-            self.cancel()
-            return true
-        }
+        monitor.onEscape = { [weak self] in self?.escapePressed() ?? false }
     }
     func startRecording() {
         generation += 1
-        handsFree = false
+        onSetup?()
         starts += 1
         session = FakeSession()
         let generation = self.generation
@@ -198,6 +205,58 @@ TESTS = r'''
         }
         print("PASS warm tap, 299/300 ms threshold, and 400 ms hold")
 
+        for mode in RecordingGestureMode.allCases {
+            for duration: UInt64 in [0, 100_000_000, 299_000_000, 300_000_000, 400_000_000, 2_000_000_000] {
+                let test = GestureHarness()
+                test.settings.recordingGestureMode = mode
+                test.press(base)
+                precondition(test.handsFree == (mode == .toggle), "Toggle starts hands-free immediately")
+                test.release(base + duration)
+                let stopsOnRelease = mode == .hold || (mode == .automatic && duration >= 300_000_000)
+                precondition(test.pressedAt == nil)
+                if stopsOnRelease {
+                    precondition(test.state == .processing && test.stops == 1 && !test.handsFree,
+                                 "Hold always finishes on release, including a zero-duration tap")
+                } else {
+                    precondition(test.state == .recording && test.stops == 0 && test.handsFree,
+                                 "Toggle never finishes on release, even after a long hold")
+                    test.press(base + duration + 10)
+                    precondition(test.state == .processing && test.stops == 1)
+                    test.state = .idle // completion may precede the trailing release
+                    test.release(base + duration + 20)
+                    precondition(test.starts == 1 && test.stops == 1 && test.state == .idle)
+                }
+            }
+        }
+        print("PASS all recording modes, zero/short/long releases, and second-press finish")
+
+        for mode in RecordingGestureMode.allCases {
+            for changedMode in RecordingGestureMode.allCases where changedMode != mode {
+                for changeDuringSetup in [true, false] {
+                    let test = GestureHarness()
+                    test.settings.recordingGestureMode = mode
+                    if changeDuringSetup {
+                        test.onSetup = { [unowned test] in test.settings.recordingGestureMode = changedMode }
+                    }
+                    test.press(base)
+                    test.settings.recordingGestureMode = changedMode
+                    test.release(base + 100_000_000)
+                    precondition(test.recordingGestureMode == mode,
+                                 "Setup and mid-recording changes must not replace the starting snapshot")
+                    precondition(test.stops == (mode == .hold ? 1 : 0))
+                    precondition(test.handsFree == (mode != .hold))
+                    test.cancel()
+                    test.onSetup = nil
+                    test.press(base + 200_000_000)
+                    precondition(test.recordingGestureMode == changedMode,
+                                 "The next recording uses the changed setting")
+                    test.release(base + 600_000_000)
+                    precondition(test.state == (changedMode == .toggle ? .recording : .processing))
+                }
+            }
+        }
+        print("PASS recording mode snapshots before setup and settings changes between recordings")
+
         let duplicate = GestureHarness()
         duplicate.press(base)
         duplicate.press(base + 50_000_000)
@@ -233,6 +292,18 @@ TESTS = r'''
         lateCombo.cancel()
         print("PASS Fn combo cancellation, timestamp ordering, and one-second boundary")
 
+        for mode in RecordingGestureMode.allCases {
+            let test = GestureHarness()
+            test.settings.recordingGestureMode = mode
+            test.press(base)
+            test.combo(base + 999_000_000)
+            precondition(test.state == .idle && test.pressedAt == nil && test.stops == 0,
+                         "Initial primary shortcut must cancel even when toggle starts hands-free")
+            test.release(base + 1_000_000_000)
+            precondition(test.state == .idle && test.stops == 0)
+        }
+        print("PASS accidental primary combo cancellation in Automatic, Hold, and Toggle")
+
         let stale = GestureHarness()
         stale.press(base)
         let oldError = stale.onError!
@@ -265,6 +336,39 @@ TESTS = r'''
         let modifiers: [(TriggerKey, CGKeyCode, UInt64)] = [
             (.rightOption, 61, option), (.rightCommand, 54, command), (.rightControl, 62, control)
         ]
+        for mode in RecordingGestureMode.allCases {
+            let menu = GestureHarness()
+            menu.settings.recordingGestureMode = mode
+            menu.toggleFromMenu()
+            precondition(menu.state == .recording && menu.handsFree && menu.pressedAt == nil)
+            menu.triggerReleased(at: base + 100_000_000)
+            precondition(menu.state == .recording, "Menu start never requires a held primary")
+            menu.press(base + 200_000_000)
+            precondition(menu.stops == 1 && menu.state == .processing,
+                         "Primary press finishes menu recordings regardless of selected interaction")
+
+            for releasePrimary in [false, true] {
+                // Hold must use alternate/Escape before release; releasing would already finish.
+                if releasePrimary && mode == .hold { continue }
+                for opposite in [false, true] {
+                    let test = GestureHarness()
+                    test.settings.recordingGestureMode = mode
+                    test.press(base)
+                    if releasePrimary { test.release(base + 100_000_000) }
+                    if opposite {
+                        test.flags(base + 200_000_000, key: 61, raw: option | (releasePrimary ? 0 : fn))
+                        precondition(test.state == .processing && test.oppositeStops == 1 && test.stops == 1)
+                    } else {
+                        test.event(.keyDown, at: base + 200_000_000, key: 53)
+                        precondition(test.state == .idle && test.stops == 0 && test.pressedAt == nil)
+                    }
+                    test.release(base + 250_000_000)
+                    precondition(test.starts == 1 && test.stops == (opposite ? 1 : 0),
+                                 "Trailing primary release cannot act after alternate finish or Escape")
+                }
+            }
+        }
+        print("PASS menu starts, alternate finish, and Escape for all recording modes")
         for (key, code, mask) in modifiers {
             for enabled in [true, false] {
                 for handsFree in [true, false] {
@@ -469,11 +573,12 @@ TESTS = r'''
 }
 '''
 
-source = (hotkeys + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1))
+source = (hotkeys + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1))
           + "\n".join(fields) + "\n"
           + "\n".join(method(name) for name in
                       ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish",
-                       "setShortcutCaptureActive", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu", "cancel"))
+                       "setShortcutCaptureActive", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
+                       "escapePressed", "cancel"))
           + TESTS)
 with tempfile.TemporaryDirectory(prefix="talkless-hotkey-tests-") as directory:
     path = Path(directory)

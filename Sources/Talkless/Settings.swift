@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Dictation trigger key. Hold to talk and release to finish; tap for hands-free mode, then tap again to finish.
+/// Dictation trigger key; its interaction is selected independently by RecordingGestureMode.
 enum TriggerKey: String, CaseIterable, Identifiable {
     case fn
     case rightOption
@@ -26,6 +26,20 @@ enum TriggerKey: String, CaseIterable, Identifiable {
         case .rightOption: return 61
         case .rightCommand: return 54
         case .rightControl: return 62
+        }
+    }
+}
+
+enum RecordingGestureMode: String, CaseIterable, Identifiable {
+    case automatic, hold, toggle
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .hold: "Hold to talk"
+        case .toggle: "Tap to toggle"
         }
     }
 }
@@ -60,6 +74,11 @@ enum AlternateFinishKey: String, CaseIterable, Identifiable {
         if self == .automatic { return primary == .rightOption ? .rightCommand : .rightOption }
         guard let triggerKey, triggerKey != primary else { return nil }
         return triggerKey
+    }
+
+    func title(for primary: TriggerKey) -> String {
+        guard self == .automatic, let key = resolved(for: primary) else { return title }
+        return "\(title) (\(key.title))"
     }
 }
 
@@ -130,10 +149,50 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    static let defaultRecordingGestureMode: RecordingGestureMode = .automatic
+    @Published var recordingGestureMode: RecordingGestureMode {
+        didSet { save(recordingGestureMode.rawValue, "recordingGestureMode") }
+    }
+
+    static let defaultTriggerKey: TriggerKey = .fn
+    static let defaultAlternateFinishKey: AlternateFinishKey = .automatic
+
     @Published var triggerKey: TriggerKey { didSet { save(triggerKey.rawValue, "triggerKey") } }
     @Published var alternateFinishKey: AlternateFinishKey { didSet { save(alternateFinishKey.rawValue, "alternateFinishKey") } }
 
     var effectiveAlternateFinishKey: TriggerKey? { alternateFinishKey.resolved(for: triggerKey) }
+    var isTriggerKeyDefault: Bool { triggerKey == Self.defaultTriggerKey }
+    // Automatic is a preference, not merely today's resolved key.
+    var isAlternateFinishKeyDefault: Bool { alternateFinishKey == Self.defaultAlternateFinishKey }
+    var areShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault }
+    var defaultAlternateFinishKeyTitle: String { Self.defaultAlternateFinishKey.title(for: triggerKey) }
+
+    /// A single-row reset must not overwrite or disable the other custom binding.
+    func resetTriggerKey() -> String? {
+        guard !isTriggerKeyDefault else { return nil }
+        guard alternateFinishKey.triggerKey != Self.defaultTriggerKey else {
+            return "\(Self.defaultTriggerKey.title) is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts."
+        }
+        triggerKey = Self.defaultTriggerKey
+        return nil
+    }
+
+    func resetAlternateFinishKey() -> String? {
+        if !isAlternateFinishKeyDefault { alternateFinishKey = Self.defaultAlternateFinishKey }
+        return nil
+    }
+
+    func restoreShortcutDefaults() {
+        // Restore Automatic first so an explicit Fn alternate cannot briefly collide.
+        _ = resetAlternateFinishKey()
+        _ = resetTriggerKey()
+    }
+
+    /// nil follows System default; explicit UIDs remain selected while disconnected.
+    @Published var audioInputDeviceUID: String? {
+        didSet { defaults.set(audioInputDeviceUID, forKey: "audioInputDeviceUID") }
+    }
+
     @Published var asrEngine: ASREngine { didSet { save(asrEngine.rawValue, "asrEngine") } }
     @Published var qwenModelDirectory: String { didSet { save(qwenModelDirectory, "qwenModelDirectory") } }
 
@@ -226,8 +285,10 @@ final class AppSettings: ObservableObject {
         llmAuthMode = state.authMode
         llmAPIKey = ""
         llmCredentialSaveError = nil
-        triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? .fn
-        alternateFinishKey = AlternateFinishKey(rawValue: d.string(forKey: "alternateFinishKey") ?? "") ?? .automatic
+        recordingGestureMode = RecordingGestureMode(rawValue: d.string(forKey: "recordingGestureMode") ?? "") ?? Self.defaultRecordingGestureMode
+        triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? Self.defaultTriggerKey
+        alternateFinishKey = AlternateFinishKey(rawValue: d.string(forKey: "alternateFinishKey") ?? "") ?? Self.defaultAlternateFinishKey
+        audioInputDeviceUID = d.string(forKey: "audioInputDeviceUID")
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
         qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""
         useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false

@@ -1,8 +1,9 @@
 import AVFoundation
+import AudioToolbox
 import CoreAudio
 import Foundation
 
-/// Capture audio from the default microphone and convert it to 16 kHz mono Float32.
+/// Capture audio from the chosen microphone and convert it to 16 kHz mono Float32.
 final class AudioRecorder: @unchecked Sendable {
     static let sampleRate: Double = 16_000
     static let format = AVAudioFormat(
@@ -18,6 +19,13 @@ final class AudioRecorder: @unchecked Sendable {
         set { lock.withLock { levelCallback = newValue } }
     }
 
+    var onError: (@MainActor @Sendable (String) -> Void)? {
+        get { lock.withLock { errorCallback } }
+        set { lock.withLock { errorCallback = newValue } }
+    }
+    /// A finish action can inspect this before finalizing a partial streaming transcript.
+    var interruptionError: String? { lock.withLock { recordingError } }
+
     private let lock = NSLock()
     private var engine: AVAudioEngine?
     private var converter: AVAudioConverter?
@@ -25,29 +33,59 @@ final class AudioRecorder: @unchecked Sendable {
     private var samples: [Float] = []
     private var bufferCallback: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private var levelCallback: (@Sendable (Float) -> Void)?
+    private var errorCallback: (@MainActor @Sendable (String) -> Void)?
+    private var configurationObserver: NSObjectProtocol?
+    private var sessionID: UUID?
+    private var recordingError: String?
+
+    deinit {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+    }
 
     var isRunning: Bool { lock.withLock { accepting } }
 
     @MainActor
-    func start() throws {
+    func start(deviceUID: String? = nil) throws {
         stop()
-        // An input node can advertise a fallback format even when no input device exists.
-        // Check Core Audio before touching inputNode, whose tap can otherwise raise NSException.
-        try Self.requireDefaultInputDevice()
+        lock.withLock { recordingError = nil }
+        // Resolve before touching inputNode: it can advertise a fallback format even with
+        // no hardware, and installing a tap in that state can raise NSException.
+        var device = try AudioInputDevices.resolve(uid: deviceUID)
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
+        // Set this engine's input only, before reading formats or building its converter.
+        // Pin even System default to the device resolved for this recording session.
+        guard let audioUnit = input.audioUnit else {
+            throw TalklessError.message("Cannot configure the microphone audio input")
+        }
+        let status = AudioUnitSetProperty(
+            audioUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+            &device, UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw TalklessError.message("Cannot use the selected microphone (Core Audio error \(status)). Reconnect it or choose another microphone in Settings › General › Audio.")
+        }
+        // The input scope reflects hardware; the output scope may still cache the previous
+        // device's client format. Input nodes cannot convert between those formats.
+        let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw TalklessError.message("No available microphone found")
         }
         guard let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
             throw TalklessError.message("Cannot convert the microphone audio format")
         }
+        let sessionID = UUID()
         lock.withLock {
             samples.removeAll(keepingCapacity: true)
             self.converter = converter
             self.engine = engine
+            self.sessionID = sessionID
             accepting = true
+        }
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { @Sendable [weak self] _ in
+            self?.configurationChanged(sessionID: sessionID)
         }
         // AVAudioNodeTapBlock is non-Sendable; explicitly opt out of inherited MainActor isolation.
         // Core Audio invokes the tap on its audio thread, not the main actor.
@@ -55,55 +93,58 @@ final class AudioRecorder: @unchecked Sendable {
             self?.process(buffer)
         }
         engine.prepare()
-        do { try engine.start() }
-        catch { stop(); throw error }
+        do {
+            try engine.start()
+            if let interruptionError { throw TalklessError.message(interruptionError) }
+        } catch { stop(); throw error }
     }
 
     @MainActor
     @discardableResult
     func stop() -> [Float] {
-        let engine = lock.withLock { self.engine }
+        let engine = lock.withLock {
+            // Close the gate before teardown can send a configuration notification. Taking
+            // this lock also waits for any in-flight conversion/callback to finish.
+            accepting = false
+            sessionID = nil
+            return self.engine
+        }
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         return lock.withLock {
-            accepting = false
             self.engine = nil
             converter = nil
             return samples
         }
     }
 
-    var duration: TimeInterval {
-        lock.withLock { Double(samples.count) / Self.sampleRate }
+    private func configurationChanged(sessionID: UUID) {
+        let message = "Microphone recording was interrupted because the audio device changed or disconnected. Check your microphone and start again."
+        let shouldReport = lock.withLock {
+            guard self.sessionID == sessionID, accepting else { return false }
+            accepting = false
+            recordingError = message
+            samples.removeAll(keepingCapacity: true)
+            return true
+        }
+        guard shouldReport else { return }
+        // Core Audio calls on an internal queue. Never tear down/deallocate its engine
+        // there; defer teardown and the UI callback, then reject stale session events.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let current = self.lock.withLock { self.sessionID == sessionID }
+            guard current else { return }
+            self.stop()
+            self.onError?(message)
+        }
     }
 
-    private static func requireDefaultInputDevice() throws {
-        let unavailable = TalklessError.message("No available microphone found. Connect a microphone and select it in System Settings › Sound › Input.")
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var device = AudioDeviceID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
-                                         0, nil, &size, &device) == noErr,
-              device != kAudioObjectUnknown else { throw unavailable }
-
-        address.mSelector = kAudioDevicePropertyStreamConfiguration
-        address.mScope = kAudioDevicePropertyScopeInput
-        size = 0
-        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
-              size >= MemoryLayout<AudioBufferList>.size else { throw unavailable }
-        let storage = UnsafeMutableRawPointer.allocate(
-            byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment
-        )
-        defer { storage.deallocate() }
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, storage) == noErr else {
-            throw unavailable
-        }
-        let buffers = UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self))
-        guard buffers.contains(where: { $0.mNumberChannels > 0 }) else { throw unavailable }
+    var duration: TimeInterval {
+        lock.withLock { Double(samples.count) / Self.sampleRate }
     }
 
     private func process(_ buffer: AVAudioPCMBuffer) {

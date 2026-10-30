@@ -5,7 +5,8 @@ private struct Failure: Error, CustomStringConvertible { let description: String
 private func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     if !condition() { throw Failure(description: message) }
 }
-private func json(_ request: URLRequest) throws -> [String: Any] {
+private let expectedUserAgent = "Talkless/\(ProcessInfo.processInfo.environment["TALKLESS_TEST_EXPECTED_VERSION"] ?? "0.1.0")"
+private func requestBody(_ request: URLRequest) throws -> Data {
     let data: Data
     if let body = request.httpBody { data = body }
     else if let stream = request.httpBodyStream {
@@ -21,7 +22,10 @@ private func json(_ request: URLRequest) throws -> [String: Any] {
         }
         data = output
     } else { throw Failure(description: "Missing request body") }
-    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure(description: "Invalid request JSON") }
+    return data
+}
+private func json(_ request: URLRequest) throws -> [String: Any] {
+    guard let object = try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any] else { throw Failure(description: "Invalid request JSON") }
     return object
 }
 private func expectError(_ expected: LLMClient.ClientError, _ operation: () throws -> Void) throws {
@@ -71,6 +75,9 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         }
         do {
             guard let handler else { throw Failure(description: "Unexpected request") }
+            // Assert on every dispatched request, including discovery pagination and cloud ASR,
+            // not merely on a request builder or URLSession configuration.
+            try expect(request.value(forHTTPHeaderField: "User-Agent") == expectedUserAgent, "missing or incorrect Talkless User-Agent")
             switch try handler(request) {
             case .hang: return
             case .fail(let code): client?.urlProtocol(self, didFailWithError: URLError(code))
@@ -114,6 +121,8 @@ private struct APITests {
     }
     static func main() async throws {
         let tests: [(String, () async throws -> Void)] = [
+            ("bundleVersionUserAgentAndSafeFallback", testUserAgent),
+            ("cloudTranscriptionHeadersAndPayload", testCloudTranscription),
             ("legacyConfigAndURLNormalization", testURLs),
             ("maliciousURLsAndValidation", testValidation),
             ("chatCompletionsHeadersAndPayload", testChat),
@@ -142,6 +151,43 @@ private struct APITests {
             print("PASS \(name)")
         }
         print("\(tests.count) API tests passed; all HTTP intercepted by URLProtocol; no API keys or paid requests used.")
+    }
+
+    static func testUserAgent() async throws {
+        for version in ["2026.1030.52139", "1.2.3", "0.1.0"] {
+            try expect(LLMAPITransport.userAgent(version: version) == "Talkless/\(version)", "valid bundle version changed")
+        }
+        let invalidVersions: [String?] = [nil, "", " ", ".", "1..0", ".1", "1.", "not-a-version",
+            "1.0\r\nX-Injected: true", "1.0\n", "1.0\t", "1.0\u{0}", "1.0/extra", " 1.0", "１.０", String(repeating: "1", count: 65)]
+        for version in invalidVersions {
+            try expect(LLMAPITransport.userAgent(version: version) == "Talkless/0.1.0", "invalid metadata did not fall back safely")
+        }
+        try expect(LLMAPITransport.userAgent() == expectedUserAgent, "User-Agent did not use the actual bundle version")
+    }
+
+    static func testCloudTranscription() async throws {
+        MockProtocol.install { request in
+            try expect(request.httpMethod == "POST", "cloud transcription not POST")
+            try expect(request.url?.absoluteString == "https://unit.test/proxy/v1/audio/transcriptions", "cloud endpoint changed")
+            try expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-asr-key", "cloud bearer changed")
+            try expect(request.timeoutInterval == 60, "cloud timeout changed")
+            guard let contentType = request.value(forHTTPHeaderField: "Content-Type"),
+                  contentType.hasPrefix("multipart/form-data; boundary=talkless-") else {
+                throw Failure(description: "cloud multipart content type changed")
+            }
+            let body = String(decoding: try requestBody(request), as: UTF8.self)
+            for (name, value) in [("model", "selected-asr-model"), ("response_format", "json"), ("language", "zh"), ("prompt", "Talkless")] {
+                try expect(body.contains("name=\"\(name)\"\r\n\r\n\(value)\r\n"), "cloud \(name) field changed")
+            }
+            try expect(body.contains("filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF"), "cloud WAV body missing")
+            return .reply(200, #"{"text":"  Recognized text\n"}"#)
+        }
+        let session = URLSession(configuration: MockProtocol.configuration)
+        defer { session.invalidateAndCancel() }
+        let value = CloudTranscriptionSession.Config(baseURL: "https://unit.test/proxy/v1", apiKey: "test-only-asr-key",
+            model: "selected-asr-model", language: "zh", prompt: "Talkless")
+        let result = try await CloudTranscriptionSession.transcribe(samples: [0, 0.25, -0.25], config: value, session: session)
+        try expect(result == "Recognized text" && MockProtocol.count == 1, "cloud transcript or request count changed")
     }
 
     static func testURLs() async throws {

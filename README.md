@@ -30,6 +30,8 @@ For local testing with the release identity and a fixed installation path, quit 
 
 Grant microphone and Accessibility permissions in macOS System Settings. Fn is the default trigger: hold to speak, release to finish; a quick tap starts hands-free recording, and another tap finishes. Escape cancels. Configure the system Globe-key action to Do Nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selected-text voice editing are off by default for new users.
 
+**Settings > General > Behavior > Recording mode** selects Automatic (the existing hold/tap behavior), Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). The mode is captured at recording start; menu-started dictation remains hands-free. Reset restores Automatic without changing other preferences.
+
 For a one-off AI choice, press the **alternate finish key** while recording:
 
 | AI polish at recording start | Normal release, tap, or menu finish | Alternate finish |
@@ -41,9 +43,13 @@ This captures the global AI on/off default at recording start; the alternate key
 
 **Settings > General > Keyboard shortcuts** lets you click either shortcut field and press then release **Fn, Right Option, Right Command, or Right Control** to save it without starting dictation. Only these single keys are supported, not key combinations. Escape cancels shortcut capture; Delete or Backspace clears the alternate binding. Conflicting bindings are rejected. Automatic (the default for unset preferences) uses Right Option unless that is the dictation key, then Right Command, until you record an explicit binding.
 
+Each shortcut shows its default and has a **Reset** button. Reset affects that binding only; an explicit conflicting binding is left unchanged and reported. **Restore defaults** resets both shortcuts to Fn and Automatic, without touching recording mode, AI settings, microphone, or other preferences. Reset cancels any active shortcut capture before changing bindings; buttons are disabled when already at their defaults or while dictation is active.
+
 Press the alternate key by itself or while holding the primary dictation key. It finishes immediately, even if you then add another key for an application shortcut. Already-held unrelated modifiers or non-modifier keys prevent alternate finish; alternate-key events still pass through to the focused app.
 
 ## Recognition
+
+**Settings > General > Audio > Microphone** defaults to System default, or can target a named input device. Selection is saved by stable device UID and applied to the next recording without changing the system-wide microphone. The list refreshes while settings are visible. A missing explicit device stops recording setup with an error rather than silently using another microphone. An audio-engine configuration change during recording interrupts the session with an error and discards partial audio instead of pasting an incomplete transcript. Reset restores System default.
 
 **Settings > Models** selects local Qwen (the default), Apple on-device recognition, or a cloud Whisper-compatible API. Qwen requires an explicitly downloaded model; Apple may download its required speech assets on first use. Cloud recognition uploads recorded audio and dictionary hints to the configured provider and may incur charges. The local Qwen pipeline works as follows:
 

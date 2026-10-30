@@ -5,14 +5,23 @@ import SwiftUI
 struct ShortcutRecorder: View {
     let title: String
     let value: String
+    var defaultValue: String? = nil
+    var isDefault = true
     var allowsClearing = false
     let setCaptureActive: (Bool) -> Bool
+    var onReset: (() -> String?)? = nil
     /// Validate before saving; a returned message keeps recording open without changing preferences.
     let onRecord: (TriggerKey?) -> String?
 
     @Environment(\.isEnabled) private var isEnabled
     @State private var message: String?
     @State private var isError = false
+
+    static let cancelCaptureNotification = Notification.Name("TalklessCancelShortcutCapture")
+
+    static func cancelCapture() {
+        NotificationCenter.default.post(name: cancelCaptureNotification, object: nil)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -27,7 +36,22 @@ struct ShortcutRecorder: View {
                         isError = error
                     }
                 )
-                .frame(width: 205, height: 28)
+                .frame(width: 230, height: 28)
+                if let onReset {
+                    Button("Reset") {
+                        Self.cancelCapture()
+                        message = onReset()
+                        isError = message != nil
+                    }
+                    .disabled(isDefault)
+                    .help("Restore the default for \(title.lowercased())")
+                    .accessibilityLabel("Reset \(title)")
+                }
+            }
+            if let defaultValue {
+                Text("Default: \(defaultValue)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             if let message {
                 Text(message)
@@ -301,6 +325,11 @@ final class ShortcutRecorderButton: NSButton {
             }
             return event
         }
+        focusObservers.append(NotificationCenter.default.addObserver(
+            forName: ShortcutRecorder.cancelCaptureNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.endCapture() }
+        })
         for (name, object) in [(NSWindow.didResignKeyNotification, window as AnyObject),
                                (NSApplication.didResignActiveNotification, NSApp as AnyObject)] {
             focusObservers.append(NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in

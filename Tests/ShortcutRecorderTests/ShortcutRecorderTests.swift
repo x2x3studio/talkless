@@ -5,20 +5,24 @@ private struct RecorderPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Keyboard shortcuts").font(.headline)
-            ShortcutRecorder(title: "Dictation key", value: "Fn / Globe", setCaptureActive: { _ in true }) {
+            ShortcutRecorder(title: "Dictation key", value: "Fn / Globe",
+                             defaultValue: "Fn / Globe", isDefault: true,
+                             setCaptureActive: { _ in true }, onReset: { nil }) {
                 ShortcutRecorderRules.primaryError($0, alternate: .rightCommand)
             }
             Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
-            ShortcutRecorder(title: "Alternate finish key", value: "Right Command ⌘", allowsClearing: true, setCaptureActive: { _ in true }) {
+            ShortcutRecorder(title: "Alternate finish key", value: "Right Command ⌘",
+                             defaultValue: "Automatic (Right Option ⌥)", isDefault: false,
+                             allowsClearing: true, setCaptureActive: { _ in true }, onReset: { nil }) {
                 ShortcutRecorderRules.alternateError($0, primary: .fn)
             }
             Text("Click its shortcut and press Delete or Backspace to disable alternate finish.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(24)
-        .frame(width: 620, height: 270)
+        .frame(width: 620, height: 340)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -145,6 +149,15 @@ struct ShortcutRecorderTests {
         button.keyUp(with: event(.keyUp, 53))
         check(button.capture == nil && transitions.suffix(2) == [true, false], "native Escape cleanup")
         button.beginCapture()
+        button.flagsChanged(with: event(.flagsChanged, 54, rightCommand))
+        let savedBeforeReset = saved.count
+        ShortcutRecorder.cancelCapture()
+        check(button.capture == nil && transitions.suffix(2) == [true, false], "reset cancels pending capture synchronously")
+        check(saved.count == savedBeforeReset, "reset never commits the pending shortcut")
+        let transitionsAfterReset = transitions.count
+        ShortcutRecorder.cancelCapture()
+        check(transitions.count == transitionsAfterReset, "reset cancellation removes observer and resumes only once")
+        button.beginCapture()
         NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
         check(button.capture == nil && transitions.suffix(2) == [true, false], "window blur cleanup")
         button.beginCapture()
@@ -161,7 +174,7 @@ struct ShortcutRecorderTests {
             let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
             try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let preview = NSHostingView(rootView: RecorderPreview())
-            preview.frame = NSRect(x: 0, y: 0, width: 620, height: 270)
+            preview.frame = NSRect(x: 0, y: 0, width: 620, height: 340)
             let previewWindow = NSWindow(contentRect: preview.frame, styleMask: [.titled], backing: .buffered, defer: false)
             previewWindow.contentView = preview
             previewWindow.appearance = NSAppearance(named: .aqua)
