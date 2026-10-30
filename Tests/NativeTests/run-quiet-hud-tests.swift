@@ -70,11 +70,117 @@ struct HUDTests {
         return bitmap
     }
 
+    @MainActor static func testPlacementPreferences() {
+        let screens = [CGRect(x: 0, y: 0, width: 1440, height: 900),
+                       CGRect(x: 1440, y: 0, width: 1440, height: 900)]
+        var pointer = CGPoint(x: 100, y: 100)
+        var caret: CGRect? = CGRect(x: 200, y: 400, width: 1, height: 18)
+        var caretReads = 0
+        var pointerReads = 0
+        let updates = CurrentValueSubject<HUDAppearance, Never>(HUDAppearance())
+        let hud = HUDController(appearanceUpdates: updates.eraseToAnyPublisher(), caretProvider: {
+            caretReads += 1
+            return caret
+        }, screenFramesProvider: { screens }, pointerProvider: {
+            pointerReads += 1
+            return pointer
+        })
+        func wait(_ seconds: TimeInterval = 0.02) {
+            RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+        }
+        func expected(caret: CGRect? = nil, pointer: CGPoint) -> CGRect {
+            CaretPlacement.frame(size: hud.model.contentSize, caret: caret, screens: screens, fallbackPoint: pointer)
+        }
+        func matches(_ actual: CGRect, _ expected: CGRect) -> Bool {
+            // AppKit aligns panel origins to display pixels.
+            actual.size == expected.size && abs(actual.minX - expected.minX) <= 1
+                && abs(actual.minY - expected.minY) <= 1
+        }
+        hud.show(.listening(handsFree: true))
+        wait(0.26)
+        precondition(caretReads == 0, "Default placement never reads Accessibility caret geometry")
+        precondition(pointerReads == 1, "Fixed mode has no placement polling timer")
+        precondition(matches(hud.frame, expected(pointer: pointer)), "Default HUD is bottom center on the pointer's display")
+        let firstPointer = pointer
+        pointer = CGPoint(x: 1800, y: 500)
+        hud.model.preview = String(repeating: "Words that resize the panel. ", count: 15)
+        wait(0.26)
+        precondition(matches(hud.frame, expected(pointer: firstPointer)), "Resizing remains anchored to the original display")
+        precondition(caretReads == 0 && pointerReads == 1, "Fixed resizing never samples the caret or pointer")
+        hud.show(.recognizing)
+        wait()
+        precondition(matches(hud.frame, expected(pointer: firstPointer)),
+                     "Changing stages keeps the fixed display: actual \(hud.frame), expected \(expected(pointer: firstPointer))")
+        hud.hide()
+        hud.show(.recognizing)
+        precondition(matches(hud.frame, expected(pointer: pointer)), "A new session chooses the active display again")
+        precondition(caretReads == 0, "Repeated fixed sessions never query the caret")
+
+        updates.send(HUDAppearance(followsCaret: true))
+        wait()
+        precondition(caretReads == 1, "Enabling follow live immediately queries the caret")
+        precondition(matches(hud.frame, expected(caret: caret, pointer: pointer)), "Enabled follow uses caret placement")
+        let readsBeforeLayout = caretReads
+        hud.model.preview = "A wider recording preview"
+        hud.show(.listening(handsFree: true))
+        wait()
+        precondition(caretReads == readsBeforeLayout, "Follow mode also resizes using the cached caret")
+        precondition(matches(hud.frame, expected(caret: caret, pointer: pointer)))
+        caret = CGRect(x: 600, y: 600, width: 1, height: 18)
+        wait(0.26)
+        precondition(caretReads > readsBeforeLayout, "Opt-in follow polls for caret movement")
+        precondition(matches(hud.frame, expected(caret: caret, pointer: pointer)), "Polling follows the moved caret")
+        caret = nil
+        wait(0.26)
+        precondition(matches(hud.frame, expected(pointer: pointer)), "Unavailable caret safely falls back to screen bottom")
+        caret = CGRect(x: 500, y: 500, width: 1, height: 18)
+        wait(0.26)
+        precondition(matches(hud.frame, expected(caret: caret, pointer: pointer)),
+                     "Following recovers when caret geometry becomes available")
+
+        let readsBeforeDisable = caretReads
+        updates.send(HUDAppearance())
+        wait()
+        precondition(matches(hud.frame, expected(pointer: pointer)), "Disabling follow live moves to fixed bottom center")
+        let pointerReadsAfterDisable = pointerReads
+        let fixedFrame = hud.frame
+        pointer = firstPointer
+        caret = CGRect(x: 300, y: 650, width: 1, height: 18)
+        wait(0.26)
+        precondition(caretReads == readsBeforeDisable, "Disabling follow cancels all caret queries")
+        precondition(pointerReads == pointerReadsAfterDisable && hud.frame == fixedFrame,
+                     "Fixed placement does not follow the mouse between displays")
+        hud.hide()
+        updates.send(HUDAppearance(followsCaret: true))
+        wait(0.26)
+        precondition(caretReads == readsBeforeDisable && hud.model.phase == .hidden,
+                     "Enabling follow while hidden neither queries nor reveals the HUD")
+        hud.show(.recognizing)
+        precondition(caretReads == readsBeforeDisable + 1, "Hidden follow preference takes effect on next show")
+        hud.hide()
+        let readsAfterHide = caretReads
+        wait(0.26)
+        precondition(caretReads == readsAfterHide, "Hiding an opted-in HUD cancels tracking")
+
+        var initialFollowReads = 0
+        let followingHUD = HUDController(appearance: HUDAppearance(followsCaret: true), caretProvider: {
+            initialFollowReads += 1
+            return nil
+        }, screenFramesProvider: { screens }, pointerProvider: { pointer })
+        followingHUD.show(.recognizing)
+        wait(0.26)
+        precondition(initialFollowReads >= 2, "Persisted opt-in starts tracking without an update publisher")
+        precondition(matches(followingHUD.frame, CaretPlacement.frame(size: followingHUD.model.contentSize, caret: nil,
+                     screens: screens, fallbackPoint: pointer)), "Persisted opt-in also handles unavailable caret geometry")
+        followingHUD.hide()
+    }
+
     @MainActor static func main() throws {
         let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
         localization.interfaceLanguage = .english
         defer { withExtendedLifetime(localization) {} }
         _ = NSApplication.shared
+        testPlacementPreferences()
         var caretReads = 0
         let updates = CurrentValueSubject<HUDAppearance, Never>(HUDAppearance())
         let hud = HUDController(appearanceUpdates: updates.eraseToAnyPublisher(), caretProvider: {
@@ -102,7 +208,7 @@ struct HUDTests {
         precondition(longSize.width > shortSize.width && longSize.height > shortSize.height)
         precondition(longSize.width <= HUDModel.maximumWidth && longSize.height <= HUDModel.maximumHeight)
         precondition(hud.frame.size == longSize)
-        precondition(caretReads == readsBeforeAppearanceChange, "Adaptive layout uses the cached caret")
+        precondition(caretReads == 0, "Default adaptive layout never queries the caret")
         try snapshot(hud.model, name: "long-recording")
         hud.model.preview = String(repeating: "\u{957F}\u{53E5}\u{6362}\u{884C}\u{6D4B}\u{8BD5}", count: 100)
         hud.show(.listening(handsFree: false))
@@ -233,7 +339,7 @@ struct HUDTests {
             }
         }
         precondition(textPixels > 10, "Text opacity assertion samples real glyphs")
-        print("PASS HUD appearance updates, native preview snapshots, cached caret, click-through, adaptive wrapping, processing stages, and hide lifecycle")
+        print("PASS HUD default fixed placement, opt-in caret tracking, live toggling, fallback, appearance updates, native preview snapshots, click-through, adaptive wrapping, processing stages, and hide lifecycle")
     }
 }
 """#.write(to: source, atomically: true, encoding: .utf8)

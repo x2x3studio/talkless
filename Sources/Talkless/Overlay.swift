@@ -91,7 +91,7 @@ final class HUDModel: ObservableObject {
     }
 }
 
-/// A nonactivating, click-through panel that follows the insertion caret.
+/// A nonactivating, click-through panel, fixed on screen unless caret following is enabled.
 @MainActor
 final class HUDController {
     let model: HUDModel
@@ -102,7 +102,11 @@ final class HUDController {
     private var appearanceSubscription: AnyCancellable?
     private var languageSubscription: AnyCancellable?
     private var cachedCaret: CGRect?
+    private var cachedScreens: [CGRect] = []
+    private var cachedFallbackPoint = CGPoint.zero
     private let caretProvider: () -> CGRect?
+    private let screenFramesProvider: () -> [CGRect]
+    private let pointerProvider: () -> CGPoint
 
     var frame: NSRect { panel.frame }
     var isClickThrough: Bool { panel.ignoresMouseEvents }
@@ -110,9 +114,13 @@ final class HUDController {
 
     init(appearance: HUDAppearance = HUDAppearance(),
          appearanceUpdates: AnyPublisher<HUDAppearance, Never>? = nil,
-         caretProvider: @escaping () -> CGRect? = { CaretPosition.current() }) {
+         caretProvider: @escaping () -> CGRect? = { CaretPosition.current() },
+         screenFramesProvider: @escaping () -> [CGRect] = { NSScreen.screens.map(\.visibleFrame) },
+         pointerProvider: @escaping () -> CGPoint = { NSEvent.mouseLocation }) {
         model = HUDModel(appearance: appearance)
         self.caretProvider = caretProvider
+        self.screenFramesProvider = screenFramesProvider
+        self.pointerProvider = pointerProvider
         panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: model.contentSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -126,7 +134,7 @@ final class HUDController {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
-        // Appearance changes redraw in place, without querying the caret or resizing.
+        // Layout uses the cached anchor; only opt-in tracking queries the caret.
         layoutSubscription = Publishers.CombineLatest3(
             model.$phase.removeDuplicates(), model.$preview.removeDuplicates(), model.$recordingHint.removeDuplicates()
         )
@@ -135,7 +143,7 @@ final class HUDController {
         appearanceSubscription = appearanceUpdates?
             .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.model.appearance = $0 }
+            .sink { [weak self] in self?.applyAppearance($0) }
         languageSubscription = NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -144,12 +152,24 @@ final class HUDController {
             }
     }
 
+    private func applyAppearance(_ appearance: HUDAppearance) {
+        let placementChanged = model.appearance.followsCaret != appearance.followsCaret
+        model.appearance = appearance
+        guard placementChanged else { return }
+        trackingTask?.cancel()
+        trackingTask = nil
+        cachedCaret = nil
+        guard panel.isVisible else { return }
+        position()
+        beginTracking()
+    }
+
     private func updateLayout() {
         guard model.phase != .hidden else { return }
         let size = model.contentSize
         guard panel.frame.size != size else { return }
         panel.setContentSize(size)
-        position(refreshCaret: false)
+        if panel.isVisible { position(refreshAnchor: false) }
     }
 
     func show(_ phase: HUDModel.Phase) {
@@ -195,22 +215,31 @@ final class HUDController {
 
     private func beginTracking() {
         trackingTask?.cancel()
+        trackingTask = nil
+        guard model.appearance.followsCaret else { return }
         trackingTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(200))
-                guard !Task.isCancelled, let self, self.panel.isVisible else { return }
+                guard !Task.isCancelled, let self, self.panel.isVisible,
+                      self.model.appearance.followsCaret else { return }
                 self.position()
             }
         }
     }
 
-    private func position(refreshCaret: Bool = true) {
-        if refreshCaret { cachedCaret = caretProvider() }
+    private func position(refreshAnchor: Bool = true) {
+        if refreshAnchor {
+            // Fixed placement samples the active display only on show or mode change.
+            // Resizing and stage changes keep that display, even if the pointer moves.
+            cachedScreens = screenFramesProvider()
+            cachedFallbackPoint = pointerProvider()
+            cachedCaret = model.appearance.followsCaret ? caretProvider() : nil
+        }
         let frame = CaretPlacement.frame(
             size: panel.frame.size,
-            caret: cachedCaret,
-            screens: NSScreen.screens.map(\.visibleFrame),
-            fallbackPoint: NSEvent.mouseLocation
+            caret: model.appearance.followsCaret ? cachedCaret : nil,
+            screens: cachedScreens,
+            fallbackPoint: cachedFallbackPoint
         )
         if panel.frame.origin != frame.origin { panel.setFrameOrigin(frame.origin) }
     }

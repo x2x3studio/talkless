@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+- Recording no longer treats every audio configuration notification as a disconnected microphone. Real interruptions still stop incomplete recordings.
+
+### Added
+- A first-run guide for shortcuts, permissions, speech recognition, and optional AI. Reopen it from System settings; existing users are not forced through setup.
+- Expandable connection-test details with the test input, response, model, timing, and copyable redacted diagnostics.
+
+### Improved
+- Client logs distinguish cancellation, audio interruptions, and processing failures, with millisecond timing and audio startup details. Audio, text, and credentials remain excluded.
+- The dictation overlay stays at the bottom of the screen by default. Following the text cursor is optional.
+- A shorter README explains what Talkless does and how to start; detailed instructions live in the user guide.
+
+## 2026.1030.65502
+
 ### Added
 - English and Simplified Chinese interface language packs, with a System setting to follow macOS or choose a language explicitly.
 - Version-specific release notes in the update window and on the release download page.

@@ -7,6 +7,16 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 controller = (ROOT / "Sources/Talkless/DictationController.swift").read_text()
+# Readiness relies on successful Qwen finish (even empty speech) proving assets loaded.
+# Guard that production worker contract without loading models or making API calls.
+qwen = (ROOT / "Sources/Talkless/QwenTranscription.swift").read_text()
+qwen_run = qwen.split("    func run(", 1)[1]
+qwen_before_prepare = qwen_run.split("try await QwenModelRuntime.shared.prepare(", 1)[0]
+assert "return" not in qwen_before_prepare, "Qwen must not return empty success before preparing assets"
+assert "for await" not in qwen_before_prepare, "Qwen must prepare assets before consuming/finishing audio"
+qwen_finish = qwen.split("    func finish(samples:", 1)[1].split("    func cancel()", 1)[0]
+assert "completion.resolve(await worker.result)" in qwen_finish
+assert "return try await withTaskCancellationHandler" in qwen_finish
 
 
 def method(name):
@@ -41,22 +51,27 @@ enum HUDModel {
     var recordingHint: String?
     func show(_ phase: HUDModel.Phase) { phases.append(phase) }
 }
-@MainActor final class Diagnostics {
+final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
-    func record(event: String, metadata: [String: String] = [:]) {}
+    var events: [(String, [String: String])] = []
+    func record(event: String, metadata: [String: String] = [:]) { events.append((event, metadata)) }
 }
 struct AudioRecorder {
     static let sampleRate = 16_000.0
     var interruptionError: String?
-    func stop() -> [Float] { [0] }
+    var samples: [Float] = [0]
+    func stop() -> [Float] { samples }
 }
 @MainActor final class FakeSession {
     var onFinish: () -> Void = {}
+    var result = "raw transcript"
+    var failure: Error?
     func finish(samples: [Float]) async throws -> String {
-        precondition(samples == [0])
+        precondition(samples == [0] || samples.isEmpty)
         await Task.yield()
         onFinish()
-        return "raw transcript"
+        if let failure { throw failure }
+        return result
     }
 }
 struct Settings {
@@ -111,6 +126,16 @@ struct HistoryEntry {
     enum State { case idle, recording, processing }
     var state: State = .recording
     var generation = 0
+    var recordingModelDirectory: URL?
+    var recordingPreparationGeneration = 0
+    var preparationGeneration = 0
+    var modelPreparationTask: Task<Void, Never>?
+    var preparedModelDirectory: URL?
+    var preparingModelDirectory: URL?
+    var failedModelDirectory: URL?
+    var modelPreparationStatusKey: String?
+    enum ModelPreparationState { case unprepared, preparing, ready, failed }
+    private var diagnosticOperation: DictationOperation? = DictationOperation(generation: 0, engine: "qwen", recordingMode: "hold", handsFree: false)
     var pressedAt: UInt64? = 123
     var recordingPolishEnabled = true
     let hotkeys = FakeHotkeys()
@@ -125,7 +150,8 @@ struct HistoryEntry {
     let hud = FakeHUD()
     let history = FakeHistory()
     var cancelled = false
-    func cancel() {
+    func cancel(reason: String = "user") {
+        diagnosticOperation?.record("dictation_cancel", ["reason": reason])
         cancelled = true
         generation += 1
         session = nil
@@ -141,6 +167,7 @@ TESTS = r'''
                                  configured: Bool = true, editing: Bool = false,
                                  failure: Bool = false, opposite: Bool = false,
                                  changeDefault: Bool = false, phases: [HUDModel.Phase]) async {
+        Diagnostics.shared.events = []
         let test = ProcessingHarness()
         test.recordingPolishEnabled = enabled
         test.settings.polishEnabled = changeDefault ? !enabled : enabled
@@ -178,6 +205,20 @@ TESTS = r'''
         precondition(entry.kind == (editing ? .edit : .dictation))
         precondition(test.state == .idle && test.session == nil && test.processingTask == nil,
                      "Production finish must clear processing state")
+        let diagnostics = Diagnostics.shared.events
+        let ids = Set(diagnostics.compactMap { $0.1["operation_id"] })
+        precondition(ids.count == 1 && UUID(uuidString: ids.first!) != nil, "Operation correlation lost")
+        for (event, fields) in diagnostics {
+            precondition(fields["generation"] == "0" && fields["recording_mode"] == "hold" && fields["operation_ms"] != nil)
+            if ["recognition_complete", "paste_returned", "processing_complete"].contains(event) {
+                precondition(fields["duration_ms"] != nil, "Missing stage timing")
+            }
+        }
+        precondition(diagnostics.last?.0 == "processing_complete")
+        precondition(diagnostics.contains { $0.0 == "paste_attempt" } && diagnostics.contains { $0.0 == "paste_returned" })
+        if failure { precondition(diagnostics.contains { $0.0 == "polish_error" && $0.1["fallback"] == "true" }) }
+        precondition(!diagnostics.description.contains("transcript") && !diagnostics.description.contains("Synthetic polish failure"),
+                     "Never log transcript/error content")
         LLMClient.onComplete = {}
         print("PASS \(name)")
     }
@@ -190,7 +231,70 @@ TESTS = r'''
         precondition(interrupted.cancelled && interrupted.processingTask == nil)
         precondition(interrupted.hud.phases == [.hidden, .error("Microphone disconnected")])
         precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && interrupted.history.entries.isEmpty)
+        precondition(Diagnostics.shared.events.contains { $0.0 == "dictation_cancel" && $0.1["reason"] == "stop_interruption" })
         print("PASS interrupted recording never processes or pastes a partial transcript")
+        for failure in [nil, NSError(domain: "PRIVATE_ERROR_DESCRIPTION", code: 72), CancellationError()] as [Error?] {
+            Diagnostics.shared.events = []
+            let test = ProcessingHarness()
+            test.recorder.samples = []
+            test.session!.result = ""
+            test.session!.failure = failure
+            TextIO.inserted = []
+            test.stopAndProcess()
+            await test.processingTask?.value
+            let logs = Diagnostics.shared.events
+            precondition(logs.contains { $0.0 == "recording_empty" && $0.1["reason"] == "empty_audio" })
+            precondition(TextIO.inserted.isEmpty && test.state == .idle)
+            if failure is CancellationError {
+                precondition(logs.contains { $0.0 == "processing_cancelled" })
+            } else if failure != nil {
+                precondition(logs.contains { $0.0 == "recognition_error" && $0.1["error_code"] == "72" })
+                precondition(logs.last?.0 == "processing_error")
+            } else {
+                precondition(logs.contains { $0.0 == "recognition_empty" })
+                precondition(logs.contains { $0.0 == "paste_skipped" && $0.1["reason"] == "empty_result" })
+                precondition(logs.last?.0 == "processing_complete")
+            }
+            precondition(!logs.description.contains("PRIVATE_ERROR_DESCRIPTION"))
+        }
+        print("PASS empty audio/result, recognition failure, and cancellation diagnostics")
+        let modelA = URL(fileURLWithPath: "/synthetic/models/a")
+        let modelB = URL(fileURLWithPath: "/synthetic/models/b")
+        for outcome in ["success", "empty", "failure", "cancelled", "stale", "new_preparation", "non_qwen"] {
+            let test = ProcessingHarness()
+            test.failedModelDirectory = modelA
+            test.modelPreparationStatusKey = "Model preparation failed. Check Speech recognition settings."
+            test.recordingModelDirectory = outcome == "non_qwen" ? nil : modelA.appendingPathComponent("../a")
+            test.recordingPolishEnabled = false
+            if outcome == "empty" { test.session!.result = "" }
+            if outcome == "failure" { test.session!.failure = NSError(domain: "synthetic", code: 1) }
+            if outcome == "cancelled" { test.session!.failure = CancellationError() }
+            test.session!.onFinish = {
+                if outcome == "stale" { test.generation += 1 }
+                if outcome == "new_preparation" {
+                    test.preparationGeneration += 1
+                    test.preparingModelDirectory = modelB
+                }
+            }
+            precondition(test.modelPreparationState(for: modelA) == .failed)
+            test.stopAndProcess()
+            await test.processingTask?.value
+            if outcome == "success" || outcome == "empty" {
+                precondition(test.modelPreparationState(for: modelA) == .ready,
+                             "Successful Qwen finish must replace stale failed prewarm readiness")
+                precondition(test.failedModelDirectory == nil && test.modelPreparationStatusKey == "Ready · kept in memory")
+                precondition(test.modelPreparationState(for: modelB) == .unprepared,
+                             "Success for captured model A cannot report selected model B ready")
+            } else {
+                precondition(test.modelPreparationState(for: modelA) == .failed,
+                             "Failure/cancellation/stale/non-Qwen finish cannot claim model readiness")
+                if outcome == "new_preparation" {
+                    precondition(test.modelPreparationState(for: modelB) == .preparing,
+                                 "Older recognition cannot overwrite a newer preparation")
+                }
+            }
+        }
+        print("PASS successful Qwen finish repairs failed prewarm readiness with directory/generation isolation")
         await check("configured polish", phases: [.recognizing, .polishing, .hidden])
         await check("disabled polish", enabled: false, phases: [.recognizing, .hidden])
         await check("unconfigured polish", configured: false, phases: [.recognizing, .hidden])
@@ -228,7 +332,8 @@ TESTS = r'''
 }
 '''
 
-source = STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish")) + TESTS
+operation = controller.split("private struct DictationOperation", 1)[1].split("/// Core dictation flow", 1)[0]
+source = "import Foundation\nprivate struct DictationOperation" + operation + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
 with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as directory:
     path = Path(directory)
     swift = path / "ProcessingHUDTests.swift"

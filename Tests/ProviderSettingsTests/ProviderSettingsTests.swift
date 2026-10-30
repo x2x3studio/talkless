@@ -59,6 +59,7 @@ struct ProviderSettingsTests {
                       _ store: MemoryCredentials = MemoryCredentials()) -> AppSettings {
             AppSettings(defaults: defaults, credentialStore: store)
         }
+        assertions += try testConnectionTestResult()
         assertions += try testHUDAppearance()
         assertions += testAlternateFinishKey()
         assertions += testShortcutDefaults()

@@ -20,6 +20,9 @@ enum MicrophoneDiagnostic {
         defer { recorder.stop() }
         try await Task.sleep(for: .seconds(seconds))
         recorder.stop()
+        if let interruption = recorder.interruptionError {
+            throw TalklessError.message(interruption)
+        }
         let result = counter.snapshot()
         guard result.buffers > 0, result.frames > 0 else {
             throw TalklessError.message("Microphone test received no audio buffers")

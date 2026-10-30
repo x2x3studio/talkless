@@ -59,7 +59,10 @@ struct OverlaySettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(L10n.tr("Follows your text cursor without taking focus. Clicks pass through."))
+                Toggle(L10n.tr("Follow text cursor"), isOn: $appearance.followsCaret)
+                Text(appearance.followsCaret
+                     ? L10n.tr("Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through.")
+                     : L10n.tr("Stays at the bottom center of the active display without taking focus. Clicks pass through."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(L10n.tr("Long dictation shows the latest lines. Choose the Long sample above to preview it."))

@@ -146,6 +146,9 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowModels"))) { _ in
             selection = .models
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowAIService"))) { _ in
+            selection = .aiService
+        }
     }
 }
 
@@ -318,16 +321,26 @@ private struct SystemSettingsTab: View {
                     title: L10n.tr("Accessibility"), detail: L10n.tr("Keyboard shortcuts and text insertion"),
                     granted: accessibility && controller.hotkeyActive
                 ) {
-                    DictationController.requestAccessibility()
+                    if !DictationController.accessibilityGranted { DictationController.requestAccessibility() }
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
                 PermissionRow(title: L10n.tr("Microphone"), detail: L10n.tr("Record your voice"), granted: microphone == .authorized) {
-                    if microphone == .notDetermined {
+                    // Read again at click time, not the timer's potentially stale snapshot.
+                    if DictationController.microphoneStatus == .notDetermined {
                         AVCaptureDevice.requestAccess(for: .audio) { _ in }
-                    } else {
+                    } else if DictationController.microphoneStatus != .authorized {
                         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
                     }
                 }
+            }
+
+            Section(L10n.tr("Setup guide")) {
+                Button(L10n.tr("Setup guide")) {
+                    NotificationCenter.default.post(name: .showSetupGuide, object: nil)
+                }
+                Text(L10n.tr("Review permissions, speech recognition, and optional AI polishing."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             LaunchAtLoginSettingsView()

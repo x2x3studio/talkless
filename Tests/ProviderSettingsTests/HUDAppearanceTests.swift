@@ -12,6 +12,7 @@ func testHUDAppearance() throws -> Int {
     check(initial.backdrop == .translucent, "Fresh HUD uses a translucent backdrop")
     check(initial.backgroundOpacity == 0.9, "Fresh HUD stays legible")
     check(initial.animationsEnabled, "Fresh HUD enables status motion")
+    check(!initial.followsCaret, "Fresh HUD stays fixed without reading the caret")
     for (value, expected) in [(Double.nan, 0.9), (.infinity, 0.9), (-.infinity, 0.9),
                               (-1, 0.2), (0, 0.2), (2, 1), (0.55, 0.55)] {
         var appearance = HUDAppearance(backgroundOpacity: value)
@@ -41,7 +42,7 @@ func testHUDAppearance() throws -> Int {
         try decoder.decode(HUDAppearance.self, from: Data(string.utf8))
     }
     let missing = try decode("{}")
-    let malformed = try decode(#"{"backdrop":"unknown","backgroundOpacity":"bad","animationsEnabled":17}"#)
+    let malformed = try decode(#"{"backdrop":"unknown","backgroundOpacity":"bad","animationsEnabled":17,"followsCaret":"true"}"#)
     let clampedHigh = try decode(#"{"backdrop":"solid","backgroundOpacity":9,"animationsEnabled":false}"#)
     let clampedLow = try decode(#"{"backgroundOpacity":-4}"#)
     check(missing == initial, "Missing fields restore sensible defaults")
@@ -49,6 +50,16 @@ func testHUDAppearance() throws -> Int {
     check(clampedHigh == HUDAppearance(backdrop: .solid, backgroundOpacity: 1, animationsEnabled: false),
           "Valid fields survive and decoded opacity clamps")
     check(clampedLow.backgroundOpacity == 0.2, "Decoded low opacity clamps")
+    check(!clampedHigh.followsCaret, "Older appearance data migrates to fixed placement")
+    let follow = try decode(#"{"followsCaret":true}"#)
+    check(follow.followsCaret, "Saved opt-in enables caret following")
+    let nullFollow = try decode(#"{"followsCaret":null}"#)
+    check(!nullFollow.followsCaret, "Null caret preference stays off")
+    for enabled in [false, true] {
+        let value = HUDAppearance(followsCaret: enabled)
+        let roundTrip = try decoder.decode(HUDAppearance.self, from: JSONEncoder().encode(value))
+        check(roundTrip == value, "Both placement preferences round-trip")
+    }
 
     let defaults = MemoryDefaults()
     let credentials = MemoryCredentials()
@@ -59,9 +70,10 @@ func testHUDAppearance() throws -> Int {
     settings.hudAppearance.backgroundOpacity = 0.45
     settings.hudAppearance.backdrop = .solid
     settings.hudAppearance.animationsEnabled = false
-    let edited = HUDAppearance(backdrop: .solid, backgroundOpacity: 0.45, animationsEnabled: false)
+    settings.hudAppearance.followsCaret = true
+    let edited = HUDAppearance(backdrop: .solid, backgroundOpacity: 0.45, animationsEnabled: false, followsCaret: true)
     check(settings.hudAppearance == edited, "Nested bindings update shared appearance")
-    check(updates.last == edited && updates.count == 4, "Every edit publishes for immediate HUD updates")
+    check(updates.last == edited && updates.count == 5, "Every edit publishes for immediate HUD updates")
     let restored = AppSettings(defaults: defaults, credentialStore: credentials)
     check(restored.hudAppearance == edited, "Appearance survives relaunch")
     restored.hudAppearance.backdrop = .translucent
@@ -69,6 +81,11 @@ func testHUDAppearance() throws -> Int {
     restored.hudAppearance = HUDAppearance()
     check(AppSettings(defaults: defaults, credentialStore: credentials).hudAppearance == initial,
           "Reset appearance persists")
+    defaults.set(Data(#"{"backdrop":"solid","backgroundOpacity":0.55,"animationsEnabled":false}"#.utf8),
+                 forKey: "hudAppearance.v1")
+    check(AppSettings(defaults: defaults, credentialStore: credentials).hudAppearance
+          == HUDAppearance(backdrop: .solid, backgroundOpacity: 0.55, animationsEnabled: false),
+          "Existing saved appearance keeps its style while caret following defaults off")
     for malformed in ["not JSON", "[]", "null"] {
         defaults.set(Data(malformed.utf8), forKey: "hudAppearance.v1")
         check(AppSettings(defaults: defaults, credentialStore: credentials).hudAppearance == initial,

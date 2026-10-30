@@ -20,6 +20,7 @@ struct HUDAppearance: Equatable, Codable, Sendable {
     var backdrop: Backdrop
     private var storedOpacity: Double
     var animationsEnabled: Bool
+    var followsCaret: Bool
 
     /// Keep every value valid, including programmatic edits and malformed saved data.
     var backgroundOpacity: Double {
@@ -28,10 +29,11 @@ struct HUDAppearance: Equatable, Codable, Sendable {
     }
 
     init(backdrop: Backdrop = .translucent, backgroundOpacity: Double = defaultOpacity,
-         animationsEnabled: Bool = true) {
+         animationsEnabled: Bool = true, followsCaret: Bool = false) {
         self.backdrop = backdrop
         storedOpacity = Self.validatedOpacity(backgroundOpacity)
         self.animationsEnabled = animationsEnabled
+        self.followsCaret = followsCaret
     }
 
     func usesSolidBackdrop(reduceTransparency: Bool) -> Bool {
@@ -52,7 +54,7 @@ struct HUDAppearance: Equatable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case backdrop, backgroundOpacity, animationsEnabled
+        case backdrop, backgroundOpacity, animationsEnabled, followsCaret
     }
 
     init(from decoder: Decoder) throws {
@@ -60,7 +62,8 @@ struct HUDAppearance: Equatable, Codable, Sendable {
         self.init(
             backdrop: (try? values.decode(Backdrop.self, forKey: .backdrop)) ?? .translucent,
             backgroundOpacity: (try? values.decode(Double.self, forKey: .backgroundOpacity)) ?? Self.defaultOpacity,
-            animationsEnabled: (try? values.decode(Bool.self, forKey: .animationsEnabled)) ?? true
+            animationsEnabled: (try? values.decode(Bool.self, forKey: .animationsEnabled)) ?? true,
+            followsCaret: (try? values.decode(Bool.self, forKey: .followsCaret)) ?? false
         )
     }
 
@@ -69,5 +72,6 @@ struct HUDAppearance: Equatable, Codable, Sendable {
         try values.encode(backdrop, forKey: .backdrop)
         try values.encode(backgroundOpacity, forKey: .backgroundOpacity)
         try values.encode(animationsEnabled, forKey: .animationsEnabled)
+        try values.encode(followsCaret, forKey: .followsCaret)
     }
 }

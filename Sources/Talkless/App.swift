@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import Combine
 import SwiftUI
 
@@ -20,16 +19,32 @@ enum TalklessMain {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let controller = DictationController()
-    private let settings = AppSettings.shared
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
+    private let setupGuide: SetupGuideController
+    private let controller: DictationController
+    private let settings: AppSettings
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var setupWindow: NSWindow?
     private var testWindow: NSWindow?
     private var testTextView: NSTextView?
     private var permissionTimer: Timer?
     private var updateController: UpdateController?
     private var cancellables: Set<AnyCancellable> = []
+
+    override init() {
+        // AppSettings writes migrated/default preferences during initialization, so
+        // capture first-run evidence and enrollment before constructing the controller.
+        let guide = SetupGuideController.shared
+        if !CommandLine.arguments.contains("--test-audio"),
+           !CommandLine.arguments.contains("--test-microphone") {
+            guide.beginFirstLaunchIfNeeded()
+        }
+        setupGuide = guide
+        controller = DictationController()
+        settings = AppSettings.shared
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = LocalizationSettings.shared
@@ -54,10 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try await self.controller.prepareForModelChange()
         }
         controller.onModelSetupRequested = { [weak self] in
-            self?.openSettings()
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: Notification.Name("TalklessShowModels"), object: nil)
-            }
+            self?.openSettings(sectionNotification: "TalklessShowModels")
         }
         if CommandLine.arguments.contains("--test-audio") {
             launchAudioTest()
@@ -85,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ApplicationEditMenu.install()
                 self?.updateIcon()
                 self?.settingsWindow?.title = L10n.tr("Talkless Settings")
+                self?.setupWindow?.title = L10n.tr("Talkless Setup")
                 self?.testWindow?.title = L10n.tr("Talkless · Local Audio Test")
             }
             .store(in: &cancellables)
@@ -105,10 +118,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .sink { [weak self] shortcut in self?.controller.updateTranslationShortcut(shortcut) }
             .store(in: &cancellables)
 
-        if !controller.activateHotkey() {
-            // First launch: request permission and wait for the user to enable it in System Settings.
-            DictationController.requestAccessibility()
-            openSettings()
+        NotificationCenter.default.publisher(for: .showSetupGuide)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.openSetupGuide() }
+            .store(in: &cancellables)
+
+        // Startup only checks permission; prompts belong to explicit guide/settings actions.
+        // Avoid even attempting to create an event tap before Accessibility is granted.
+        if !DictationController.accessibilityGranted {
+            Diagnostics.shared.record(event: "permission_blocked", metadata: [
+                "permission": "accessibility", "reason": "denied", "stage": "startup",
+            ])
+        }
+        if !DictationController.accessibilityGranted || !controller.activateHotkey() {
             permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -119,9 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
-        if DictationController.microphoneStatus == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in }
-        }
+        if setupGuide.shouldPresentOnLaunch { openSetupGuide() }
     }
 
     /// Exercise the product controller without microphone, accessibility, or external paste.
@@ -250,6 +270,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettingsAction() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    private func openSetupGuide() {
+        if setupWindow == nil {
+            let hosting = NSHostingController(rootView: SetupGuideLiveView(
+                controller: controller,
+                onComplete: { [weak self] in
+                    self?.setupGuide.complete()
+                    self?.setupWindow?.close()
+                },
+                onSkip: { [weak self] in
+                    self?.setupGuide.skip()
+                    self?.setupWindow?.close()
+                },
+                openSettings: { [weak self] section in self?.openSettings(sectionNotification: section) }
+            ))
+            let window = NSWindow(contentViewController: hosting)
+            window.title = L10n.tr("Talkless Setup")
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.setContentSize(NSSize(width: 600, height: 540))
+            window.minSize = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 600, height: 540)).size
+            window.delegate = self
+            window.center()
+            setupWindow = window
+        }
+        setupGuide.present()
+        NSApp.activate()
+        setupWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === setupWindow else { return }
+        if setupGuide.isPresented { setupGuide.skip() }
+        // A manual reopen starts at the welcome page with fresh live status, not stale UI.
+        setupWindow = nil
+    }
+
+    private func openSettings(sectionNotification: String) {
+        openSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: Notification.Name(sectionNotification), object: nil)
+        }
+    }
 
     func openSettings() {
         if settingsWindow == nil {

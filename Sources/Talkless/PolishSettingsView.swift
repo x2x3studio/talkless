@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Provider-first API settings. Requests are started only by the two explicit action buttons.
@@ -13,7 +14,9 @@ struct AIServiceSettingsView: View {
     @State private var remoteModels: [RemoteModel] = []
     @State private var manualModelEntry = false
     @State private var modelStatus: RequestStatus?
-    @State private var connectionStatus: RequestStatus?
+    @State private var connectionResult: ConnectionTestResult?
+    @State private var testDetailsExpanded = false
+    @State private var diagnosticsCopied = false
     @State private var fetchTask: Task<Void, Never>?
     @State private var testTask: Task<Void, Never>?
     @State private var fetchRequestID: UUID?
@@ -149,15 +152,12 @@ struct AIServiceSettingsView: View {
                 }
 
                 if let modelStatus { statusView(modelStatus) }
-                if let connectionStatus { statusView(connectionStatus) }
-
-                DisclosureGroup(L10n.tr("Data sent to AI")) {
-                    Text(L10n.tr("Test Connection sends only a fixed “Reply with OK” prompt—not your dictation, dictionary, or writing instructions."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(L10n.tr("Talkless does not request extra thinking; non-reasoning models may respond faster."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if let connectionResult {
+                    connectionReceipt(connectionResult)
+                } else {
+                    DisclosureGroup(L10n.tr("Test input")) {
+                        testInputs
+                    }
                 }
             }
         }
@@ -166,6 +166,9 @@ struct AIServiceSettingsView: View {
             invalidateEndpointRequests()
         }
         .onChange(of: settings.llmModel) { _, _ in
+            invalidateTest()
+        }
+        .onChange(of: settings.llmThinkingMode) { _, _ in
             invalidateTest()
         }
         .onDisappear {
@@ -241,6 +244,72 @@ struct AIServiceSettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    private var testInputs: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            receiptText(L10n.tr("System input"), value: ConnectionTestResult.systemInput)
+            receiptText(L10n.tr("Test input"), value: ConnectionTestResult.userInput)
+        }
+        .padding(.top, 6)
+    }
+
+    private func connectionReceipt(_ result: ConnectionTestResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(result.status, systemImage: result.isSuccess ? "checkmark.circle" : "exclamationmark.circle")
+                    .foregroundStyle(result.isSuccess ? Color.primary : Color.red)
+                Spacer(minLength: 8)
+                Text(result.durationText)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.callout.weight(.medium))
+
+            DisclosureGroup(L10n.tr("Test details"), isExpanded: $testDetailsExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                        GridRow {
+                            Text(L10n.tr("Provider")).foregroundStyle(.secondary)
+                            Text(result.provider)
+                        }
+                        GridRow {
+                            Text(L10n.tr("Model")).foregroundStyle(.secondary)
+                            Text(result.model).textSelection(.enabled)
+                        }
+                        GridRow {
+                            Text(L10n.tr("Protocol")).foregroundStyle(.secondary)
+                            Text(result.apiProtocol.label)
+                        }
+                    }
+                    testInputs
+                    Divider()
+                    receiptText(L10n.tr(result.isSuccess ? "Response" : "Error"), value: result.output)
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        diagnosticsCopied = NSPasteboard.general.setString(result.diagnostics, forType: .string)
+                    } label: {
+                        Label(L10n.tr(diagnosticsCopied ? "Copied" : "Copy Diagnostics"), systemImage: "doc.on.doc")
+                    }
+                }
+                .font(.caption)
+                .padding(.top, 8)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func receiptText(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func fetchModels() {
         fetchTask?.cancel()
         let requestID = UUID()
@@ -259,7 +328,9 @@ struct AIServiceSettingsView: View {
                     : L10n.format("Fetched %d models. You can also enter a model ID manually.", models.count))
             } catch {
                 guard !Task.isCancelled, fetchRequestID == requestID, endpointIdentity == identity else { return }
-                modelStatus = .failure(L10n.format("Could not fetch models: %@ You can enter a model ID manually.", error.localizedDescription))
+                let message = (error as? LLMClient.ClientError)?.localizedDescription
+                    ?? LLMClient.ClientError.network.localizedDescription
+                modelStatus = .failure(L10n.format("Could not fetch models: %@ You can enter a model ID manually.", message))
             }
             fetchRequestID = nil
             fetchTask = nil
@@ -267,30 +338,35 @@ struct AIServiceSettingsView: View {
     }
 
     private func testConnection() {
-        testTask?.cancel()
+        invalidateTest()
         let requestID = UUID()
         let identity = endpointIdentity
         let model = settings.llmModel
-        var config = settings.llmConfig
-        config.maxOutputTokens = 1024
+        let thinking = settings.llmThinkingMode
+        let config = ConnectionTestResult.configuration(from: settings.llmConfig)
         testRequestID = requestID
-        connectionStatus = nil
+        let started = ProcessInfo.processInfo.systemUptime
         testTask = Task { @MainActor in
+            let result: Result<String, Error>
             do {
-                // Never use Prompts, dictation, selected text, the dictionary, or custom instructions here.
-                _ = try await LLMClient.complete(
-                    system: "You are checking an API connection. Reply briefly.",
-                    user: "Reply with OK.",
+                // Only these fixed inputs: no dictation, selection, dictionary, or instructions.
+                let response = try await LLMClient.complete(
+                    system: ConnectionTestResult.systemInput,
+                    user: ConnectionTestResult.userInput,
                     config: config
                 )
-                guard !Task.isCancelled, testRequestID == requestID,
-                      endpointIdentity == identity, settings.llmModel == model else { return }
-                connectionStatus = .success(L10n.tr("Connection successful. The model returned a response."))
+                result = .success(response)
             } catch {
-                guard !Task.isCancelled, testRequestID == requestID,
-                      endpointIdentity == identity, settings.llmModel == model else { return }
-                connectionStatus = .failure(L10n.format("Connection failed: %@", error.localizedDescription))
+                result = .failure(error)
             }
+            guard !Task.isCancelled, testRequestID == requestID,
+                  endpointIdentity == identity, settings.llmModel == model,
+                  settings.llmThinkingMode == thinking else { return }
+            connectionResult = ConnectionTestResult(
+                provider: identity.provider, config: config,
+                duration: ProcessInfo.processInfo.systemUptime - started, result: result
+            )
+            testDetailsExpanded = true
             testRequestID = nil
             testTask = nil
         }
@@ -300,7 +376,9 @@ struct AIServiceSettingsView: View {
         testTask?.cancel()
         testTask = nil
         testRequestID = nil
-        connectionStatus = nil
+        connectionResult = nil
+        testDetailsExpanded = false
+        diagnosticsCopied = false
     }
 
     private func invalidateEndpointRequests() {

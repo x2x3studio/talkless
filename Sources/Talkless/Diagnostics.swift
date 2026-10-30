@@ -17,6 +17,13 @@ final class Diagnostics: @unchecked Sendable {
     private var handle: FileHandle?
     private var currentBytes = 0
     private var sessionStarted = false
+    private let startedAt = DispatchTime.now().uptimeNanoseconds
+    private var sequence: UInt64 = 0
+    private lazy var timestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
     @MainActor private var exporting = false
 
     // Fixed names ensure rotation never removes unrelated files from the directory.
@@ -25,21 +32,44 @@ final class Diagnostics: @unchecked Sendable {
         "app_start", "app_stop", "session.previous_unclean_exit",
         "hotkey_press", "hotkey_release", "recording_start", "recording_started", "recording_stop", "recording_error",
         "model_load_start", "model_load_complete", "model_error", "recognition_finish", "recognition_complete",
-        "paste_attempt", "paste_skipped", "dictation_cancel",
+        "paste_attempt", "paste_skipped", "paste_returned", "dictation_cancel",
+        "recording_blocked", "recording_stopped", "recording_empty", "permission_blocked",
+        "processing_start", "processing_complete", "processing_error", "processing_cancelled",
+        "recognition_error", "recognition_empty", "polish_start", "polish_complete", "polish_error",
+        "edit_start", "edit_complete", "edit_error",
+        "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
+        "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
+        "audio_interruption", "audio_recovery",
         "diagnostics.export_started", "diagnostics.export_completed", "diagnostics.export_failed",
     ]
     private static let numericKeys: Set<String> = [
         "duration_ms", "sample_rate", "num_channels", "num_samples", "error_code",
-        "generation", "report_count",
+        "generation", "report_count", "elapsed_ms", "operation_ms", "startup_ms", "first_buffer_ms",
+        "attempt", "channel_count", "common_format", "before_sample_rate", "before_channel_count",
+        "before_common_format", "buffer_count", "frame_count", "input_frame_count", "notification_count",
+        "hardware_sample_rate", "hardware_channel_count", "before_hardware_sample_rate", "before_hardware_channel_count",
     ]
-    private static let booleanKeys: Set<String> = ["include_crash_reports", "streaming", "cold_start"]
+    private static let booleanKeys: Set<String> = [
+        "include_crash_reports", "streaming", "cold_start", "hands_free", "polish_enabled", "opposite_finish",
+        "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
+        "before_interleaved", "device_changed", "device_available", "format_changed", "audio_delivered", "recovered",
+    ]
     private static let enumValues: [String: Set<String>] = [
         "engine": ["apple", "qwen", "openAICompatible"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
-        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "insertion", "shutdown"],
-        "reason": ["user", "permission", "unavailable", "invalid_format", "empty_audio", "cancelled", "timeout", "network", "model", "unknown"],
-        "mode": ["dictation", "edit", "translation", "hold", "hands_free"],
+        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing"],
+        "reason": [
+            "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
+            "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
+            "unavailable", "invalid_format", "empty_audio", "empty_result", "cancelled", "timeout", "network", "model", "unknown",
+            "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout",
+            "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed",
+        ],
+        "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
+        "recording_mode": ["hold", "toggle"],
+        "state": ["idle", "recording", "processing"],
+        "permission": ["microphone", "accessibility"],
     ]
 
     /// Injectable paths/size allow isolated tests without touching real user logs or crash reports.
@@ -87,11 +117,24 @@ final class Diagnostics: @unchecked Sendable {
         }
     }
 
-    /// Synchronous enqueue preserves the last checkpoint if the next operation crashes.
-    /// Unknown events/metadata are dropped, and values have type-specific validation.
+    /// Synchronous checkpoint for main/worker lifecycle calls before native work.
+    /// Never call either logging API from the realtime audio tap: even enqueueing allocates.
     func record(event: String, metadata: [String: String] = [:]) {
         guard Self.events.contains(event) else { return }
-        let safeMetadata = metadata.filter { key, value in
+        let safeMetadata = Self.sanitized(metadata)
+        queue.sync { write(event: event, metadata: safeMetadata) }
+    }
+
+    /// Nonblocking main/worker logging. The same serial queue orders writes, rotation,
+    /// session shutdown and export snapshots; export includes all previously enqueued records.
+    func recordAsync(event: String, metadata: [String: String] = [:]) {
+        guard Self.events.contains(event) else { return }
+        let safeMetadata = Self.sanitized(metadata)
+        queue.async { self.write(event: event, metadata: safeMetadata) }
+    }
+
+    private static func sanitized(_ metadata: [String: String]) -> [String: String] {
+        metadata.filter { key, value in
             guard value.utf8.count <= 64 else { return false }
             if Self.numericKeys.contains(key) {
                 return !value.isEmpty && value.utf8.allSatisfy { (48...57).contains($0) || $0 == 45 || $0 == 46 }
@@ -105,7 +148,6 @@ final class Diagnostics: @unchecked Sendable {
             if key == "operation_id" { return UUID(uuidString: value) != nil }
             return Self.enumValues[key]?.contains(value) == true
         }
-        queue.sync { write(event: event, metadata: safeMetadata) }
     }
 
     private func prepareDirectory() throws {
@@ -113,13 +155,16 @@ final class Diagnostics: @unchecked Sendable {
     }
 
     private func timestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        timestampFormatter.string(from: Date())
     }
 
     private func write(event: String, metadata: [String: String]) {
         do {
+            sequence += 1
+            let elapsed = (DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000
             var data = try JSONSerialization.data(withJSONObject: [
                 "timestamp": timestamp(), "session": sessionID, "event": event, "metadata": metadata,
+                "sequence": sequence, "elapsed_ms": elapsed,
             ], options: [.sortedKeys])
             data.append(0x0A)
             guard data.count <= maximumFileBytes else { return }
@@ -145,6 +190,7 @@ final class Diagnostics: @unchecked Sendable {
             // startup/failure and pre-native-work checkpoints, not every ordinary event.
             if event.hasSuffix("failed") || event.hasSuffix("error") || event == "recording_start"
                 || event == "model_load_start" || event == "recognition_finish"
+                || event == "audio_start" || event == "audio_start_configuration"
                 || event == "app_start" || event == "app_stop" || event == "session.previous_unclean_exit" {
                 try handle?.synchronize()
             }
@@ -239,9 +285,18 @@ final class Diagnostics: @unchecked Sendable {
             Talkless diagnostics — created locally; nothing is uploaded automatically.
 
             Logs/ contains up to three rotating NDJSON event logs (5 MB each).
-            Events contain lifecycle checkpoints, timestamps, random session/operation IDs,
-            and allowlisted technical metadata. They do not contain recordings, transcripts,
-            selected text, prompts, credentials, endpoints, or response bodies.
+            Events contain millisecond UTC timestamps, session-relative monotonic elapsed_ms,
+            and sequence numbers for write ordering (including events within the same millisecond).
+            Random session/operation IDs correlate recording, recognition, processing and insertion.
+            Allowlisted metadata includes recording mode/generation, cancellation and permission
+            reasons, stage durations, numeric audio formats, startup/first-buffer timing, buffer/frame
+            totals, and nonidentifying device/engine change flags. Async audio-worker records queued
+            before export are included in its snapshot. The realtime audio tap never writes logs.
+            Logs do not contain recordings, transcripts, selected text, prompts, credentials,
+            endpoints/URLs, error descriptions, device names/UIDs, or response bodies.
+            paste_returned records mean the insertion call returned, not that another app
+            confirmed receiving text. Wall-clock time can change; use sequence and elapsed_ms
+            within a session for ordering, and metadata timings for individual operation stages.
             system.json contains app/OS versions, hardware model, architecture, CPU count,
             and physical memory. It excludes serial numbers, user names, and host names.
 

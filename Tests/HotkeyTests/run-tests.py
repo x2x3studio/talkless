@@ -48,6 +48,10 @@ error_callback = re.search(
     controller, re.S,
 )
 assert error_callback, "Missing production Qwen error callback"
+recorder_error_callback = re.search(
+    r"recorder.onError = \{ \[weak self\] message in\n(.*?)\n        \}", controller, re.S,
+)
+assert recorder_error_callback, "Missing production recorder interruption callback"
 
 STUBS = r'''
 // Extracted controller fixtures use deterministic English without preferences or resources.
@@ -79,9 +83,10 @@ struct Settings {
     var triggerKey: TriggerKey = .fn
     var effectiveAlternateFinishKey: TriggerKey? = .rightOption
 }
-@MainActor final class Diagnostics {
+final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
-    func record(event: String, metadata: [String: String] = [:]) {}
+    var events: [(String, [String: String])] = []
+    func record(event: String, metadata: [String: String] = [:]) { events.append((event, metadata)) }
 }
 @MainActor final class FakeHUD {
     enum Phase { case listening(handsFree: Bool), error(String) }
@@ -126,6 +131,8 @@ struct Settings {
     }
     var handsFree = false
     var generation = 0
+    private var diagnosticOperation: DictationOperation?
+    var recordingModelDirectory: URL?
     let hud = FakeHUD()
     let translationPanel = FakeTranslationPanel()
     let recorder = FakeRecorder()
@@ -141,6 +148,7 @@ struct Settings {
     var settings = Settings()
     var hotkeys: HotkeyMonitor { monitor }
     var onError: ((String) -> Void)?
+    var onRecorderError: ((String) -> Void)?
     let monitor = HotkeyMonitor()
     init() {
         monitor.onPress = { [weak self] in self?.triggerPressed(at: $0) }
@@ -151,12 +159,17 @@ struct Settings {
     }
     func startRecording() {
         generation += 1
+        diagnosticOperation = DictationOperation(generation: generation, engine: "qwen",
+                                                 recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
         onSetup?()
         starts += 1
         session = FakeSession()
         let generation = self.generation
         onError = { [weak self] message in
 __ERROR_CALLBACK__
+        }
+        onRecorderError = { [weak self] message in
+__RECORDER_ERROR_CALLBACK__
         }
         Thread.sleep(forTimeInterval: startupDelay)
         state = .recording
@@ -608,11 +621,36 @@ TESTS = r'''
         translation.updateTranslationShortcut(.disabled)
         precondition(!translation.translationShortcutActive && translation.translationShortcutError == nil)
         print("PASS translation capture suspension, emitted-value registration, and failure publication")
+        let recorderFailure = GestureHarness()
+        recorderFailure.press(base)
+        let staleRecorderError = recorderFailure.onRecorderError!
+        recorderFailure.cancel()
+        recorderFailure.release(base + 10)
+        recorderFailure.press(base + 20)
+        staleRecorderError("PRIVATE_STALE_RECORDER_ERROR")
+        precondition(recorderFailure.state == .recording)
+        recorderFailure.onRecorderError!("PRIVATE_RECORDER_ERROR")
+        precondition(recorderFailure.state == .idle)
+        let cancellations = Diagnostics.shared.events.filter { $0.0 == "dictation_cancel" }
+        for reason in ["user", "escape", "combo", "recognition_error", "recorder_interruption"] {
+            precondition(cancellations.contains { $0.1["reason"] == reason }, "Missing cancel reason: \(reason)")
+        }
+        for (_, fields) in cancellations {
+            precondition(fields["reason"] != nil && fields["state"] != nil)
+            if fields["operation_id"] != nil {
+                precondition(UUID(uuidString: fields["operation_id"]!) != nil && fields["generation"] != nil)
+                precondition(fields["recording_mode"] != nil && fields["operation_ms"] != nil)
+            }
+        }
+        precondition(!Diagnostics.shared.events.description.contains("synthetic current error") &&
+                     !Diagnostics.shared.events.description.contains("PRIVATE_"), "Never log an error description")
+        print("PASS precise cancellation reasons and correlated mode/generation/timing without error content")
     }
 }
 '''
 
-source = (hotkeys + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1))
+operation = controller.split("private struct DictationOperation", 1)[1].split("/// Core dictation flow", 1)[0]
+source = (hotkeys + "private struct DictationOperation" + operation + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1)).replace("__RECORDER_ERROR_CALLBACK__", recorder_error_callback.group(1))
           + "\n".join(fields) + "\n"
           + "\n".join(method(name) for name in
                       ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish", "refreshRecordingHint",

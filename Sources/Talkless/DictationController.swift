@@ -2,6 +2,32 @@ import AppKit
 import AVFoundation
 import Combine
 
+/// Immutable correlation context captured by asynchronous work so stale completions cannot
+/// be attributed to a newer recording. Contains technical metadata only, never user content.
+private struct DictationOperation {
+    let id = UUID()
+    let generation: Int
+    let engine: String
+    let recordingMode: String
+    let handsFree: Bool
+    var mode = "dictation"
+    let startedAt = DispatchTime.now().uptimeNanoseconds
+
+    static func milliseconds(since start: UInt64) -> String {
+        String((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+    }
+
+    func record(_ event: String, _ metadata: [String: String] = [:]) {
+        var fields = [
+            "operation_id": id.uuidString, "generation": String(generation), "engine": engine,
+            "recording_mode": recordingMode, "hands_free": String(handsFree), "mode": mode,
+            "operation_ms": Self.milliseconds(since: startedAt),
+        ]
+        fields.merge(metadata) { _, value in value }
+        Diagnostics.shared.record(event: event, metadata: fields)
+    }
+}
+
 /// Core dictation flow: key press → recording → transcription → language model cleanup → insertion into the frontmost app.
 @MainActor
 final class DictationController: ObservableObject {
@@ -30,6 +56,9 @@ final class DictationController: ObservableObject {
     private var processingTask: Task<Void, Never>?
     /// Incremented on each start/cancel to discard stale asynchronous results.
     private var generation = 0
+    private var diagnosticOperation: DictationOperation?
+    private var recordingModelDirectory: URL?
+    private var recordingPreparationGeneration = 0
     private var pressedAt: CGEventTimestamp?
     private var handsFree = false
     /// Snapshotted before setup so a settings change only affects the next recording.
@@ -50,7 +79,32 @@ final class DictationController: ObservableObject {
     private var modelPreparationTask: Task<Void, Never>?
     private var preparedModelDirectory: URL?
     private var preparingModelDirectory: URL?
+    private var failedModelDirectory: URL?
     private var preparationGeneration = 0
+
+    enum ModelPreparationState { case unprepared, preparing, ready, failed }
+
+    /// Selection-specific readiness: a previously warmed model never marks another model ready.
+    func modelPreparationState(for directory: URL) -> ModelPreparationState {
+        let normalized = directory.standardizedFileURL
+        if preparingModelDirectory == normalized { return .preparing }
+        if preparedModelDirectory == normalized { return .ready }
+        if failedModelDirectory == normalized { return .failed }
+        return .unprepared
+    }
+
+    /// A successful current session is stronger evidence than an earlier failed prewarm.
+    /// Keep the captured model identity: Settings may now select a different directory.
+    private func markModelReadyAfterRecognition(directory: URL?, generation: Int, preparation: Int) {
+        guard let directory, generation == self.generation, preparation == preparationGeneration else { return }
+        preparationGeneration += 1
+        modelPreparationTask?.cancel()
+        modelPreparationTask = nil
+        preparedModelDirectory = directory.standardizedFileURL
+        preparingModelDirectory = nil
+        failedModelDirectory = nil
+        modelPreparationStatusKey = "Ready · kept in memory"
+    }
 
     func prepareSelectedModel() {
         guard settings.asrEngine == .qwen, state == .idle, !changingModel,
@@ -62,6 +116,8 @@ final class DictationController: ObservableObject {
         preparationGeneration += 1
         let token = preparationGeneration
         preparingModelDirectory = normalized
+        preparedModelDirectory = nil
+        failedModelDirectory = nil
         modelPreparationStatusKey = "Preparing model…"
         modelPreparationTask = Task { [weak self] in
             do {
@@ -74,6 +130,7 @@ final class DictationController: ObservableObject {
             } catch {
                 guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
                 self.preparingModelDirectory = nil
+                self.failedModelDirectory = normalized
                 self.modelPreparationStatusKey = "Model preparation failed. Check Speech recognition settings."
                 self.modelPreparationTask = nil
                 Diagnostics.shared.record(event: "model_error", metadata: ["error_code": String((error as NSError).code)])
@@ -90,6 +147,7 @@ final class DictationController: ObservableObject {
         modelPreparationTask = nil
         preparedModelDirectory = nil
         preparingModelDirectory = nil
+        failedModelDirectory = nil
         modelPreparationStatusKey = nil
         changingModel = true
         defer { changingModel = false }
@@ -123,6 +181,11 @@ final class DictationController: ObservableObject {
         guard !shortcutCaptureActive else { return false }
         hotkeys.triggerKey = settings.triggerKey
         hotkeyActive = hotkeys.start()
+        if !hotkeyActive, !Self.accessibilityGranted {
+            Diagnostics.shared.record(event: "permission_blocked", metadata: [
+                "permission": "accessibility", "stage": "startup", "reason": "denied",
+            ])
+        }
         return hotkeyActive
     }
 
@@ -179,7 +242,11 @@ final class DictationController: ObservableObject {
 
     private func triggerPressed(at timestamp: CGEventTimestamp) {
         guard !shortcutCaptureActive else { return }
-        Diagnostics.shared.record(event: "hotkey_press")
+        if let diagnosticOperation {
+            diagnosticOperation.record("hotkey_press", ["state": String(describing: state)])
+        } else {
+            Diagnostics.shared.record(event: "hotkey_press", metadata: ["state": String(describing: state)])
+        }
         switch state {
         case .idle:
             pressedAt = timestamp
@@ -198,7 +265,7 @@ final class DictationController: ObservableObject {
         guard let start = pressedAt, timestamp >= start else { return }
         pressedAt = nil
         let duration = timestamp - start
-        Diagnostics.shared.record(event: "hotkey_release", metadata: ["duration_ms": String(duration / 1_000_000)])
+        diagnosticOperation?.record("hotkey_release", ["duration_ms": String(duration / 1_000_000)])
         guard state == .recording, !handsFree else { return }
         stopAndProcess()
     }
@@ -214,7 +281,7 @@ final class DictationController: ObservableObject {
         guard let start = pressedAt, timestamp >= start else { return }
         // Toggle is hands-free from the start, but its initial held press can still be a shortcut.
         if state == .recording, timestamp - start < 1_000_000_000 {
-            cancel()
+            cancel(reason: "combo")
         }
     }
 
@@ -224,7 +291,7 @@ final class DictationController: ObservableObject {
             return true
         }
         if state != .idle {
-            cancel()
+            cancel(reason: "escape")
             return true
         }
         return false
@@ -251,9 +318,19 @@ final class DictationController: ObservableObject {
     private func startRecording() {
         guard !shortcutCaptureActive else { return }
         let audioInputDeviceUID = settings.audioInputDeviceUID
-        Diagnostics.shared.record(event: "recording_start", metadata: ["engine": settings.asrEngine.rawValue])
-        guard !changingModel else { return }
+        generation += 1
+        var operation = DictationOperation(generation: generation, engine: settings.asrEngine.rawValue,
+                                           recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
+        diagnosticOperation = operation
+        operation.record("recording_start")
+        // Failed/blocked attempts must not leak their UUID into unrelated idle key events.
+        defer { if state != .recording { diagnosticOperation = nil } }
+        guard !changingModel else {
+            operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
+            return
+        }
         if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
+            operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             hud.show(.error(L10n.tr("Wait for the model operation to finish before starting dictation.")))
             return
         }
@@ -261,6 +338,7 @@ final class DictationController: ObservableObject {
         if settings.asrEngine == .qwen {
             do { qwenDirectory = try settings.resolvedQwenModelDirectory() }
             catch {
+                operation.record("recording_blocked", ["reason": "model_unavailable", "stage": "startup"])
                 hud.show(.error(error.localizedDescription))
                 onModelSetupRequested?()
                 return
@@ -268,16 +346,18 @@ final class DictationController: ObservableObject {
         }
         switch Self.microphoneStatus {
         case .notDetermined:
+            operation.record("permission_blocked", ["permission": "microphone", "reason": "not_determined", "stage": "startup"])
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
             return
         case .denied, .restricted:
+            operation.record("permission_blocked", ["permission": "microphone",
+                "reason": Self.microphoneStatus == .denied ? "denied" : "restricted", "stage": "startup"])
             hud.show(.error(L10n.tr("Allow Talkless in System Settings › Privacy & Security › Microphone")))
             return
         default:
             break
         }
 
-        generation += 1
         targetApp = NSWorkspace.shared.frontmostApplication
         previewText = ""
         context = targetApp.map {
@@ -288,6 +368,8 @@ final class DictationController: ObservableObject {
             editSelection = TextIO.selectedTextViaAX()
         }
 
+        operation.mode = editSelection == nil ? "dictation" : "edit"
+        diagnosticOperation = operation
         let generation = self.generation
         let session: any TranscriptionSession
         switch settings.asrEngine {
@@ -303,7 +385,8 @@ final class DictationController: ObservableObject {
                 },
                 onError: { [weak self] message in
                     guard let self, self.generation == generation else { return }
-                    self.cancel()
+                    self.diagnosticOperation?.record("recognition_error", ["stage": "recognition", "reason": "recognition_error"])
+                    self.cancel(reason: "recognition_error")
                     self.hud.show(.error(message))
                 }
             )
@@ -318,6 +401,7 @@ final class DictationController: ObservableObject {
             )
         case .openAICompatible:
             guard !settings.asrAPIKey.isEmpty else {
+                operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
                 hud.show(.error(L10n.tr("Enter a speech recognition API key in Settings first")))
                 return
             }
@@ -338,18 +422,20 @@ final class DictationController: ObservableObject {
             if self.state == .recording { self.hud.show(.listening(handsFree: self.handsFree)) }
         }
         self.session = session
+        recordingModelDirectory = qwenDirectory?.standardizedFileURL
+        recordingPreparationGeneration = preparationGeneration
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
         recorder.onError = { [weak self] message in
             guard let self, self.generation == generation, self.state == .recording else { return }
-            self.cancel()
+            self.cancel(reason: "recorder_interruption")
             self.hud.show(.error(message))
         }
         do {
-            try recorder.start(deviceUID: audioInputDeviceUID)
-            Diagnostics.shared.record(event: "recording_started")
+            try recorder.start(deviceUID: audioInputDeviceUID, operationID: operation.id)
+            operation.record("recording_started", ["startup_ms": DictationOperation.milliseconds(since: operation.startedAt)])
         } catch {
-            Diagnostics.shared.record(event: "recording_error", metadata: ["error_code": String((error as NSError).code)])
+            operation.record("recording_error", ["error_code": String((error as NSError).code), "reason": "start_failed", "stage": "startup"])
             session.cancel()
             self.session = nil
             hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
@@ -388,29 +474,43 @@ final class DictationController: ObservableObject {
         let shouldPolish = opposite ? !recordingPolishEnabled : recordingPolishEnabled
         pressedAt = nil
         hotkeys.armAlternateFinish(nil)
-        Diagnostics.shared.record(event: "recording_stop")
+        let operation = diagnosticOperation
+        let processingStarted = DispatchTime.now().uptimeNanoseconds
+        operation?.record("recording_stop", ["opposite_finish": String(opposite), "polish_enabled": String(shouldPolish)])
         let samples = recorder.stop()
         if let interruption = recorder.interruptionError {
-            cancel()
+            cancel(reason: "stop_interruption")
             hud.show(.error(interruption))
             return
         }
         let duration = Double(samples.count) / AudioRecorder.sampleRate
+        operation?.record("recording_stopped", ["num_samples": String(samples.count),
+            "duration_ms": String(Int(duration * 1_000)), "sample_rate": String(AudioRecorder.sampleRate)])
+        if samples.isEmpty { operation?.record("recording_empty", ["reason": "empty_audio"]) }
+        operation?.record("processing_start")
         state = .processing
         hud.show(.recognizing)
 
         let generation = self.generation
         let editSelection = self.editSelection
         let context = self.context
+        let modelDirectory = recordingModelDirectory
+        let modelPreparation = recordingPreparationGeneration
 
         processingTask = Task { [weak self] in
             guard let self else { return }
+            var stage = "recognition"
+            var stageStarted = DispatchTime.now().uptimeNanoseconds
             do {
-                Diagnostics.shared.record(event: "recognition_finish", metadata: ["num_samples": String(samples.count)])
+                operation?.record("recognition_finish", ["num_samples": String(samples.count)])
                 let raw = try await session.finish(samples: samples)
-                Diagnostics.shared.record(event: "recognition_complete")
-                guard generation == self.generation else { return }
+                operation?.record("recognition_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "empty": String(raw.isEmpty)])
+                guard generation == self.generation, !Task.isCancelled else { return }
+                self.markModelReadyAfterRecognition(directory: modelDirectory, generation: generation, preparation: modelPreparation)
                 guard !raw.isEmpty else {
+                    operation?.record("recognition_empty", ["reason": "empty_result"])
+                    operation?.record("paste_skipped", ["reason": "empty_result"])
+                    operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted), "empty": "true"])
                     self.finish(.hidden)
                     return
                 }
@@ -420,13 +520,20 @@ final class DictationController: ObservableObject {
                 var polishError: String?
                 if let selection = editSelection {
                     kind = .edit
+                    stage = "edit"
+                    stageStarted = DispatchTime.now().uptimeNanoseconds
+                    operation?.record("edit_start", ["stage": stage])
                     self.hud.show(.editing)
                     output = try await LLMClient.complete(
                         system: Prompts.voiceEdit(settings: self.settings),
                         user: Prompts.voiceEditInput(selection: selection, instruction: raw),
                         config: self.settings.llmConfig
                     )
+                    operation?.record("edit_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "empty": String(output.isEmpty)])
                 } else if shouldPolish, self.settings.llmConfigured {
+                    stage = "polish"
+                    stageStarted = DispatchTime.now().uptimeNanoseconds
+                    operation?.record("polish_start", ["stage": stage])
                     self.hud.show(.polishing)
                     do {
                         output = try await LLMClient.complete(
@@ -435,29 +542,48 @@ final class DictationController: ObservableObject {
                             config: self.settings.llmConfig,
                             timeout: 15
                         )
-                        if output.isEmpty { output = raw }
+                        let emptyOutput = output.isEmpty
+                        if emptyOutput { output = raw }
                         output = try PolishValidation.validate(source: raw, output: output)
+                        operation?.record("polish_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
+                            "empty": String(emptyOutput), "fallback": String(emptyOutput)])
+                    } catch is CancellationError {
+                        throw CancellationError()
                     } catch {
+                        operation?.record("polish_error", ["stage": stage, "error_code": String((error as NSError).code),
+                            "duration_ms": DictationOperation.milliseconds(since: stageStarted), "fallback": "true"])
                         // A cleanup failure must not lose the user's words; fall back to the raw transcript.
                         output = raw
                         polishError = L10n.tr("Polishing failed; using the original transcript.")
                     }
                 } else if shouldPolish, opposite {
+                    operation?.record("polish_error", ["stage": "polish", "reason": "not_configured", "fallback": "true"])
                     polishError = L10n.tr("Configure an AI service in Settings to polish. Using the original transcript.")
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
 
                 self.lastTranscript = output
-                Diagnostics.shared.record(event: "paste_attempt")
+                stage = "insertion"
+                stageStarted = DispatchTime.now().uptimeNanoseconds
+                operation?.record("paste_attempt", ["empty": String(output.isEmpty)])
                 await TextIO.insert(output)
-                guard generation == self.generation else { return }
+                operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted)])
+                guard generation == self.generation, !Task.isCancelled else { return }
                 self.history.add(HistoryEntry(
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
+                operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
+                    "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
                 self.finish(polishError.map { .error($0) } ?? .hidden)
             } catch is CancellationError {
-                return
+                operation?.record("processing_cancelled", ["stage": stage, "reason": "cancelled",
+                    "duration_ms": DictationOperation.milliseconds(since: processingStarted)])
+                if generation == self.generation { self.finish(.hidden) }
             } catch {
+                operation?.record(stage == "recognition" ? "recognition_error" : "edit_error", ["stage": stage,
+                    "error_code": String((error as NSError).code), "duration_ms": DictationOperation.milliseconds(since: stageStarted)])
+                operation?.record("processing_error", ["stage": stage, "error_code": String((error as NSError).code),
+                    "duration_ms": DictationOperation.milliseconds(since: processingStarted)])
                 guard generation == self.generation else { return }
                 self.finish(.error(error.localizedDescription))
             }
@@ -465,6 +591,8 @@ final class DictationController: ObservableObject {
     }
 
     private func finish(_ phase: HUDModel.Phase) {
+        recordingModelDirectory = nil
+        diagnosticOperation = nil
         state = .idle
         session = nil
         processingTask = nil
@@ -475,8 +603,15 @@ final class DictationController: ObservableObject {
         hud.show(phase)
     }
 
-    func cancel() {
-        Diagnostics.shared.record(event: "dictation_cancel")
+    func cancel(reason: String = "user") {
+        let fields = ["reason": reason, "state": String(describing: state)]
+        if let diagnosticOperation {
+            diagnosticOperation.record("dictation_cancel", fields)
+        } else {
+            Diagnostics.shared.record(event: "dictation_cancel", metadata: fields)
+        }
+        diagnosticOperation = nil
+        recordingModelDirectory = nil
         pressedAt = nil
         generation += 1
         recorder.stop()
@@ -521,6 +656,7 @@ final class DictationController: ObservableObject {
         let modelDirectory = try settings.resolvedQwenModelDirectory()
         generation += 1
         let generation = self.generation
+        let modelPreparation = preparationGeneration
         previewText = ""
         hud.model.preview = ""
         state = .recording
@@ -559,7 +695,8 @@ final class DictationController: ObservableObject {
             state = .processing
             hud.show(.recognizing)
             let text = try await session.finish(samples: [])
-            guard self.generation == generation else { throw CancellationError() }
+            guard self.generation == generation, !Task.isCancelled else { throw CancellationError() }
+            markModelReadyAfterRecognition(directory: modelDirectory, generation: generation, preparation: modelPreparation)
             lastTranscript = text
             previewText = text
             finish(.hidden)
