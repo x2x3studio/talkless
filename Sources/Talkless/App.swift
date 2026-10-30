@@ -225,62 +225,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-
-        let gestureHint: String
-        switch settings.recordingGestureMode {
-        case .hold: gestureHint = "Hold \(settings.triggerKey.title) to talk; release to finish"
-        case .toggle: gestureHint = "Press \(settings.triggerKey.title) to start; press again to finish"
-        }
-        let hint = NSMenuItem(title: gestureHint, action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        menu.addItem(hint)
-
-        if !controller.hotkeyActive {
-            menu.addItem(item("Accessibility permission required…", #selector(openAccessibilitySettings)))
-        }
-        if DictationController.microphoneStatus == .denied {
-            menu.addItem(item("Microphone permission required…", #selector(openMicrophoneSettings)))
-        }
-        menu.addItem(.separator())
-
-        let dictateTitle = controller.state == .recording ? "Stop Dictation" : "Start Dictation (Hands-free)"
-        menu.addItem(item(dictateTitle, #selector(toggleDictation)))
-        let translationHint = controller.translationShortcutActive ? "  \(settings.translationShortcut.title)" : ""
-        menu.addItem(item("Translate Selected Text" + translationHint, #selector(translate)))
-        menu.addItem(.separator())
-        menu.addItem(item("Settings…", #selector(openSettingsAction), key: ","))
-        if let updateController {
-            menu.addItem(updateController.makeMenuItem())
-            if let status = updateController.status {
-                let statusItem = NSMenuItem(title: status, action: nil, keyEquivalent: "")
-                statusItem.isEnabled = false
-                menu.addItem(statusItem)
-            }
-        }
-        menu.addItem(.separator())
-        menu.addItem(item("Quit Talkless", #selector(quit), key: "q"))
+        MenuContent.populate(menu, state: .init(
+            dictationKeyTitle: settings.triggerKey.title,
+            holdToTalk: settings.recordingGestureMode == .hold,
+            alternateFinishKeyTitle: settings.effectiveAlternateFinishKey?.title,
+            polishEnabled: settings.polishEnabled,
+            translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title
+        ), target: self, actions: .init(
+            openSettings: #selector(openSettingsAction),
+            quit: #selector(quit)
+        ), updateItem: updateController?.makeMenuItem())
     }
 
-    private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        item.target = self
-        return item
-    }
-
-    @objc private func toggleDictation() { controller.toggleFromMenu() }
-    @objc private func translate() { Task { await controller.translateSelection() } }
     @objc private func openSettingsAction() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
-
-    @objc private func openAccessibilitySettings() {
-        DictationController.requestAccessibility()
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-    }
-
-    @objc private func openMicrophoneSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-    }
 
     func openSettings() {
         if settingsWindow == nil {

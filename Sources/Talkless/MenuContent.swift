@@ -1,0 +1,129 @@
+import AppKit
+
+/// Shared by the status menu and offline preview; building a menu never starts services.
+@MainActor
+enum MenuContent {
+    struct State {
+        var dictationKeyTitle = "Fn / Globe"
+        var holdToTalk = true
+        var alternateFinishKeyTitle: String?
+        var polishEnabled = false
+        /// Display only. The global shortcut is registered elsewhere.
+        var translationShortcutTitle: String?
+    }
+
+    struct Actions {
+        let openSettings: Selector
+        let quit: Selector
+    }
+
+    /// Readable shortcut reference, not a clickable menu command or key-equivalent registration.
+    final class ShortcutRow: NSView {
+        let functionLabel: NSTextField
+        let shortcutLabel: NSTextField
+        var preferredWidth: CGFloat {
+            functionLabel.intrinsicContentSize.width + shortcutLabel.intrinsicContentSize.width + 64
+        }
+
+        init(function: String, shortcut: String, help: String) {
+            functionLabel = NSTextField(labelWithString: function)
+            shortcutLabel = NSTextField(labelWithString: shortcut)
+            super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+            autoresizingMask = [.width]
+            for label in [functionLabel, shortcutLabel] {
+                label.font = .menuFont(ofSize: 0)
+                label.setAccessibilityElement(false)
+                addSubview(label)
+            }
+            functionLabel.autoresizingMask = [.width]
+            shortcutLabel.autoresizingMask = [.minXMargin]
+            functionLabel.textColor = .labelColor
+            shortcutLabel.textColor = .secondaryLabelColor
+            shortcutLabel.alignment = .right
+            toolTip = help
+            setAccessibilityElement(true)
+            setAccessibilityRole(.staticText)
+            setAccessibilityLabel(function)
+            setAccessibilityValue(shortcut)
+            setAccessibilityHelp(help)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func layout() {
+            super.layout()
+            let keyWidth = shortcutLabel.intrinsicContentSize.width
+            let height = functionLabel.intrinsicContentSize.height
+            let y = (bounds.height - height) / 2
+            functionLabel.frame = NSRect(x: 20, y: y, width: bounds.width - keyWidth - 64, height: height)
+            shortcutLabel.frame = NSRect(x: bounds.width - keyWidth - 20, y: y, width: keyWidth, height: height)
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    static func populate(
+        _ menu: NSMenu,
+        state: State,
+        target: AnyObject,
+        actions: Actions,
+        updateItem: NSMenuItem?
+    ) {
+        menu.removeAllItems()
+        // Keep informational rows disabled and preserve the updater's validation snapshot.
+        menu.autoenablesItems = false
+
+        func label(_ title: String, toolTip: String) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            item.toolTip = toolTip
+            return item
+        }
+        func action(_ title: String, _ selector: Selector, key: String) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            item.target = target
+            item.keyEquivalentModifierMask = .command
+            return item
+        }
+
+        var shortcutRows: [ShortcutRow] = []
+        func shortcut(_ function: String, key: String, help: String) {
+            let item = label(function, toolTip: help)
+            let row = ShortcutRow(function: function, shortcut: key, help: help)
+            item.view = row
+            shortcutRows.append(row)
+            menu.addItem(item)
+        }
+
+        let gesture = state.holdToTalk ? "hold" : "toggle"
+        let dictationHelp = state.holdToTalk
+            ? "Hold \(state.dictationKeyTitle) to talk; release to finish."
+            : "Tap \(state.dictationKeyTitle) to start; tap again to finish."
+        shortcut("Dictation (\(gesture))", key: state.dictationKeyTitle,
+                 help: dictationHelp + " Esc cancels recording or processing.")
+        if let key = state.alternateFinishKeyTitle {
+            let defaultHelp = state.polishEnabled
+                ? "AI is currently on by default, so alternate finish skips AI."
+                : "AI is currently off by default, so alternate finish uses AI."
+            shortcut("Alternate finish", key: key, help:
+                "Finish dictation with the opposite AI setting from the start of the recording. " + defaultHelp)
+        }
+        if let key = state.translationShortcutTitle {
+            shortcut("Translate selection", key: key,
+                     help: "Select text in another app, then press \(key) to translate it.")
+        }
+        let width = max(300, shortcutRows.map(\.preferredWidth).max() ?? 0)
+        for row in shortcutRows {
+            row.setFrameSize(NSSize(width: width, height: 26))
+            row.needsLayout = true
+            row.layoutSubtreeIfNeeded()
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(action("Settings…", actions.openSettings, key: ","))
+        // Preserve UpdateController's target, enabled state, and status explanation.
+        menu.addItem(updateItem ?? label("Check for Updates…", toolTip: "Updates are not configured for this build."))
+        menu.addItem(.separator())
+        menu.addItem(action("Quit Talkless", actions.quit, key: "q"))
+    }
+}

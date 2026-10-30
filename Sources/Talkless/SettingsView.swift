@@ -280,6 +280,8 @@ private struct SystemSettingsTab: View {
                 }
             }
 
+            LaunchAtLoginSettingsView()
+
             if let updateController {
                 UpdatesSection(updater: updateController, controller: controller)
             }

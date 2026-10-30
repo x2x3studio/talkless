@@ -35,17 +35,21 @@ Settings opens to **Dictation**. The sidebar is organized by task:
 - **Speech recognition:** recognition engine and local speech models.
 - **AI service:** shared provider, protocol, credentials and model for polishing, translation and voice editing; no master AI enable toggle.
 - **Dictionary**, **Overlay**, and **History:** terms and review, HUD appearance, and saved text.
-- **System:** permissions, updates and diagnostics.
+- **System:** permissions, launch at login, updates and diagnostics.
+
+The menu bar menu lists the current dictation, alternate-finish, and enabled translation shortcuts as informational rows. Its only actions are Settings, Check for Updates, and Quit; recording and translation are invoked using their shortcuts.
+
+**Settings > System > Startup > Launch at login** uses macOS login-item registration. It is not enabled automatically. Turning it on starts Talkless when you sign in, not before login. If macOS requires approval, the page offers Open Login Items; the displayed state follows the system setting rather than a separate preference. Opening Settings never registers or unregisters a login item.
 
 ## Dictation and shortcuts
 
 Grant microphone and Accessibility permissions in macOS System Settings; **Settings > System > Permissions** provides the permission controls. Fn is the default trigger and Hold to talk is the default mode: hold to speak, release to finish. Select Tap to toggle if you prefer pressing once to start and again to finish. Escape cancels. Configure the system Globe-key action to Do Nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selected-text voice editing are off by default for new users.
 
-**Settings > Dictation > Recording > Recording mode** has two choices: Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). There is no timing-based automatic mode. The mode is captured at recording start; menu-started dictation remains hands-free. Reset restores Hold to talk without changing other preferences. Older Automatic recording preferences migrate to Hold to talk.
+**Settings > Dictation > Recording > Recording mode** has two choices: Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). There is no timing-based automatic mode. The mode is captured at recording start. Reset restores Hold to talk without changing other preferences. Older Automatic recording preferences migrate to Hold to talk.
 
 For a one-off AI choice, press the **alternate finish key** while recording:
 
-| AI polish at recording start | Normal release, tap, or menu finish | Alternate finish |
+| AI polish at recording start | Normal release or tap finish | Alternate finish |
 | --- | --- | --- |
 | On | Polish | Use original transcript |
 | Off | Use original transcript | Request polishing |
@@ -60,7 +64,7 @@ Press the alternate key by itself or while holding the primary dictation key. It
 
 ## Selected-text translation
 
-Select text in the foreground app, then use Translate Selected Text from the menu or its configurable shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace actions. Translation requires a configured **AI service**, not the dictation polishing toggle. **Settings > Translation** contains the target language and shortcut; its target language is independent of dictation's output language. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; it can also be disabled without removing the menu action.
+Select text in the foreground app, then use the configurable translation shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace actions. Translation requires a configured **AI service**, not the dictation polishing toggle. **Settings > Translation** contains the target language and shortcut; its target language is independent of dictation's output language. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; clearing it disables the translation shortcut and removes its menu reference row.
 
 ## Recognition
 
