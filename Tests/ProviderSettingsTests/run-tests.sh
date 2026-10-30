@@ -10,6 +10,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/PolishProvider.swift" \
   "$ROOT/Sources/Talkless/CredentialStore.swift" \
   "$ROOT/Sources/Talkless/HUDAppearance.swift" \
+  "$ROOT/Sources/Talkless/TranslationShortcut.swift" \
   "$ROOT/Sources/Talkless/Settings.swift" \
   "$ROOT/Tests/ProviderSettingsTests/HUDAppearanceTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/AlternateFinishTests.swift" \

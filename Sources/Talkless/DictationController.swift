@@ -22,6 +22,9 @@ final class DictationController: ObservableObject {
     private let hotkeys = HotkeyMonitor()
     private let recorder = AudioRecorder()
     private var translateHotKey: GlobalHotKey?
+    private var configuredTranslationShortcut: TranslationShortcut = .default
+    @Published private(set) var translationShortcutActive = false
+    @Published private(set) var translationShortcutError: String?
 
     private var session: TranscriptionSession?
     private var processingTask: Task<Void, Never>?
@@ -30,7 +33,7 @@ final class DictationController: ObservableObject {
     private var pressedAt: CGEventTimestamp?
     private var handsFree = false
     /// Snapshotted before setup so a settings change only affects the next recording.
-    private var recordingGestureMode: RecordingGestureMode = .automatic
+    private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
     private var editSelection: String?
@@ -90,9 +93,6 @@ final class DictationController: ObservableObject {
         await QwenTranscriptionSession.unloadModel()
     }
 
-    /// Physical event timestamps exclude microphone setup and main-thread dispatch delays.
-    private let tapThreshold: CGEventTimestamp = 300_000_000
-
     init() {
         hotkeys.onPress = { [weak self] timestamp in self?.triggerPressed(at: timestamp) }
         hotkeys.onRelease = { [weak self] timestamp in self?.triggerReleased(at: timestamp) }
@@ -102,6 +102,7 @@ final class DictationController: ObservableObject {
         translateHotKey = GlobalHotKey { [weak self] in
             Task { await self?.translateSelection() }
         }
+        updateTranslationShortcut(settings.translationShortcut)
     }
 
     // MARK: - Permissions and hotkeys
@@ -126,13 +127,25 @@ final class DictationController: ObservableObject {
             pressedAt = nil
             hotkeys.stop()
             hotkeyActive = false
+            translateHotKey?.stop()
+            translationShortcutActive = false
         } else {
             shortcutCaptureActive = false
             let shouldResume = resumeHotkeyAfterCapture
             resumeHotkeyAfterCapture = false
             if shouldResume { activateHotkey() }
+            updateTranslationShortcut(configuredTranslationShortcut)
         }
         return true
+    }
+
+    /// Use the publisher's emitted value: @Published sends before the stored setting changes.
+    func updateTranslationShortcut(_ shortcut: TranslationShortcut) {
+        configuredTranslationShortcut = shortcut
+        guard !shortcutCaptureActive else { return }
+        translateHotKey?.update(shortcut)
+        translationShortcutActive = translateHotKey?.isActive ?? false
+        translationShortcutError = translateHotKey?.error
     }
 
     func updateTriggerKey() {
@@ -177,19 +190,7 @@ final class DictationController: ObservableObject {
         let duration = timestamp - start
         Diagnostics.shared.record(event: "hotkey_release", metadata: ["duration_ms": String(duration / 1_000_000)])
         guard state == .recording, !handsFree else { return }
-        switch recordingGestureMode {
-        case .hold:
-            stopAndProcess()
-        case .toggle:
-            break
-        case .automatic:
-            if duration < tapThreshold {
-                handsFree = true
-                hud.show(.listening(handsFree: true))
-            } else {
-                stopAndProcess()
-            }
-        }
+        stopAndProcess()
     }
 
     private func alternateFinishPressed(at timestamp: CGEventTimestamp) {
@@ -202,8 +203,7 @@ final class DictationController: ObservableObject {
         // The user is holding the trigger for a shortcut (such as Fn+arrow), not dictation.
         guard let start = pressedAt, timestamp >= start else { return }
         // Toggle is hands-free from the start, but its initial held press can still be a shortcut.
-        if state == .recording, (!handsFree || recordingGestureMode == .toggle),
-           timestamp - start < 1_000_000_000 {
+        if state == .recording, timestamp - start < 1_000_000_000 {
             cancel()
         }
     }

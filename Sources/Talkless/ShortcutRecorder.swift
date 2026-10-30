@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// A single physical modifier recorder. It deliberately does not record arbitrary chords.
+/// Shared recorder UI. Dictation accepts a single physical modifier; translation records chords.
 struct ShortcutRecorder: View {
     let title: String
     let value: String
@@ -11,6 +11,7 @@ struct ShortcutRecorder: View {
     let setCaptureActive: (Bool) -> Bool
     var onReset: (() -> String?)? = nil
     /// Validate before saving; a returned message keeps recording open without changing preferences.
+    var onTranslationRecord: ((TranslationShortcut) -> String?)? = nil
     let onRecord: (TriggerKey?) -> String?
 
     @Environment(\.isEnabled) private var isEnabled
@@ -31,6 +32,7 @@ struct ShortcutRecorder: View {
                 ShortcutRecorderRepresentable(
                     value: value, accessibilityLabel: title, allowsClearing: allowsClearing,
                     isEnabled: isEnabled, setCaptureActive: setCaptureActive, onRecord: onRecord,
+                    onTranslationRecord: onTranslationRecord,
                     onStatus: { text, error in
                         message = text
                         isError = error
@@ -242,6 +244,7 @@ private struct ShortcutRecorderRepresentable: NSViewRepresentable {
     let isEnabled: Bool
     let setCaptureActive: (Bool) -> Bool
     let onRecord: (TriggerKey?) -> String?
+    let onTranslationRecord: ((TranslationShortcut) -> String?)?
     let onStatus: (String?, Bool) -> Void
 
     func makeNSView(context: Context) -> ShortcutRecorderButton {
@@ -256,6 +259,7 @@ private struct ShortcutRecorderRepresentable: NSViewRepresentable {
         view.isEnabled = isEnabled
         view.setCaptureActive = setCaptureActive
         view.onRecord = onRecord
+        view.onTranslationRecord = onTranslationRecord
         view.onStatus = onStatus
         view.setAccessibilityLabel(accessibilityLabel)
         view.refreshTitle()
@@ -274,7 +278,9 @@ final class ShortcutRecorderButton: NSButton {
     var setCaptureActive: (Bool) -> Bool = { _ in false }
     var onRecord: (TriggerKey?) -> String? = { _ in nil }
     var onStatus: (String?, Bool) -> Void = { _, _ in }
-    private(set) var capture: ShortcutCaptureState?
+    var onTranslationRecord: ((TranslationShortcut) -> String?)?
+    private(set) var capture: RecorderCapture?
+    private var keyMonitor: Any?
     private var outsideClickMonitor: Any?
     private var focusObservers: [NSObjectProtocol] = []
     private weak var previousResponder: NSResponder?
@@ -294,11 +300,12 @@ final class ShortcutRecorderButton: NSButton {
 
     func refreshTitle() {
         if let capture {
-            title = capture.pendingKey.map { "\($0.title) …" } ?? "Press a key…"
+            title = capture.pendingTitle.map { "\($0) …" } ?? "Press a key…"
         } else {
             title = currentValue
         }
-        toolTip = capture == nil ? "Click, then press a key to change this shortcut." : "Esc cancels.\(allowsClearing ? " Delete disables alternate finish." : "")"
+        toolTip = capture == nil ? "Click, then press a key to change this shortcut."
+            : "Esc cancels.\(allowsClearing ? " Delete disables this shortcut." : "")"
         setAccessibilityValue(title)
     }
 
@@ -306,7 +313,7 @@ final class ShortcutRecorderButton: NSButton {
         if capture != nil { endCapture() } else { beginCapture() }
     }
 
-    func beginCapture() {
+    func beginCapture(initialFlags: NSEvent.ModifierFlags? = nil) {
         guard isEnabled, capture == nil, let window else { return }
         // Focus the recorder before asking the controller to suspend its global shortcuts.
         previousResponder = window.firstResponder
@@ -316,7 +323,17 @@ final class ShortcutRecorderButton: NSButton {
             window.makeFirstResponder(previousResponder)
             return
         }
-        capture = ShortcutCaptureState(allowsClearing: allowsClearing, initialFlags: NSEvent.modifierFlags)
+        capture = onTranslationRecord == nil
+            ? .modifier(ShortcutCaptureState(allowsClearing: allowsClearing, initialFlags: initialFlags ?? NSEvent.modifierFlags))
+            : .translation(TranslationShortcutCapture(initialFlags: initialFlags ?? NSEvent.modifierFlags))
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+            let consumed = MainActor.assumeIsolated {
+                guard let self, self.capture != nil else { return false }
+                self.process(self.capture!.handle(event.type, keyCode: event.keyCode, flags: event.modifierFlags))
+                return true
+            }
+            return consumed ? nil : event // Consume before menus, text controls, or key equivalents can act.
+        }
         outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             MainActor.assumeIsolated {
                 if let self, event.window !== self.window || !self.bounds.contains(self.convert(event.locationInWindow, from: nil)) {
@@ -342,6 +359,8 @@ final class ShortcutRecorderButton: NSButton {
     func endCapture(restoreFocus: Bool = true) {
         guard capture != nil else { return }
         capture = nil
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         outsideClickMonitor = nil
         focusObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -367,7 +386,7 @@ final class ShortcutRecorderButton: NSButton {
 
     override func flagsChanged(with event: NSEvent) {
         guard capture != nil else { super.flagsChanged(with: event); return }
-        process(capture!.flagsChanged(keyCode: event.keyCode, flags: event.modifierFlags))
+        process(capture!.handle(.flagsChanged, keyCode: event.keyCode, flags: event.modifierFlags))
     }
 
     override func keyDown(with event: NSEvent) {
@@ -376,12 +395,12 @@ final class ShortcutRecorderButton: NSButton {
             else { super.keyDown(with: event) }
             return
         }
-        process(capture!.keyDown(keyCode: event.keyCode, flags: event.modifierFlags))
+        process(capture!.handle(.keyDown, keyCode: event.keyCode, flags: event.modifierFlags))
     }
 
     override func keyUp(with event: NSEvent) {
         guard capture != nil else { super.keyUp(with: event); return }
-        process(capture!.keyUp(keyCode: event.keyCode, flags: event.modifierFlags))
+        process(capture!.handle(.keyUp, keyCode: event.keyCode, flags: event.modifierFlags))
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -391,10 +410,17 @@ final class ShortcutRecorderButton: NSButton {
         return true
     }
 
-    private func process(_ result: ShortcutCaptureState.Result) {
+    private func process(_ result: RecorderCapture.Result) {
         switch result {
         case .waiting: publishStatus()
         case .cancel: endCapture()
+        case .translation(let shortcut):
+            if let error = onTranslationRecord?(shortcut) {
+                capture?.reject(error)
+                publishStatus()
+            } else {
+                endCapture()
+            }
         case .record(let key):
             if let error = onRecord(key) {
                 capture?.reject(error)

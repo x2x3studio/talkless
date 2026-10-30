@@ -19,6 +19,9 @@ with tempfile.TemporaryDirectory(prefix="talkless-recorder-tests-") as work:
     subprocess.run([
         "/usr/bin/xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "6", "-parse-as-library",
         str(enum_file), str(root / "Sources/Talkless/ShortcutRecorder.swift"),
+        str(root / "Sources/Talkless/TranslationShortcut.swift"),
+        str(root / "Sources/Talkless/TranslationShortcutCapture.swift"),
+        str(root / "Sources/Talkless/Hotkeys.swift"),
         str(root / "Tests/ShortcutRecorderTests/ShortcutRecorderTests.swift"),
         "-o", str(binary),
     ], check=True)

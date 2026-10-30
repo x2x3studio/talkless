@@ -38,14 +38,11 @@ def method(name):
 
 
 fields = []
-for name in ("pressedAt", "tapThreshold", "recordingGestureMode", "recordingPolishEnabled",
+for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled",
              "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
     match = re.search(r"^    private (?:var|let) " + name + r"\b[^\n]*", controller, re.M)
     assert match, f"Missing production field: {name}"
     fields.append(match.group().replace("private ", "", 1))
-# Keep any additional combo threshold in sync with production too.
-fields += [line.replace("private ", "", 1) for line in controller.splitlines()
-           if re.match(r"    private let \w*Threshold\b", line) and "tapThreshold" not in line]
 error_callback = re.search(
     r"onError: \{ \[weak self\] message in\n(.*?)\n                \}",
     controller, re.S,
@@ -70,7 +67,7 @@ enum TriggerKey {
     var title: String { String(describing: self) }
 }
 struct Settings {
-    var recordingGestureMode: RecordingGestureMode = .automatic
+    var recordingGestureMode: RecordingGestureMode = .hold
     var polishEnabled = true
     var triggerKey: TriggerKey = .fn
     var effectiveAlternateFinishKey: TriggerKey? = .rightOption
@@ -88,6 +85,19 @@ struct Settings {
 }
 @MainActor final class FakeRecorder { func stop() {} }
 @MainActor final class FakeSession { func cancel() {} }
+@MainActor final class FakeTranslationHotKey {
+    var isActive = false
+    var error: String?
+    var fail = false
+    var updates: [TranslationShortcut] = []
+    var stops = 0
+    func stop() { stops += 1; isActive = false }
+    func update(_ shortcut: TranslationShortcut) {
+        updates.append(shortcut)
+        isActive = shortcut != .disabled && !fail
+        error = fail ? "Synthetic registration failure" : nil
+    }
+}
 @MainActor final class FakeTranslationPanel {
     var isVisible = false
     func close() { isVisible = false }
@@ -96,6 +106,10 @@ struct Settings {
     enum State { case idle, recording, processing }
     var state: State = .idle
     var hotkeyActive = false
+    var translateHotKey: FakeTranslationHotKey? = FakeTranslationHotKey()
+    var translationShortcutActive = false
+    var translationShortcutError: String?
+    var configuredTranslationShortcut: TranslationShortcut = .default
     var activationCalls = 0
     @discardableResult func activateHotkey() -> Bool {
         guard !shortcutCaptureActive else { return false }
@@ -175,35 +189,24 @@ TESTS = r'''
 @main struct Tests {
     @MainActor static func main() {
         let base: UInt64 = 10_000_000_000
-        let cold = GestureHarness()
-        cold.startupDelay = 0.45
-        let began = Date()
-        cold.press(base)
-        cold.release(base + 100_000_000)
-        precondition(Date().timeIntervalSince(began) >= 0.45)
-        precondition(cold.state == .recording && cold.handsFree && cold.stops == 0,
-                     "100 ms physical tap must survive 450 ms synchronous startup")
-        precondition(cold.pressedAt == nil)
-        // These events were physically generated before the delayed first handler returned.
-        cold.press(base + 180_000_000)
-        cold.release(base + 250_000_000)
-        precondition(cold.state == .processing && cold.stops == 1 && cold.starts == 1,
-                     "Queued double tap must stop exactly once, without starting again")
-        print("PASS cold 100 ms tap / 450 ms startup and queued double tap")
-
-        for duration: UInt64 in [100_000_000, 299_000_000, 300_000_000, 400_000_000] {
-            let test = GestureHarness()
-            test.press(base)
-            test.release(base + duration)
-            if duration < 300_000_000 {
-                precondition(test.state == .recording && test.handsFree && test.stops == 0)
-            } else {
-                precondition(test.state == .processing && !test.handsFree && test.stops == 1,
-                             "Physical long hold must stop even when delivery is immediate")
-            }
-            precondition(test.pressedAt == nil)
+        for mode in RecordingGestureMode.allCases {
+            let cold = GestureHarness()
+            cold.settings.recordingGestureMode = mode
+            cold.startupDelay = 0.45
+            let began = Date()
+            cold.press(base)
+            cold.release(base + 100_000_000)
+            precondition(Date().timeIntervalSince(began) >= 0.45)
+            precondition(cold.state == (mode == .hold ? .processing : .recording),
+                         "Startup delay must not change the selected release behavior")
+            precondition(cold.stops == (mode == .hold ? 1 : 0) && cold.pressedAt == nil)
+            // These events were physically generated before the delayed first handler returned.
+            cold.press(base + 180_000_000)
+            cold.release(base + 250_000_000)
+            precondition(cold.state == .processing && cold.stops == 1 && cold.starts == 1,
+                         "Queued double tap must stop exactly once, without starting again")
         }
-        print("PASS warm tap, 299/300 ms threshold, and 400 ms hold")
+        print("PASS Hold and Toggle with cold startup and queued double tap")
 
         for mode in RecordingGestureMode.allCases {
             for duration: UInt64 in [0, 100_000_000, 299_000_000, 300_000_000, 400_000_000, 2_000_000_000] {
@@ -212,7 +215,7 @@ TESTS = r'''
                 test.press(base)
                 precondition(test.handsFree == (mode == .toggle), "Toggle starts hands-free immediately")
                 test.release(base + duration)
-                let stopsOnRelease = mode == .hold || (mode == .automatic && duration >= 300_000_000)
+                let stopsOnRelease = mode == .hold
                 precondition(test.pressedAt == nil)
                 if stopsOnRelease {
                     precondition(test.state == .processing && test.stops == 1 && !test.handsFree,
@@ -257,12 +260,16 @@ TESTS = r'''
         }
         print("PASS recording mode snapshots before setup and settings changes between recordings")
 
-        let duplicate = GestureHarness()
-        duplicate.press(base)
-        duplicate.press(base + 50_000_000)
-        duplicate.release(base + 100_000_000)
-        duplicate.release(base + 150_000_000)
-        precondition(duplicate.starts == 1 && duplicate.stops == 0 && duplicate.handsFree)
+        for mode in RecordingGestureMode.allCases {
+            let duplicate = GestureHarness()
+            duplicate.settings.recordingGestureMode = mode
+            duplicate.press(base)
+            duplicate.press(base + 50_000_000)
+            duplicate.release(base + 100_000_000)
+            duplicate.release(base + 150_000_000)
+            precondition(duplicate.starts == 1 && duplicate.stops == (mode == .hold ? 1 : 0))
+            precondition(duplicate.handsFree == (mode == .toggle))
+        }
         print("PASS duplicate modifier transitions are ignored")
 
         let malformed = GestureHarness()
@@ -302,21 +309,26 @@ TESTS = r'''
             test.release(base + 1_000_000_000)
             precondition(test.state == .idle && test.stops == 0)
         }
-        print("PASS accidental primary combo cancellation in Automatic, Hold, and Toggle")
+        print("PASS accidental primary combo cancellation in Hold and Toggle")
 
-        let stale = GestureHarness()
-        stale.press(base)
-        let oldError = stale.onError!
-        stale.cancel()
-        stale.release(base + 100_000_000)
-        stale.press(base + 200_000_000)
-        oldError("synthetic stale error")
-        precondition(stale.state == .recording,
-                     "Cancelled generation's error must not cancel the next recording")
-        stale.release(base + 250_000_000)
-        precondition(stale.handsFree && stale.starts == 2 && stale.stops == 0)
-        stale.onError!("synthetic current error")
-        precondition(stale.state == .idle && stale.pressedAt == nil)
+        for mode in RecordingGestureMode.allCases {
+            let stale = GestureHarness()
+            stale.settings.recordingGestureMode = mode
+            stale.press(base)
+            let oldError = stale.onError!
+            stale.cancel()
+            stale.release(base + 100_000_000)
+            stale.press(base + 200_000_000)
+            oldError("synthetic stale error")
+            precondition(stale.state == .recording,
+                         "Cancelled generation's error must not cancel the next recording")
+            if mode == .toggle { stale.release(base + 250_000_000) }
+            precondition(stale.handsFree == (mode == .toggle) && stale.starts == 2 && stale.stops == 0)
+            stale.onError!("synthetic current error")
+            precondition(stale.state == .idle && stale.pressedAt == nil)
+            stale.release(base + 300_000_000)
+            precondition(stale.state == .idle && stale.stops == 0)
+        }
         print("PASS old-generation error suppression and current-generation cancellation")
 
         let menu = GestureHarness()
@@ -373,6 +385,7 @@ TESTS = r'''
             for enabled in [true, false] {
                 for handsFree in [true, false] {
                     let test = GestureHarness()
+                    test.settings.recordingGestureMode = handsFree ? .toggle : .hold
                     test.settings.polishEnabled = enabled
                     test.settings.effectiveAlternateFinishKey = key
                     test.press(base)
@@ -569,6 +582,25 @@ TESTS = r'''
             precondition(busy.state == state && busy.hotkeyActive)
         }
         print("PASS shortcut capture suspends gestures, restores monitoring, and refuses busy sessions")
+        let translation = GestureHarness()
+        translation.updateTranslationShortcut(.default)
+        precondition(translation.translationShortcutActive && translation.translationShortcutError == nil)
+        precondition(translation.setShortcutCaptureActive(true))
+        precondition(!translation.translationShortcutActive && translation.translateHotKey!.stops == 1)
+        let custom = TranslationShortcut(keyCode: 9, modifiers: [.command, .option])
+        translation.updateTranslationShortcut(custom)
+        precondition(translation.translateHotKey!.updates == [.default], "No global registration during capture")
+        precondition(translation.setShortcutCaptureActive(false))
+        precondition(translation.translateHotKey!.updates == [.default, custom] && translation.translationShortcutActive,
+                     "Capture resume registers latest emitted preference, not stale settings")
+        translation.translateHotKey!.fail = true
+        translation.updateTranslationShortcut(.default)
+        precondition(!translation.translationShortcutActive && translation.translationShortcutError != nil,
+                     "Controller exposes registration failure rather than claiming active")
+        translation.translateHotKey!.fail = false
+        translation.updateTranslationShortcut(.disabled)
+        precondition(!translation.translationShortcutActive && translation.translationShortcutError == nil)
+        print("PASS translation capture suspension, emitted-value registration, and failure publication")
     }
 }
 '''
@@ -577,7 +609,7 @@ source = (hotkeys + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_cal
           + "\n".join(fields) + "\n"
           + "\n".join(method(name) for name in
                       ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish",
-                       "setShortcutCaptureActive", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
+                       "setShortcutCaptureActive", "updateTranslationShortcut", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
                        "escapePressed", "cancel"))
           + TESTS)
 with tempfile.TemporaryDirectory(prefix="talkless-hotkey-tests-") as directory:
@@ -586,5 +618,5 @@ with tempfile.TemporaryDirectory(prefix="talkless-hotkey-tests-") as directory:
     binary = path / "gesture-tests"
     swift.write_text(source)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
-                    str(swift), "-o", str(binary)], check=True)
+                    str(swift), str(ROOT / "Sources/Talkless/TranslationShortcut.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

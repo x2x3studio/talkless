@@ -88,6 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .sink { [weak self] _ in self?.controller.updateTriggerKey() }
             .store(in: &cancellables)
 
+        settings.$translationShortcut
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] shortcut in self?.controller.updateTranslationShortcut(shortcut) }
+            .store(in: &cancellables)
+
         if !controller.activateHotkey() {
             // First launch: request permission and wait for the user to enable it in System Settings.
             DictationController.requestAccessibility()
@@ -223,7 +229,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let gestureHint: String
         switch settings.recordingGestureMode {
-        case .automatic: gestureHint = "Hold \(settings.triggerKey.title) to talk; tap for hands-free"
         case .hold: gestureHint = "Hold \(settings.triggerKey.title) to talk; release to finish"
         case .toggle: gestureHint = "Press \(settings.triggerKey.title) to start; press again to finish"
         }
@@ -241,7 +246,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let dictateTitle = controller.state == .recording ? "Stop Dictation" : "Start Dictation (Hands-free)"
         menu.addItem(item(dictateTitle, #selector(toggleDictation)))
-        menu.addItem(item("Translate Selected Text  ⌃⌥T", #selector(translate)))
+        let translationHint = controller.translationShortcutActive ? "  \(settings.translationShortcut.title)" : ""
+        menu.addItem(item("Translate Selected Text" + translationHint, #selector(translate)))
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(openSettingsAction), key: ","))
         if let updateController {

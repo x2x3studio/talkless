@@ -31,13 +31,12 @@ enum TriggerKey: String, CaseIterable, Identifiable {
 }
 
 enum RecordingGestureMode: String, CaseIterable, Identifiable {
-    case automatic, hold, toggle
+    case hold, toggle
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .automatic: "Automatic"
         case .hold: "Hold to talk"
         case .toggle: "Tap to toggle"
         }
@@ -149,7 +148,7 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    static let defaultRecordingGestureMode: RecordingGestureMode = .automatic
+    static let defaultRecordingGestureMode: RecordingGestureMode = .hold
     @Published var recordingGestureMode: RecordingGestureMode {
         didSet { save(recordingGestureMode.rawValue, "recordingGestureMode") }
     }
@@ -164,7 +163,21 @@ final class AppSettings: ObservableObject {
     var isTriggerKeyDefault: Bool { triggerKey == Self.defaultTriggerKey }
     // Automatic is a preference, not merely today's resolved key.
     var isAlternateFinishKeyDefault: Bool { alternateFinishKey == Self.defaultAlternateFinishKey }
-    var areShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault }
+    static let defaultTranslationShortcut: TranslationShortcut = .default
+    private static let translationShortcutKey = "translationShortcut.v1"
+    @Published var translationShortcut: TranslationShortcut {
+        didSet {
+            if let data = try? JSONEncoder().encode(translationShortcut) {
+                save(data, Self.translationShortcutKey)
+            }
+        }
+    }
+    var isTranslationShortcutDefault: Bool { translationShortcut == Self.defaultTranslationShortcut }
+    var areShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault && isTranslationShortcutDefault }
+
+    func resetTranslationShortcut() {
+        if !isTranslationShortcutDefault { translationShortcut = Self.defaultTranslationShortcut }
+    }
     var defaultAlternateFinishKeyTitle: String { Self.defaultAlternateFinishKey.title(for: triggerKey) }
 
     /// A single-row reset must not overwrite or disable the other custom binding.
@@ -186,6 +199,7 @@ final class AppSettings: ObservableObject {
         // Restore Automatic first so an explicit Fn alternate cannot briefly collide.
         _ = resetAlternateFinishKey()
         _ = resetTriggerKey()
+        resetTranslationShortcut()
     }
 
     /// nil follows System default; explicit UIDs remain selected while disconnected.
@@ -285,9 +299,18 @@ final class AppSettings: ObservableObject {
         llmAuthMode = state.authMode
         llmAPIKey = ""
         llmCredentialSaveError = nil
-        recordingGestureMode = RecordingGestureMode(rawValue: d.string(forKey: "recordingGestureMode") ?? "") ?? Self.defaultRecordingGestureMode
+        let storedRecordingMode = RecordingGestureMode(rawValue: d.string(forKey: "recordingGestureMode") ?? "")
+        recordingGestureMode = storedRecordingMode ?? Self.defaultRecordingGestureMode
+        // Retired Automatic and malformed values migrate to conventional push-to-talk.
+        if storedRecordingMode == nil, d.object(forKey: "recordingGestureMode") != nil {
+            d.set(Self.defaultRecordingGestureMode.rawValue, forKey: "recordingGestureMode")
+        }
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? Self.defaultTriggerKey
         alternateFinishKey = AlternateFinishKey(rawValue: d.string(forKey: "alternateFinishKey") ?? "") ?? Self.defaultAlternateFinishKey
+        let storedTranslationShortcut = d.data(forKey: Self.translationShortcutKey)
+            .flatMap { try? JSONDecoder().decode(TranslationShortcut.self, from: $0) }
+        translationShortcut = storedTranslationShortcut.flatMap { $0.validationError == nil ? $0 : nil }
+            ?? Self.defaultTranslationShortcut
         audioInputDeviceUID = d.string(forKey: "audioInputDeviceUID")
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
         qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""

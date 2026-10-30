@@ -213,7 +213,22 @@ private struct GeneralTab: View {
                     Text("Record a different key from the dictation key. Alternate finish is disabled while they match.")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                LabeledContent("Translate selection", value: "⌃⌥T")
+                ShortcutRecorder(
+                    title: "Translate selection", value: settings.translationShortcut.title,
+                    defaultValue: AppSettings.defaultTranslationShortcut.title,
+                    isDefault: settings.isTranslationShortcutDefault,
+                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
+                    onReset: { settings.resetTranslationShortcut(); return nil },
+                    onTranslationRecord: { shortcut in
+                        if let error = shortcut.validationError { return error }
+                        settings.translationShortcut = shortcut
+                        return nil
+                    }, onRecord: { _ in nil }
+                )
+                .disabled(controller.state != .idle)
+                if let error = controller.translationShortcutError {
+                    Text(error).font(.caption).foregroundStyle(.orange)
+                }
                 HStack {
                     Spacer()
                     Button("Restore defaults") {
@@ -221,7 +236,7 @@ private struct GeneralTab: View {
                         settings.restoreShortcutDefaults()
                     }
                     .disabled(settings.areShortcutsDefault || controller.state != .idle)
-                    .help("Restore the dictation key to Fn / Globe and alternate finish to Automatic. Other settings are unchanged.")
+                    .help("Restore dictation to Fn / Globe, alternate finish to Automatic, and translation to ⌃⌥T. Other settings are unchanged.")
                 }
             }
 
@@ -238,7 +253,7 @@ private struct GeneralTab: View {
                     .accessibilityLabel("Reset recording mode")
                 }
                 .disabled(controller.state != .idle)
-                Text("Default: Automatic. Hold ends when you release; Toggle ends on the next press. Automatic supports both. Escape cancels. Changes apply to the next recording.")
+                Text("Default: Hold to talk. Hold ends when you release; Tap to toggle ends on the next press. Escape cancels. Changes apply to the next recording.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Edit selected text with your voice", isOn: $settings.voiceEditEnabled)
                     .help("Select text, then dictate an instruction such as Make it more formal")

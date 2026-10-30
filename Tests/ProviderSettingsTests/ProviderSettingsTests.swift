@@ -61,30 +61,34 @@ struct ProviderSettingsTests {
         assertions += testShortcutDefaults()
         let persistenceKey = "polishProviderSettings.v1"
 
-        // Recording interaction is independent of key bindings and defaults to the legacy dual gesture.
+        // Recording interaction is independent of key bindings and defaults to push-to-talk.
         let gestureDefaults = MemoryDefaults()
         let gestures = settings(gestureDefaults)
-        check(gestures.recordingGestureMode == .automatic, "fresh recording mode preserves Automatic")
-        check(AppSettings.defaultRecordingGestureMode == .automatic, "recording reset default is Automatic")
-        check(RecordingGestureMode.allCases == [.automatic, .hold, .toggle], "all recording interactions are selectable")
+        check(gestures.recordingGestureMode == .hold, "fresh recording mode defaults to Hold")
+        check(AppSettings.defaultRecordingGestureMode == .hold, "recording reset default is Hold")
+        check(RecordingGestureMode.allCases == [.hold, .toggle], "only Hold and Toggle are selectable")
+        check(RecordingGestureMode(rawValue: "automatic") == nil, "retired Automatic is not a recording mode")
         for mode in RecordingGestureMode.allCases {
             check(mode.id == mode.rawValue && !mode.title.isEmpty, "recording interaction has a stable picker identity and title")
             gestures.recordingGestureMode = mode
             check(gestureDefaults.string(forKey: "recordingGestureMode") == mode.rawValue, "recording mode persists its raw value")
-            check(settings(gestureDefaults).recordingGestureMode == mode, "recording mode survives relaunch")
+            check(settings(gestureDefaults).recordingGestureMode == mode, "explicit recording mode survives relaunch")
+            check(gestureDefaults.string(forKey: "recordingGestureMode") == mode.rawValue, "loading preserves explicit recording modes")
         }
-        gestureDefaults.values["recordingGestureMode"] = "unknown-mode"
-        check(settings(gestureDefaults).recordingGestureMode == .automatic, "unknown recording mode safely falls back")
-        gestureDefaults.values["recordingGestureMode"] = 123
-        check(settings(gestureDefaults).recordingGestureMode == .automatic, "malformed recording mode safely falls back")
+        for invalidMode: Any in ["automatic", "unknown-mode", "", 123] {
+            gestureDefaults.values["recordingGestureMode"] = invalidMode
+            check(settings(gestureDefaults).recordingGestureMode == .hold, "retired or malformed recording mode falls back to Hold")
+            check(gestureDefaults.string(forKey: "recordingGestureMode") == "hold", "fallback recording mode is persisted")
+            check(settings(gestureDefaults).recordingGestureMode == .hold, "migrated mode survives relaunch")
+        }
         gestureDefaults.values = ["triggerKey": "rightControl", "alternateFinishKey": "rightOption"]
         let existingGestures = settings(gestureDefaults)
-        check(existingGestures.recordingGestureMode == .automatic, "existing installations retain dual gesture")
-        existingGestures.recordingGestureMode = .hold
+        check(existingGestures.recordingGestureMode == .hold, "existing installations without a mode use Hold")
+        existingGestures.recordingGestureMode = .toggle
         check(existingGestures.triggerKey == .rightControl && existingGestures.alternateFinishKey == .rightOption,
               "changing interaction leaves custom key bindings untouched")
         existingGestures.recordingGestureMode = AppSettings.defaultRecordingGestureMode
-        check(settings(gestureDefaults).recordingGestureMode == .automatic, "reset recording mode persists Automatic")
+        check(settings(gestureDefaults).recordingGestureMode == .hold, "reset recording mode persists Hold")
 
         let audioDefaults = MemoryDefaults()
         let audioSettings = settings(audioDefaults)

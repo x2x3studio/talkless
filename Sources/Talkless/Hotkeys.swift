@@ -160,29 +160,90 @@ final class HotkeyMonitor {
 }
 
 /// A standard keyboard shortcut (no permission required) for translating selected text.
+@MainActor
 final class GlobalHotKey {
-    private var ref: EventHotKeyRef?
-    private var handler: EventHandlerRef?
-    private let action: @MainActor @Sendable () -> Void
+    /// Injectable Carbon boundary; tests use fake opaque references, never real global shortcuts.
+    struct API {
+        var install: (EventHandlerUPP, UnsafeMutableRawPointer, inout EventHandlerRef?) -> OSStatus
+        var register: (UInt32, UInt32, EventHotKeyID, inout EventHotKeyRef?) -> OSStatus
+        var unregister: (EventHotKeyRef) -> Void
+        var remove: (EventHandlerRef) -> Void
 
-    /// Defaults to ⌃⌥T.
-    init(keyCode: Int = kVK_ANSI_T, modifiers: Int = controlKey | optionKey, action: @escaping @MainActor @Sendable () -> Void) {
-        self.action = action
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return noErr }
-            let hotKey = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
-            let action = hotKey.action
-            DispatchQueue.main.async { action() }
-            return noErr
-        }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
-
-        let id = EventHotKeyID(signature: OSType(0x544C_4B53), id: 1) // 'TLKS'
-        RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
+        @MainActor static let carbon = API(
+            install: { callback, context, handler in
+                var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+                return InstallEventHandler(GetApplicationEventTarget(), callback, 1, &spec, context, &handler)
+            },
+            register: { key, modifiers, id, ref in
+                RegisterEventHotKey(key, modifiers, id, GetApplicationEventTarget(), 0, &ref)
+            },
+            unregister: { _ = UnregisterEventHotKey($0) },
+            remove: { _ = RemoveEventHandler($0) }
+        )
     }
 
-    deinit {
-        if let ref { UnregisterEventHotKey(ref) }
-        if let handler { RemoveEventHandler(handler) }
+    private var ref: EventHotKeyRef?
+    private var handler: EventHandlerRef?
+    private let api: API
+    private let action: @MainActor @Sendable () -> Void
+    private var registrationID: UInt32 = 0
+    private static var nextID: UInt32 = 0
+    private(set) var error: String?
+    var isActive: Bool { ref != nil && handler != nil }
+
+    init(api: API = .carbon, action: @escaping @MainActor @Sendable () -> Void) {
+        self.api = api
+        self.action = action
+    }
+
+    /// Replace rather than silently retain an old binding if registration fails.
+    func update(_ shortcut: TranslationShortcut) {
+        stop()
+        error = nil
+        if let validationError = shortcut.validationError {
+            error = "Translation shortcut is inactive. \(validationError)"
+            return
+        }
+        guard let keyCode = shortcut.keyCode else { return }
+        Self.nextID &+= 1
+        registrationID = Self.nextID
+        let status = api.install({ _, event, userData in
+            guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+            var id = EventHotKeyID()
+            guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                    nil, MemoryLayout<EventHotKeyID>.size, nil, &id) == noErr,
+                  id.signature == OSType(0x544C_4B53) else { return OSStatus(eventNotHandledErr) }
+            let hotKey = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
+            return MainActor.assumeIsolated {
+                guard hotKey.isActive, hotKey.registrationID == id.id else { return OSStatus(eventNotHandledErr) }
+                let registrationID = id.id
+                Task { @MainActor [weak hotKey] in
+                    guard let hotKey, hotKey.isActive, hotKey.registrationID == registrationID else { return }
+                    hotKey.action()
+                }
+                return noErr
+            }
+        }, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        guard status == noErr, handler != nil else { fail(status); return }
+        let id = EventHotKeyID(signature: OSType(0x544C_4B53), id: registrationID)
+        let registrationStatus = api.register(UInt32(keyCode), shortcut.modifiers.rawValue, id, &ref)
+        guard registrationStatus == noErr, ref != nil else { fail(registrationStatus); return }
+    }
+
+    private func fail(_ status: OSStatus) {
+        stop()
+        error = "Translation shortcut is inactive: macOS could not register it (error \(status)). It may be used by another app. Record a different shortcut."
+    }
+
+    func stop() {
+        if let ref { api.unregister(ref) }
+        if let handler { api.remove(handler) }
+        ref = nil
+        handler = nil
+    }
+
+    isolated deinit {
+        if let ref { api.unregister(ref) }
+        if let handler { api.remove(handler) }
     }
 }

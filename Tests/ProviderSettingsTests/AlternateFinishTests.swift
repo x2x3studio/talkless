@@ -191,6 +191,38 @@ func testShortcutDefaults() -> Int {
             checkUnrelatedSettings("Restore defaults: \(context)")
         }
     }
+    let customTranslation = TranslationShortcut(keyCode: 9, modifiers: [.command, .option])
+    check(settings.translationShortcut == .default && settings.isTranslationShortcutDefault,
+          "Missing translation preference retains existing Control Option T")
+    for shortcut in [customTranslation, .disabled, .default] {
+        settings.translationShortcut = shortcut
+        let reloaded = AppSettings(defaults: defaults, credentialStore: credentials)
+        check(reloaded.translationShortcut == shortcut, "Custom and disabled translation survive relaunch")
+        check(settings.isTranslationShortcutDefault == (shortcut == .default), "Translation reset reflects preference")
+        check(settings.areShortcutsDefault == (shortcut == .default), "Restore defaults includes translation")
+    }
+    settings.triggerKey = .rightControl
+    settings.alternateFinishKey = .disabled
+    settings.translationShortcut = customTranslation
+    settings.resetTranslationShortcut()
+    check(settings.translationShortcut == .default && settings.triggerKey == .rightControl && settings.alternateFinishKey == .disabled,
+          "Translation row reset leaves dictation and alternate unchanged")
+    settings.translationShortcut = .disabled
+    _ = settings.resetTriggerKey()
+    _ = settings.resetAlternateFinishKey()
+    check(settings.translationShortcut == .disabled, "Dictation resets leave disabled translation unchanged")
+    settings.restoreShortcutDefaults()
+    check(settings.areShortcutsDefault && settings.translationShortcut == .default, "All shortcuts reset restores disabled translation")
+    for invalid: Any in ["not data", Data("{}".utf8),
+                         try! JSONEncoder().encode(TranslationShortcut(keyCode: 17, modifiers: [])),
+                         try! JSONEncoder().encode(TranslationShortcut(keyCode: 63, modifiers: .command)),
+                         try! JSONEncoder().encode(TranslationShortcut(keyCode: 49, modifiers: .command))] {
+        defaults.set(invalid, forKey: "translationShortcut.v1")
+        let reloaded = AppSettings(defaults: defaults, credentialStore: credentials)
+        check(reloaded.translationShortcut == .default, "Malformed and reserved saved chords safely fall back")
+    }
+    defaults.values.removeValue(forKey: "translationShortcut.v1")
+    checkUnrelatedSettings("Translation resets and fallback")
     print("PASS \(assertions) shortcut reset defaults, conflict, persistence, and isolation assertions")
     return assertions
 }
