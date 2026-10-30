@@ -19,8 +19,9 @@ struct OverlaySettingsView: View {
                     ForEach(HUDPreviewSample.allCases) { Text($0.title).tag($0) }
                 }
                 .disabled(previewStage != .recording)
-                Text("Sample text only. This preview never records audio or runs recognition or AI polish.")
+                Text("Sample text only. No audio recording or AI requests.")
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Appearance") {
@@ -37,22 +38,27 @@ struct OverlaySettingsView: View {
                         .frame(width: 38, alignment: .trailing)
                 }
                 .disabled(appearance.usesSolidBackdrop(reduceTransparency: reduceTransparency))
-                Text("Opacity changes only the translucent background, never the text or indicators. Solid uses an opaque background.")
+                Text("Opacity affects the translucent backdrop only. Text stays opaque.")
                     .font(.caption).foregroundStyle(.secondary)
+                    .help("Solid backdrops are always opaque, so the opacity slider is unavailable.")
                 if reduceTransparency {
-                    Text("Reduce Transparency is on in macOS. The backdrop stays solid; your translucent settings are kept.")
+                    Text("macOS Reduce Transparency keeps the backdrop solid. Your preference is saved.")
                         .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             Section("Motion and interaction") {
                 Toggle("Animate status indicators", isOn: $appearance.animationsEnabled)
                 if reduceMotion {
-                    Text("Reduce Motion is on in macOS. Indicators stay still; your animation preference is kept.")
+                    Text("macOS Reduce Motion keeps indicators still. Your preference is saved.")
                         .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("The overlay follows your text cursor without taking focus. Clicks pass through to the app underneath. Long dictation shows the latest lines.")
+                Text("Follows your text cursor without taking focus. Clicks pass through.")
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help("Long dictation shows the latest lines. Choose the Long sample above to preview it.")
                 HStack {
                     Text("Changes apply immediately.")
                         .font(.caption).foregroundStyle(.secondary)

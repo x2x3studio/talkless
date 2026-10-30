@@ -16,14 +16,14 @@ struct TranslationSettingsView: View {
     var body: some View {
         Form {
             Section("Selected-text translation") {
-                TextField("Target language", text: $settings.translateTarget,
-                          prompt: Text("For example: English or Japanese"))
-                Text("Select text, press the shortcut, then copy the translation or replace the selection.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Works with dictation polish off. Requires AI service.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Target language", text: $settings.translateTarget,
+                              prompt: Text("English or Japanese"))
+                    Text("Select text, press the shortcut, then copy the translation or replace the selection.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section("Keyboard shortcut") {
@@ -40,13 +40,11 @@ struct TranslationSettingsView: View {
                     }, onRecord: { _ in nil }
                 )
                 .disabled(controller.state != .idle)
-                Text("Click to record a combination; Esc cancels, Delete or Backspace disables.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 if let error = controller.translationShortcutError {
-                    Text(error)
+                    Label(error, systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

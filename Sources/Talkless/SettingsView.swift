@@ -67,16 +67,16 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Talkless")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(.system(size: 17, weight: .semibold))
                     Text("Settings")
-                        .font(.callout)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 26)
+                .padding(.top, 24)
 
                 List(SettingsSection.allCases, selection: $selection) { section in
                     Label {
@@ -92,22 +92,23 @@ struct SettingsView: View {
                 .scrollContentBackground(.hidden)
             }
             .frame(width: 196)
-            .background(.regularMaterial)
+            .background(Color(nsColor: .controlBackgroundColor))
 
             Divider()
 
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(currentSection.title)
-                        .font(.system(size: 25, weight: .semibold))
+                        .font(.system(size: 22, weight: .semibold))
                         .accessibilityAddTraits(.isHeader)
                     Text(currentSection.subtitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 26)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 4)
 
                 Group {
                     switch currentSection {
@@ -155,26 +156,55 @@ private struct DictationSettingsTab: View {
     @State private var accessibilityGranted = DictationController.accessibilityGranted
     private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
+    private var permissionMessage: String {
+        if !microphoneGranted && !accessibilityGranted {
+            return "Allow microphone and Accessibility access to dictate."
+        }
+        return microphoneGranted
+            ? "Allow Accessibility access for shortcuts and text insertion."
+            : "Allow microphone access to record your voice."
+    }
+
     var body: some View {
         Form {
             if !microphoneGranted || !accessibilityGranted {
                 Section {
-                    Label("Permission needed to dictate", systemImage: "exclamationmark.triangle")
-                    Button("Open permissions") { onPermissions() }
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Permission needed").font(.headline)
+                            Text(permissionMessage)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 4)
+                        Button("Open permissions") { onPermissions() }
+                            .fixedSize()
+                    }
                 }
             }
             AudioInputSettingsView(settings: settings)
 
             Section("Recording") {
                 HStack {
-                    Picker("Recording mode", selection: $settings.recordingGestureMode) {
+                    Picker(selection: $settings.recordingGestureMode) {
                         ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Recording mode")
+                            Text("Default: \(AppSettings.defaultRecordingGestureMode.title)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Button("Reset") {
                         ShortcutRecorder.cancelCapture()
                         settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
                     }
+                    .controlSize(.small)
                     .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
+                    .help("Restore \(AppSettings.defaultRecordingGestureMode.title). Shortcuts and other settings are unchanged.")
                     .accessibilityLabel("Reset recording mode")
                 }
                 .disabled(controller.state != .idle)
@@ -196,11 +226,11 @@ private struct DictationSettingsTab: View {
                     return nil
                 }
                 .disabled(controller.state != .idle)
-                Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
-                    .font(.caption).foregroundStyle(.secondary)
+                .help("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
                 if settings.triggerKey == .fn || settings.effectiveAlternateFinishKey == .fn {
-                    Text("For Fn, set the Globe key action to Do Nothing in System Settings › Keyboard to prevent the emoji panel from opening.")
-                        .font(.caption).foregroundStyle(.orange)
+                    Text("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 ShortcutRecorder(
                     title: "Alternate finish key",
@@ -224,9 +254,10 @@ private struct DictationSettingsTab: View {
                     return nil
                 }
                 .disabled(controller.state != .idle)
+                .help("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish.")
                 Text(settings.polishEnabled
-                     ? "Alternate finish skips AI for this recording. Delete the binding to disable it."
-                     : "Alternate finish uses AI for this recording. Delete the binding to disable it.")
+                     ? "Alternate finish skips AI for this recording."
+                     : "Alternate finish uses AI for this recording.")
                     .font(.caption).foregroundStyle(.secondary)
                 if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
                     Text("Record a different key from the dictation key. Alternate finish is disabled while they match.")
@@ -302,30 +333,41 @@ private struct DiagnosticsSection: View {
 
     var body: some View {
         Section("Diagnostics") {
-            Text("Local debug logs record app and recording lifecycle events, not audio, transcripts, API keys, or request contents. Logs rotate automatically (up to 15 MB). Nothing is uploaded automatically.")
+            Text("Logs exclude audio, transcripts, API keys, and request contents. Nothing is uploaded automatically.")
                 .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Toggle("Include recent macOS crash reports", isOn: $includeCrashReports)
                 .disabled(exporting)
+                .help("Include native backtraces from the last 7 days. An unclean exit can also mean Force Quit or power loss.")
             if includeCrashReports {
-                Text("Original Talkless crash reports from the last 7 days include native backtraces and may contain personal information and file paths. Review them before sharing.")
+                Text("Crash reports from the last 7 days may include personal information and file paths. Review them before sharing.")
                     .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            HStack {
-                Button(exporting ? "Exporting…" : "Export Diagnostics…") {
-                    exporting = true
-                    Task { @MainActor in
-                        await Diagnostics.shared.exportDiagnostics(includeCrashReports: includeCrashReports)
-                        exporting = false
-                    }
-                }
-                .disabled(exporting)
-                if exporting { ProgressView().controlSize(.small) }
-                Button("Open Logs") { Diagnostics.shared.revealAppLogs() }
-                Button("Open Crash Reports") { Diagnostics.shared.openCrashReports() }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { diagnosticActions }
+                VStack(alignment: .leading, spacing: 8) { diagnosticActions }
             }
-            Text("After a crash, relaunch Talkless and export diagnostics. Enable crash reports to include the macOS backtrace; a previous unclean exit can also mean Force Quit or power loss.")
+            Text("After a crash, relaunch Talkless and export diagnostics.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder private var diagnosticActions: some View {
+        HStack(spacing: 8) {
+            Button(exporting ? "Exporting…" : "Export diagnostics…") {
+                exporting = true
+                Task { @MainActor in
+                    await Diagnostics.shared.exportDiagnostics(includeCrashReports: includeCrashReports)
+                    exporting = false
+                }
+            }
+            .disabled(exporting)
+            if exporting { ProgressView().controlSize(.small) }
+        }
+        Button("Open logs") { Diagnostics.shared.revealAppLogs() }
+            .help("Local app and recording lifecycle logs rotate automatically, up to 15 MB.")
+        Button("Open crash reports") { Diagnostics.shared.openCrashReports() }
     }
 }
 
@@ -346,9 +388,11 @@ private struct UpdatesSection: View {
                 set: { updater.setAutomaticallyChecksForUpdates($0) }
             ))
             .disabled(!updater.canChangeAutomaticChecks)
-            Text("Checks every 30 minutes while Talkless is running; checks during dictation wait until the next interval. You choose when to download and install; updates never install silently. Turning this off does not cancel an update already in progress.")
+            .help("Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress.")
+            Text("Checks every 30 minutes. You choose when to download and install.")
                 .font(.caption).foregroundStyle(.secondary)
-            Button("Check for Updates…") { updater.checkForUpdates(nil) }
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Check for updates…") { updater.checkForUpdates(nil) }
                 .disabled(controller.state != .idle || !updater.canCheckForUpdates)
             if let status = updater.status {
                 Text(status).font(.caption).foregroundStyle(.secondary)
@@ -368,15 +412,22 @@ private struct PermissionRow: View {
     let action: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .foregroundStyle(granted ? .green : .orange)
-            VStack(alignment: .leading) {
+                .accessibilityLabel(granted ? "Allowed" : "Access needed")
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(detail)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-            if !granted { Button("Grant Access", action: action) }
+            Spacer(minLength: 8)
+            if !granted {
+                Button("Grant access", action: action)
+                    .fixedSize()
+                    .accessibilityLabel("Grant \(title) access")
+            }
         }
     }
 }

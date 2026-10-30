@@ -10,8 +10,8 @@ struct AudioInputSettingsView: View {
 
     var body: some View {
         Section("Audio") {
-            HStack {
-                Picker("Microphone", selection: $settings.audioInputDeviceUID) {
+            HStack(spacing: 8) {
+                Picker(selection: $settings.audioInputDeviceUID) {
                     Text("System default").tag(nil as String?)
                     ForEach(devices, id: \.uid) { device in
                         Text(label(for: device)).tag(Optional(device.uid))
@@ -20,20 +20,32 @@ struct AudioInputSettingsView: View {
                        !devices.contains(where: { $0.uid == uid }) {
                         Text("Unavailable microphone").tag(Optional(uid))
                     }
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Microphone")
+                        Text("Default: System default")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                .lineLimit(1)
+                .truncationMode(.middle)
                 Button("Reset") { settings.audioInputDeviceUID = nil }
+                    .controlSize(.small)
                     .disabled(settings.audioInputDeviceUID == nil)
                     .help("Reset microphone to System default. Other settings are unchanged.")
                     .accessibilityLabel("Reset microphone to System default")
             }
-            Text("Default: System default. Changes apply to the next recording.")
+            Text("Changes apply to the next recording.")
                 .font(.caption).foregroundStyle(.secondary)
             if let discoveryError {
-                Text(discoveryError).font(.caption).foregroundStyle(.orange)
+                Text(discoveryError)
+                    .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if let uid = settings.audioInputDeviceUID,
                       !devices.contains(where: { $0.uid == uid }) {
-                Text("The selected microphone is disconnected or unavailable. Reconnect it or choose another microphone; Talkless will not use a different microphone automatically.")
+                Text("This microphone is unavailable. Reconnect it or choose another; Talkless won’t switch microphones automatically.")
                     .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         // Poll only while this section is displayed, including while its picker is open.

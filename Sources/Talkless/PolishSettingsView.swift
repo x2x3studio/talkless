@@ -66,9 +66,6 @@ struct AIServiceSettingsView: View {
         Form {
             Section("Shared AI service") {
                 AIServiceStatusView(settings: settings)
-                Text("One provider and model for dictation polish, voice editing, and translation.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("API provider") {
@@ -113,34 +110,44 @@ struct AIServiceSettingsView: View {
                 modelControls
 
                 if provider == .openRouter {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Free router uses changing free models; rate limits and availability vary. Bring your own OpenRouter key. No paid fallback.")
-                        Text("The openrouter/free preset is free; other models you select may be paid.")
-                        HStack(spacing: 12) {
-                            Link("Get an OpenRouter key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
-                            Link("About the free router", destination: URL(string: "https://openrouter.ai/openrouter/free")!)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Free router limits and availability vary. Other models may be paid.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        DisclosureGroup("About OpenRouter free") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key.")
+                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 12) {
+                                    Link("Get an API key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                                    Link("About the free router", destination: URL(string: "https://openrouter.ai/openrouter/free")!)
+                                }
+                            }
+                            .font(.caption)
                         }
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack(spacing: 10) {
-                    Button(fetching ? "Fetching…" : "Fetch Models") { fetchModels() }
-                        .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    if fetching { ProgressView().controlSize(.small) }
-                    Button(testing ? "Testing…" : "Test Connection") { testConnection() }
-                        .disabled(testing || fetching || !settings.llmConfigured)
-                    if testing { ProgressView().controlSize(.small) }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Button(fetching ? "Fetching…" : "Fetch Models") { fetchModels() }
+                            .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .help("Fetch available models from this provider.")
+                        if fetching { ProgressView().controlSize(.small) }
+                        Button(testing ? "Testing…" : "Test Connection") { testConnection() }
+                            .disabled(testing || fetching || !settings.llmConfigured)
+                            .help("Send a short test prompt using the current provider and model.")
+                        if testing { ProgressView().controlSize(.small) }
+                    }
+                    Text("Runs only when clicked. Your provider may charge for tests.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 if let modelStatus { statusView(modelStatus) }
                 if let connectionStatus { statusView(connectionStatus) }
 
-                Text("Requests run only when clicked; your provider may charge for tests.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 DisclosureGroup("Data sent to AI") {
                     Text("Test Connection sends only a fixed “Reply with OK” prompt—not your dictation, dictionary, or writing instructions.")
                         .font(.caption)
@@ -205,13 +212,14 @@ struct AIServiceSettingsView: View {
         }
 
         if remoteModels.isEmpty || manualModelEntry || !remoteModels.contains(where: { $0.id == settings.llmModel }) {
-            TextField("Model ID", text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
-        }
-
-        if remoteModels.isEmpty && modelStatus == nil {
-            Text("Fetch available models, or enter a model ID manually.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("Model ID", text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
+                if remoteModels.isEmpty && modelStatus == nil {
+                    Text("Enter a model ID or fetch available models.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -315,23 +323,24 @@ struct AIServiceStatusView: View {
 
     var body: some View {
         let configured = settings.llmConfigured
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: configured ? "checkmark.circle" : "exclamationmark.circle")
+        HStack(spacing: 10) {
+            Image(systemName: configured ? "slider.horizontal.3" : "exclamationmark.circle")
                 .foregroundStyle(configured ? Color.secondary : Color.orange)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(configured ? "Configuration complete" : "AI service needs configuration")
+                Text(configured ? "Configuration complete" : "Setup needed")
                     .font(.body.weight(.medium))
-                if configured {
-                    Text("Connection is not checked automatically.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(configured
+                     ? "Connection is not checked automatically."
+                     : "Check your provider, API key, and model.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if let onConfigureAI {
-                Button(configured ? "AI Service…" : "Configure AI Service…", action: onConfigureAI)
+                Button("AI service…", action: onConfigureAI)
+                    .help("Configure the shared provider and model, or test the connection.")
             }
         }
         .padding(.vertical, 4)

@@ -13,19 +13,24 @@ struct DictationProcessingSettingsView: View {
 
     var body: some View {
         Section("AI processing") {
-            Toggle("Polish dictation with AI", isOn: $settings.polishEnabled)
-            Text("Clean up the transcript after recognition; turn off for unprocessed dictation.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $settings.polishEnabled) {
+                Text("Polish dictation with AI")
+                Text("Clean up your transcript after recognition.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             AIServiceStatusView(settings: settings, onConfigureAI: onConfigureAI)
 
-            Picker("Output language", selection: $settings.outputLanguage) {
-                ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Output language", selection: $settings.outputLanguage) {
+                    ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
+                }
+                Text("For AI polish and alternate finish. Translation has its own language.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Used by AI polish, including alternate finish—not selected-text translation.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             Toggle("Adapt tone to the current app", isOn: $settings.appToneEnabled)
                 .help("Match polished dictation to chat, email, code, or documents")
@@ -54,10 +59,12 @@ struct DictationProcessingSettingsView: View {
         }
 
         Section("Voice editing") {
-            Toggle("Edit selected text with your voice", isOn: $settings.voiceEditEnabled)
-            Text("Select text and speak an instruction, even with dictation polish off.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $settings.voiceEditEnabled) {
+                Text("Edit selected text with your voice")
+                Text("Select text and speak an instruction. Works with polish off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

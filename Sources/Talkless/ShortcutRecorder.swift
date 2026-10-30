@@ -26,9 +26,17 @@ struct ShortcutRecorder: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(title)
-                Spacer()
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                    if let defaultValue {
+                        Text("Default: \(defaultValue)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 8)
                 ShortcutRecorderRepresentable(
                     value: value, accessibilityLabel: title, allowsClearing: allowsClearing,
                     isEnabled: isEnabled, setCaptureActive: setCaptureActive, onRecord: onRecord,
@@ -45,15 +53,11 @@ struct ShortcutRecorder: View {
                         message = onReset()
                         isError = message != nil
                     }
+                    .controlSize(.small)
                     .disabled(isDefault)
                     .help("Restore the default for \(title.lowercased())")
                     .accessibilityLabel("Reset \(title)")
                 }
-            }
-            if let defaultValue {
-                Text("Default: \(defaultValue)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             if let message {
                 Text(message)
@@ -291,7 +295,7 @@ final class ShortcutRecorderButton: NSButton {
         super.init(frame: frameRect)
         bezelStyle = .rounded
         setButtonType(.momentaryPushIn)
-        font = .monospacedSystemFont(ofSize: 12, weight: .medium)
+        font = .systemFont(ofSize: 12, weight: .medium)
         target = self
         action = #selector(clicked)
     }
