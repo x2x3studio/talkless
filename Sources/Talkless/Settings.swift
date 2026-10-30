@@ -30,6 +30,39 @@ enum TriggerKey: String, CaseIterable, Identifiable {
     }
 }
 
+enum AlternateFinishKey: String, CaseIterable, Identifiable {
+    case automatic, disabled, fn, rightOption, rightCommand, rightControl
+
+    var id: String { rawValue }
+
+    var triggerKey: TriggerKey? {
+        switch self {
+        case .automatic, .disabled: nil
+        case .fn: .fn
+        case .rightOption: .rightOption
+        case .rightCommand: .rightCommand
+        case .rightControl: .rightControl
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .disabled: "Disabled"
+        case .fn: TriggerKey.fn.title
+        case .rightOption: TriggerKey.rightOption.title
+        case .rightCommand: TriggerKey.rightCommand.title
+        case .rightControl: TriggerKey.rightControl.title
+        }
+    }
+
+    func resolved(for primary: TriggerKey) -> TriggerKey? {
+        if self == .automatic { return primary == .rightOption ? .rightCommand : .rightOption }
+        guard let triggerKey, triggerKey != primary else { return nil }
+        return triggerKey
+    }
+}
+
 enum ASREngine: String, CaseIterable, Identifiable {
     /// Local Qwen3-ASR, running on Apple Silicon through MLX.
     case qwen
@@ -98,6 +131,9 @@ final class AppSettings: ObservableObject {
     }
 
     @Published var triggerKey: TriggerKey { didSet { save(triggerKey.rawValue, "triggerKey") } }
+    @Published var alternateFinishKey: AlternateFinishKey { didSet { save(alternateFinishKey.rawValue, "alternateFinishKey") } }
+
+    var effectiveAlternateFinishKey: TriggerKey? { alternateFinishKey.resolved(for: triggerKey) }
     @Published var asrEngine: ASREngine { didSet { save(asrEngine.rawValue, "asrEngine") } }
     @Published var qwenModelDirectory: String { didSet { save(qwenModelDirectory, "qwenModelDirectory") } }
 
@@ -191,6 +227,7 @@ final class AppSettings: ObservableObject {
         llmAPIKey = ""
         llmCredentialSaveError = nil
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? .fn
+        alternateFinishKey = AlternateFinishKey(rawValue: d.string(forKey: "alternateFinishKey") ?? "") ?? .automatic
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
         qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""
         useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false

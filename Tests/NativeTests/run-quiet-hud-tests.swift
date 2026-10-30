@@ -21,6 +21,7 @@ struct HUDTests {
         rendered.phase = model.phase
         rendered.preview = model.preview
         rendered.isEditMode = model.isEditMode
+        rendered.recordingHint = model.recordingHint
         if reduceTransparency { rendered.appearance.backdrop = .solid }
         if reduceMotion { rendered.appearance.animationsEnabled = false }
         return try snapshotView(HUDView(model: rendered), size: rendered.contentSize, name: name)
@@ -110,6 +111,20 @@ struct HUDTests {
         precondition(hud.model.contentSize.height > shortSize.height)
         try snapshot(hud.model, name: "explicit-newlines")
         hud.model.preview = "Recognized words"
+        hud.model.recordingHint = "AI on · Right Option ⌥: use original"
+        hud.show(.listening(handsFree: true))
+        precondition(hud.model.visibleRecordingHint != nil && hud.model.hintHeight == 22)
+        precondition(hud.model.contentSize.height == shortSize.height + 22)
+        precondition(hud.frame.size == hud.model.contentSize)
+        try snapshot(hud.model, name: "alternate-finish")
+        hud.model.preview = String(repeating: "Earlier words fill the preview. ", count: 40) + "LATEST WORDS"
+        hud.show(.listening(handsFree: true))
+        precondition(hud.model.contentSize.height == HUDModel.maximumHeight)
+        try snapshot(hud.model, name: "alternate-finish-long")
+        hud.model.isEditMode = true
+        precondition(hud.model.visibleRecordingHint == nil && hud.model.hintHeight == 0)
+        hud.model.isEditMode = false
+        hud.model.preview = "Recognized words"
         for (phase, label) in [
             (HUDModel.Phase.working, "Preparing recognition"),
             (.recognizing, "Recognizing"),
@@ -118,6 +133,7 @@ struct HUDTests {
         ] {
             hud.show(phase)
             precondition(hud.model.phase == phase)
+            precondition(hud.model.visibleRecordingHint == nil)
             precondition(hud.model.preview == "Recognized words")
             precondition(hud.model.displayText == label)
             hud.model.preview = "Late recognition preview"
@@ -130,6 +146,7 @@ struct HUDTests {
         hud.show(.hidden)
         precondition(hud.model.phase == .hidden)
         precondition(hud.model.preview.isEmpty)
+        precondition(hud.model.recordingHint == nil)
         precondition(hud.model.displayText.isEmpty)
         hud.show(.error("Microphone unavailable"))
         precondition(hud.model.phase == .error("Microphone unavailable"))

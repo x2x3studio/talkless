@@ -57,6 +57,7 @@ struct ProviderSettingsTests {
             AppSettings(defaults: defaults, credentialStore: store)
         }
         assertions += try testHUDAppearance()
+        assertions += testAlternateFinishKey()
         let persistenceKey = "polishProviderSettings.v1"
 
         // Dictionary normalization is stable and case-sensitive, without rewriting the editor.

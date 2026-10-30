@@ -29,6 +29,8 @@ enum HUDModel {
 }
 @MainActor final class FakeHUD {
     var phases: [HUDModel.Phase] = []
+    var model: FakeHUD { self }
+    var recordingHint: String?
     func show(_ phase: HUDModel.Phase) { phases.append(phase) }
 }
 @MainActor final class Diagnostics {
@@ -92,10 +94,18 @@ struct HistoryEntry {
     var entries: [HistoryEntry] = []
     func add(_ entry: HistoryEntry) { entries.append(entry) }
 }
+@MainActor final class FakeHotkeys {
+    var armed = true
+    func armAlternateFinish(_ key: Int?) { armed = key != nil }
+}
 @MainActor final class ProcessingHarness {
     enum State { case idle, recording, processing }
     var state: State = .recording
     var generation = 0
+    var pressedAt: UInt64? = 123
+    var recordingPolishEnabled = true
+    let hotkeys = FakeHotkeys()
+    func updateTriggerKey() {}
     var editSelection: String?
     var context: Context? = Context()
     var settings = Settings()
@@ -112,9 +122,11 @@ TESTS = r'''
 @main struct Tests {
     @MainActor static func check(_ name: String, enabled: Bool = true,
                                  configured: Bool = true, editing: Bool = false,
-                                 failure: Bool = false, phases: [HUDModel.Phase]) async {
+                                 failure: Bool = false, opposite: Bool = false,
+                                 changeDefault: Bool = false, phases: [HUDModel.Phase]) async {
         let test = ProcessingHarness()
-        test.settings.polishEnabled = enabled
+        test.recordingPolishEnabled = enabled
+        test.settings.polishEnabled = changeDefault ? !enabled : enabled
         test.settings.llmConfigured = configured
         test.editSelection = editing ? "selected text" : nil
         test.session!.onFinish = {
@@ -129,12 +141,16 @@ TESTS = r'''
             precondition(TextIO.inserted.isEmpty)
         }
         TextIO.inserted = []
-        test.stopAndProcess()
+        test.stopAndProcess(useOppositePolish: opposite)
         precondition(test.state == .processing && test.hud.phases == [.recognizing])
+        precondition(test.pressedAt == nil && !test.hotkeys.armed,
+                     "Stopping must clear the gesture and disarm alternate before awaiting recognition")
+        // Changing global Settings during recognition cannot change the captured finish decision either.
+        if changeDefault { test.settings.polishEnabled = !enabled }
         guard let task = test.processingTask else { preconditionFailure("Missing processing task") }
         await task.value
         precondition(test.hud.phases == phases, "\(name): unexpected HUD sequence \(test.hud.phases)")
-        let usesLLM = editing || (enabled && configured)
+        let usesLLM = editing || ((opposite ? !enabled : enabled) && configured)
         let output = usesLLM && !failure ? "processed transcript" : "raw transcript"
         precondition(LLMClient.calls == (usesLLM ? 1 : 0))
         precondition(TextIO.inserted == [output] && test.lastTranscript == output,
@@ -161,6 +177,27 @@ TESTS = r'''
         await check("failed polish preserves raw transcript and error", failure: true,
                     phases: [.recognizing, .polishing,
                              .error("Polishing failed; using the original transcript.")])
+        await check("opposite bypasses configured default AI", opposite: true,
+                    phases: [.recognizing, .hidden])
+        await check("opposite requests AI when default disabled", enabled: false, opposite: true,
+                    phases: [.recognizing, .polishing, .hidden])
+        await check("opposite AI without configuration preserves raw with useful error", enabled: false,
+                    configured: false, opposite: true,
+                    phases: [.recognizing,
+                             .error("Configure a language model in Settings to polish. Using the original transcript.")])
+        await check("opposite AI failure preserves raw", enabled: false, failure: true, opposite: true,
+                    phases: [.recognizing, .polishing,
+                             .error("Polishing failed; using the original transcript.")])
+        await check("editing cannot be bypassed defensively", editing: true, opposite: true,
+                    phases: [.recognizing, .editing, .hidden])
+        for enabled in [true, false] {
+            for opposite in [true, false] {
+                let polish = opposite ? !enabled : enabled
+                await check("snapshot default=\(enabled) opposite=\(opposite)", enabled: enabled,
+                            opposite: opposite, changeDefault: true,
+                            phases: polish ? [.recognizing, .polishing, .hidden] : [.recognizing, .hidden])
+            }
+        }
     }
 }
 '''

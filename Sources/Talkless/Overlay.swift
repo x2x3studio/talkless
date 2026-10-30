@@ -27,6 +27,7 @@ final class HUDModel: ObservableObject {
     @Published var phase: Phase = .hidden
     @Published var isEditMode = false
     @Published var preview = ""
+    @Published var recordingHint: String?
     @Published var appearance: HUDAppearance
 
     init(appearance: HUDAppearance = HUDAppearance()) {
@@ -67,11 +68,25 @@ final class HUDModel: ObservableObject {
         return CGSize(width: width, height: max(18, ceil(bounds.height) + 3))
     }
 
+    var visibleRecordingHint: String? {
+        guard case .listening = phase, !isEditMode,
+              let recordingHint, !recordingHint.isEmpty else { return nil }
+        return recordingHint
+    }
+
+    var hintHeight: CGFloat { visibleRecordingHint == nil ? 0 : 22 }
+
     var contentSize: CGSize {
         let text = textSize
+        let hintWidth = visibleRecordingHint.map {
+            ceil(($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width) + 2
+        } ?? 0
         return CGSize(
-            width: Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0),
-            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2)
+            width: min(Self.maximumWidth, max(
+                Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0),
+                hintWidth + Self.horizontalPadding * 2
+            )),
+            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2 + hintHeight)
         )
     }
 }
@@ -165,6 +180,7 @@ final class HUDController {
         panel.orderOut(nil)
         model.phase = .hidden
         model.preview = ""
+        model.recordingHint = nil
         model.isEditMode = false
     }
 
@@ -200,20 +216,29 @@ struct HUDView: View {
     var body: some View {
         let size = model.contentSize
         let textSize = model.textSize
-        let visibleTextHeight = size.height - HUDModel.verticalPadding * 2
+        let visibleTextHeight = size.height - HUDModel.verticalPadding * 2 - model.hintHeight
         Group {
             if model.phase != .hidden {
-                HStack(alignment: .top, spacing: HUDModel.spacing) {
-                    indicator
-                        .frame(width: HUDModel.indicatorWidth, height: 18)
-                    if !model.displayText.isEmpty {
-                        Text(model.displayText)
-                            .fontWeight(model.phase.statusText == nil ? .regular : .medium)
-                            .lineSpacing(3)
-                            .frame(width: textSize.width, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(width: textSize.width, height: visibleTextHeight, alignment: textAlignment)
-                            .clipped()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: HUDModel.spacing) {
+                        indicator
+                            .frame(width: HUDModel.indicatorWidth, height: 18)
+                        if !model.displayText.isEmpty {
+                            Text(model.displayText)
+                                .fontWeight(model.phase.statusText == nil ? .regular : .medium)
+                                .lineSpacing(3)
+                                .frame(width: textSize.width, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(width: textSize.width, height: visibleTextHeight, alignment: textAlignment)
+                                .clipped()
+                        }
+                    }
+                    if let hint = model.visibleRecordingHint {
+                        Text(hint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                            .frame(height: 16)
                     }
                 }
                 .font(.system(size: 13))

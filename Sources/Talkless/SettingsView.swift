@@ -162,13 +162,49 @@ private struct GeneralTab: View {
             }
 
             Section("Keyboard shortcuts") {
-                Picker("Dictation key", selection: $settings.triggerKey) {
-                    ForEach(TriggerKey.allCases) { Text($0.title).tag($0) }
+                ShortcutRecorder(
+                    title: "Dictation key", value: settings.triggerKey.title,
+                    setCaptureActive: controller.setShortcutCaptureActive
+                ) { key in
+                    if let error = ShortcutRecorderRules.primaryError(key, alternate: settings.alternateFinishKey) {
+                        return error
+                    }
+                    guard let key else { return "The dictation key cannot be cleared." }
+                    settings.triggerKey = key
+                    return nil
                 }
+                .disabled(controller.state != .idle)
+                Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Hold to talk, or tap for hands-free dictation. Esc cancels.")
                     .font(.caption).foregroundStyle(.secondary)
-                if settings.triggerKey == .fn {
+                if settings.triggerKey == .fn || settings.effectiveAlternateFinishKey == .fn {
                     Text("For Fn, set the Globe key action to Do Nothing in System Settings › Keyboard to prevent the emoji panel from opening.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                ShortcutRecorder(
+                    title: "Alternate finish key",
+                    value: settings.effectiveAlternateFinishKey?.title ?? "Disabled",
+                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive
+                ) { key in
+                    if let error = ShortcutRecorderRules.alternateError(key, primary: settings.triggerKey) {
+                        return error
+                    }
+                    if let key {
+                        guard let alternate = AlternateFinishKey(rawValue: key.rawValue) else {
+                            return "That key is not supported for alternate finish."
+                        }
+                        settings.alternateFinishKey = alternate
+                    } else {
+                        settings.alternateFinishKey = .disabled
+                    }
+                    return nil
+                }
+                .disabled(controller.state != .idle)
+                Text("During recording, alternate finish immediately ends dictation with the opposite AI setting for this session only. It never starts recording and does not apply to selected-text editing. Click its shortcut and press Delete or Backspace to disable it.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
+                    Text("Record a different key from the dictation key. Alternate finish is disabled while they match.")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 LabeledContent("Translate selection", value: "⌃⌥T")
