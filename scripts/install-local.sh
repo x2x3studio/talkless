@@ -5,4 +5,4 @@
 set +x
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec python3 -I "$ROOT/scripts/signing-session.py" local-install "$@"
+exec bash "$ROOT/scripts/release-tool.sh" local-install "$@"

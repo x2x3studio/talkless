@@ -7,4 +7,4 @@ if [[ $# -lt 1 ]]; then
     printf '%s\n' 'Usage: scripts/publish-release.sh dist/releases/VERSION-BUILD_NUMBER [--publish]' >&2
     exit 2
 fi
-exec python3 -I "$ROOT/scripts/signing-session.py" publish "$@"
+exec bash "$ROOT/scripts/release-tool.sh" publish "$@"

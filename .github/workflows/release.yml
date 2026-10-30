@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     outputs:
       eligible: ${{ steps.ref.outputs.eligible }}
     steps:
@@ -35,10 +35,8 @@ jobs:
       - name: Check release configuration
         if: steps.ref.outputs.eligible == 'true'
         run: |
-          python3 -I scripts/check-repository.py
-          python3 -I scripts/test-release-config.py
-          python3 -I scripts/test-release-version.py
-          python3 -I scripts/test-signing-session.py
+          bash scripts/release-tool.sh check-repository
+          swift test --package-path Tools/ReleaseTool
 
   release:
     needs: validate
@@ -65,7 +63,7 @@ jobs:
       - name: Generate calendar version
         run: |
           set -euo pipefail
-          python3 -I scripts/release-version.py
+          bash scripts/release-tool.sh version
           source "$GITHUB_ENV"
           printf 'DOWNLOAD_BASE_URL=https://github.com/%s/releases/download/%s\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_ENV"
       - name: Verify build environment

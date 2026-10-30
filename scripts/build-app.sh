@@ -17,24 +17,16 @@ swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" \
 BIN="$(swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" --show-bin-path)"
 # Native SwiftPM assumes a command-line executable. Make its generated accessors
 # look in the signed app's Resources directory as well. Upstream sources stay intact.
-python3 -I - "$BIN" <<'PY'
-from pathlib import Path
-import sys
-for path in Path(sys.argv[1]).glob("*.build/DerivedSources/resource_bundle_accessor.swift"):
-    original = path.read_text()
-    updated = original.replace("Bundle.main.bundleURL.appendingPathComponent", "(Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent")
-    if updated != original:
-        path.write_text(updated)
-PY
+bash "$ROOT/scripts/release-tool.sh" patch-resources "$BIN"
 swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" \
     --product Talkless -j "$JOBS" --disable-automatic-resolution
-python3 -I "$ROOT/scripts/build-metal.py" "$ROOT"
+bash "$ROOT/scripts/build-metal.sh" "$ROOT"
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Talkless" "$APP/Contents/MacOS/Talkless"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-python3 -I "$ROOT/scripts/configure-bundle.py" "$APP/Contents/Info.plist"
+bash "$ROOT/scripts/release-tool.sh" configure-bundle "$APP/Contents/Info.plist"
 SPARKLE_FRAMEWORK="$(find "$ROOT/.build/artifacts" -type d -path '*/macos-arm64_x86_64/Sparkle.framework' -print -quit)"
 if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
     printf '%s\n' 'Sparkle framework not found; resolve package dependencies first.' >&2

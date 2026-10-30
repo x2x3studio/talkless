@@ -7,4 +7,4 @@ if [[ $# -ne 2 ]]; then
     printf '%s\n' 'Usage: scripts/release-macos.sh VERSION BUILD_NUMBER' >&2
     exit 2
 fi
-exec python3 -I "$ROOT/scripts/signing-session.py" release "$@"
+exec bash "$ROOT/scripts/release-tool.sh" release "$@"
