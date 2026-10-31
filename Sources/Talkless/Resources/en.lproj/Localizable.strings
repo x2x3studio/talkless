@@ -251,6 +251,9 @@
 "Start Dictation" = "Start Dictation";
 "Finish Dictation" = "Finish Dictation";
 "Press Esc to cancel" = "Press Esc to cancel";
+"Accessibility permission needed · Open Settings" = "Accessibility permission needed · Open Settings";
+"Microphone permission needed · Open Settings" = "Microphone permission needed · Open Settings";
+"Speech model not downloaded · Open Settings" = "Speech model not downloaded · Open Settings";
 "Hold %@" = "Hold %@";
 "Tap %@" = "Tap %@";
 "This input: AI polishing" = "This input: AI polishing";

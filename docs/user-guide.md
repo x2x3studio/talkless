@@ -22,7 +22,7 @@ If macOS opens the emoji panel when you press Fn, set the Globe-key action to **
 
 ## Find your settings
 
-Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. AI polishing controls are in Dictation settings, not a separate menu row.
+Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. If Accessibility or Microphone permission is missing, or the selected local speech model is not downloaded, a warning row appears at the top of the menu; click it to open the right setting. Opening Talkless again while it is running shows Settings (or the setup guide if setup is unfinished). AI polishing controls are in Dictation settings, not a separate menu row.
 
 | Settings page | What you can change |
 | --- | --- |
@@ -167,7 +167,7 @@ Live highlighting requires an engine that supplies partial text (local Qwen or A
 
 The overlay keeps your latest transcript visible through recognition and AI processing instead of replacing it with a status message. Long dictation shows the latest lines. A small icon on the left indicates the phase: recording and final recognition share a waveform and the accessible label **Dictating**; polishing uses sparkles and voice editing uses a pencil. A text status appears only when there is no transcript yet. There are no start/stop sounds or shortcut-hint footer.
 
-The final text appears during insertion, then briefly shows a checkmark with dismissal scheduled after **50 ms**. This is best-effort scheduling, not an exact real-time duration. The confirmation does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
+The final text appears with a checkmark during insertion, which stays with dismissal scheduled after **50 ms**. This is best-effort scheduling, not an exact real-time duration. The confirmation does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
 
 ### Final AI changes
 

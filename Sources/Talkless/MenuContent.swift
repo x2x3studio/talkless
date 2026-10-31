@@ -5,6 +5,19 @@ import AppKit
 enum MenuContent {
     enum DictationPhase { case idle, recording, processing }
 
+    /// Something that stops dictation from working. Shown only while it is true.
+    enum Problem: Int, CaseIterable {
+        case accessibility, microphone, speechModel
+
+        var title: String {
+            switch self {
+            case .accessibility: L10n.tr("Accessibility permission needed · Open Settings")
+            case .microphone: L10n.tr("Microphone permission needed · Open Settings")
+            case .speechModel: L10n.tr("Speech model not downloaded · Open Settings")
+            }
+        }
+    }
+
     struct State {
         var dictationKeyTitle = L10n.tr("Fn / Globe")
         var holdToTalk = true
@@ -13,9 +26,12 @@ enum MenuContent {
         /// Display only. The global shortcut is registered elsewhere.
         var translationShortcutTitle: String?
         var dictation: DictationPhase = .idle
+        var problems: [Problem] = []
     }
 
     struct Actions {
+        /// Receives the problem row; its tag is the Problem raw value.
+        var fix: Selector? = nil
         let dictate: Selector
         let translate: Selector
         let openSettings: Selector
@@ -44,6 +60,16 @@ enum MenuContent {
             item.target = target
             item.keyEquivalentModifierMask = .command
             return item
+        }
+
+        if let fix = actions.fix, !state.problems.isEmpty {
+            for problem in state.problems {
+                let item = action(problem.title, fix, key: "")
+                item.keyEquivalentModifierMask = []
+                item.tag = problem.rawValue
+                menu.addItem(symbol(item, "exclamationmark.triangle"))
+            }
+            menu.addItem(.separator())
         }
 
         // Clickable commands; the gray subtitle shows the global shortcut without registering

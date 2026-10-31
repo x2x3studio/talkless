@@ -8,6 +8,7 @@ private final class MenuTarget: NSObject {
     @objc func openMenu(_ sender: NSButton) {
         previewMenu?.popUp(positioning: nil, at: NSPoint(x: sender.frame.minX, y: sender.frame.minY), in: sender.superview)
     }
+    @objc func fix(_ sender: NSMenuItem) { calls.append("fix-\(sender.tag)") }
     @objc func dictate() { calls.append("dictate") }
     @objc func translate() { calls.append("translate") }
     @objc func openSettings() { calls.append("settings") }
@@ -15,7 +16,7 @@ private final class MenuTarget: NSObject {
     @objc func quit() { calls.append("quit") }
 
     var actions: MenuContent.Actions {
-        .init(dictate: #selector(dictate), translate: #selector(translate), openSettings: #selector(openSettings), quit: #selector(quit))
+        .init(fix: #selector(fix(_:)), dictate: #selector(dictate), translate: #selector(translate), openSettings: #selector(openSettings), quit: #selector(quit))
     }
 }
 
@@ -56,7 +57,7 @@ struct MenuTests {
                 check(rows.allSatisfy { $0.preferredImageVisibility == .visible },
                       "Rows opt into visible symbols on systems that hide menu images by default")
             }
-            for entry in rows.prefix(2) {
+            for entry in rows.dropFirst(state.problems.count).prefix(2) {
                 check(entry.keyEquivalent.isEmpty, "Global shortcuts are shown as subtitles, never registered as menu equivalents")
             }
             return menu
@@ -103,6 +104,17 @@ struct MenuTests {
         check(processing.items.filter { $0.isEnabled }.map(\.title) == ["Translate selection", "Settings…", "Quit Talkless"],
               "Updates pause while busy")
         check(target.calls.isEmpty && updater.calls.isEmpty, "Constructing and validating menus has no action side effects")
+        var brokenState = fullState
+        brokenState.problems = [.accessibility, .speechModel]
+        let broken = menu(brokenState)
+        check(titles(broken) == ["Accessibility permission needed · Open Settings", "Speech model not downloaded · Open Settings", "—"] + fullTitles,
+              "Problems appear first, one row each, separated from commands")
+        check(broken.items.prefix(2).allSatisfy { $0.isEnabled && $0.action == #selector(MenuTarget.fix(_:)) && $0.keyEquivalent.isEmpty },
+              "Problem rows are clickable fixes")
+        broken.performActionForItem(at: 1)
+        check(target.calls == ["fix-2"], "The fix action receives the problem as its tag")
+        target.calls = []
+        check(titles(menu(fullState)) == fullTitles, "No problem rows or extra separator when everything works")
         for (title, selector, expected) in [
             ("Start Dictation", #selector(MenuTarget.dictate), "dictate"),
             ("Translate selection", #selector(MenuTarget.translate), "translate"),
@@ -163,13 +175,14 @@ struct MenuTests {
             window.orderFrontRegardless()
             for language in [InterfaceLanguage.simplifiedChinese, .english] {
                 localization.interfaceLanguage = language
-                for mode in ["hold", "toggle", "recording"] {
+                for mode in ["hold", "toggle", "recording", "problems"] {
                     let state = MenuContent.State(dictationKeyTitle: TriggerKey.rightOption.title,
                                                   holdToTalk: mode != "toggle",
                                                   alternateFinishKeyTitle: TriggerKey.rightCommand.title,
                                                   polishEnabled: mode == "hold",
                                                   translationShortcutTitle: "⌃⌥⌘R",
-                                                  dictation: mode == "recording" ? .recording : .idle)
+                                                  dictation: mode == "recording" ? .recording : .idle,
+                                                  problems: mode == "problems" ? [.accessibility, .speechModel] : [])
                     let nativeMenu = menu(state)
                     nativeMenu.items.first { $0.action == #selector(MenuTarget.updates) }?.title = L10n.tr("Check for Updates…")
                     let name = "menu-\(language == .english ? "en" : "zh")-\(mode)"
@@ -190,7 +203,7 @@ struct MenuTests {
                 }
             }
             window.orderOut(nil)
-            print("Rendered six production native menus at \(output.path)")
+            print("Rendered eight production native menus at \(output.path)")
         }
 
         // Screenshot fixture: exact production NSMenu in a regular visible window. No production

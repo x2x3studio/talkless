@@ -287,13 +287,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             alternateFinishKeyTitle: settings.effectiveAlternateFinishKey?.title,
             polishEnabled: settings.polishEnabled,
             translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title,
-            dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing
+            dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing,
+            problems: currentProblems()
         ), target: self, actions: .init(
+            fix: #selector(fixProblem(_:)),
             dictate: #selector(toggleDictation),
             translate: #selector(translateSelection),
             openSettings: #selector(openSettingsAction),
             quit: #selector(quit)
         ), updateItem: updateController?.makeMenuItem())
+    }
+
+    private func currentProblems() -> [MenuContent.Problem] {
+        var problems: [MenuContent.Problem] = []
+        if !DictationController.accessibilityGranted { problems.append(.accessibility) }
+        if [.denied, .restricted].contains(DictationController.microphoneStatus) { problems.append(.microphone) }
+        if settings.asrEngine == .qwen, (try? settings.resolvedQwenModelDirectory()) == nil { problems.append(.speechModel) }
+        return problems
+    }
+
+    @objc private func fixProblem(_ sender: NSMenuItem) {
+        switch MenuContent.Problem(rawValue: sender.tag) {
+        case .accessibility:
+            // Opening the pane is enough here; permission prompts stay in the guide and Settings.
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+        case .microphone:
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+        case .speechModel:
+            openSettings(sectionNotification: "TalklessShowModels")
+        case nil:
+            break
+        }
+    }
+
+    /// Opening Talkless again (Finder, Spotlight, Dock) while it runs shows a window instead of nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if setupGuide.shouldPresentOnLaunch { openSetupGuide() } else { openSettings() }
+        return false
     }
 
     @objc private func toggleDictation() { controller.toggleFromMenu() }

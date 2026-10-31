@@ -414,10 +414,8 @@ struct HUDView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
-        case .inserting:
-            Image(systemName: "arrow.down.to.line")
-                .font(.system(size: 13, weight: .medium))
-        case .completed:
+        case .inserting, .completed:
+            // Insertion is near-instant; a separate arrow glyph only flashed and read as "download".
             Image(systemName: "checkmark")
                 .font(.system(size: 13, weight: .medium))
         case .error:

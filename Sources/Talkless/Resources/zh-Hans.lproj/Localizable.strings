@@ -251,6 +251,9 @@
 "Start Dictation" = "开始语音输入";
 "Finish Dictation" = "结束语音输入";
 "Press Esc to cancel" = "按 Esc 取消";
+"Accessibility permission needed · Open Settings" = "缺少辅助功能权限 · 去设置";
+"Microphone permission needed · Open Settings" = "缺少麦克风权限 · 去设置";
+"Speech model not downloaded · Open Settings" = "语音模型未下载 · 去设置";
 "Hold %@" = "长按%@";
 "Tap %@" = "单击%@";
 "This input: AI polishing" = "本次使用 AI 润色";

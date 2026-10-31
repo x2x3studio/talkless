@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Improved
+- The overlay shows a checkmark while inserting text instead of a download-like arrow.
+- When Accessibility or Microphone permission is missing, or the local speech model is not downloaded, the menu bar menu shows a warning row that opens the right setting.
+- Opening Talkless again while it is running now shows Settings, or the setup guide if setup is unfinished.
+
+## 2026.1031.44580
+
+### Improved
 - Start Dictation and Translate selection are clickable again in the menu bar menu, with your shortcuts shown underneath; while recording, the menu offers Finish Dictation.
 - Menu bar menu rows now share one icon column, so every title lines up.
 
