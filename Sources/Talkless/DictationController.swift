@@ -70,6 +70,8 @@ final class DictationController: ObservableObject {
     private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
+    /// Per-recording snapshot of explicit "heard as" fixes, like the dictionary hints.
+    private var recordingReplacements: [DictionaryReplacement] = []
     private var recordingAlternateFinishKey: TriggerKey?
     private var languageSubscription: AnyCancellable?
     private var editSelection: String?
@@ -332,6 +334,8 @@ final class DictationController: ObservableObject {
         // One confirmed-term snapshot for this recognizer and its live HUD. Pending
         // suggestions are not in dictionaryTerms; later Settings edits wait until next time.
         let dictionaryTerms = settings.dictionaryTerms
+        let replacements = settings.activeDictionaryReplacements
+        recordingReplacements = replacements
         hud.model.setDictionaryTerms([])
         hud.model.revisionOriginal = nil
         generation += 1
@@ -399,13 +403,11 @@ final class DictationController: ObservableObject {
                 language: nil,
                 contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                          self.state == .recording || self.state == .processing else { return }
+                    guard let self, self.isCurrentRecognition(generation) else { return }
                     self.hud.show(.working)
                 },
                 onError: { [weak self] message in
-                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                          self.state == .recording || self.state == .processing else { return }
+                    guard let self, self.isCurrentRecognition(generation) else { return }
                     self.diagnosticOperation?.record("recognition_error", ["stage": "recognition", "reason": "recognition_error"])
                     self.cancel(reason: "recognition_error")
                     self.hud.show(.error(message))
@@ -416,8 +418,7 @@ final class DictationController: ObservableObject {
                 locale: Locale(identifier: settings.speechLocale),
                 contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                          self.state == .recording || self.state == .processing else { return }
+                    guard let self, self.isCurrentRecognition(generation) else { return }
                     self.hud.show(.working)
                 }
             )
@@ -435,9 +436,10 @@ final class DictationController: ObservableObject {
                 prompt: dictionaryTerms.isEmpty ? nil : dictionaryTerms.joined(separator: ", ")
             ))
         }
-        session.onPartial = { [weak self] text in
-            guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                  self.state == .recording || self.state == .processing else { return }
+        session.onPartial = { [weak self] partial in
+            guard let self, self.isCurrentRecognition(generation) else { return }
+            // Show the same dictionary fixes live that the final text will get.
+            let text = DictionaryReplacements.apply(replacements, to: partial).text
             self.previewText = text
             self.hud.model.preview = text
             if self.state == .recording {
@@ -488,6 +490,11 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Recognizer callbacks arrive asynchronously; only the active recording may touch the HUD.
+    private func isCurrentRecognition(_ generation: Int) -> Bool {
+        self.generation == generation && acceptsRecognitionHUDUpdates && (state == .recording || state == .processing)
+    }
+
     private func configureRecordingFinish() {
         recordingPolishEnabled = settings.polishEnabled
         let alternate = editSelection == nil ? settings.effectiveAlternateFinishKey : nil
@@ -532,6 +539,7 @@ final class DictationController: ObservableObject {
         let targetApp = self.targetApp
         let modelDirectory = recordingModelDirectory
         let modelPreparation = recordingPreparationGeneration
+        let replacements = recordingReplacements
 
         processingTask = Task { [weak self] in
             guard let self, generation == self.generation, !Task.isCancelled else { return }
@@ -550,8 +558,12 @@ final class DictationController: ObservableObject {
                 stage = "recognition"
                 stageStarted = DispatchTime.now().uptimeNanoseconds
                 operation?.record("recognition_finish", ["num_samples": String(samples.count)])
-                let raw = try await session.finish(samples: samples)
-                operation?.record("recognition_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "empty": String(raw.isEmpty)])
+                let recognized = try await session.finish(samples: samples)
+                // Explicit dictionary fixes run before polish, so they also work with polish off.
+                let fixed = DictionaryReplacements.apply(replacements, to: recognized)
+                let raw = fixed.text
+                operation?.record("recognition_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
+                    "empty": String(raw.isEmpty), "replacement_count": String(fixed.count)])
                 guard generation == self.generation, !Task.isCancelled else { return }
                 self.acceptsRecognitionHUDUpdates = false
                 self.hud.model.preview = raw
@@ -630,7 +642,8 @@ final class DictationController: ObservableObject {
                 operation?.record("paste_attempt", ["empty": String(output.isEmpty)])
                 // Show the final words during the existing insertion await without
                 // delaying input or claiming that cleanup is still running.
-                self.hud.model.revisionOriginal = editSelection == nil ? raw : nil
+                // Compare against the recognizer's words so dictionary fixes are visible too.
+                self.hud.model.revisionOriginal = editSelection == nil ? recognized : nil
                 self.hud.model.preview = output
                 self.hud.show(.inserting)
                 await TextIO.insert(output)
@@ -778,15 +791,13 @@ final class DictationController: ObservableObject {
             language: nil,
             contextualStrings: dictionaryTerms,
             onStatus: { [weak self] _ in
-                guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                      self.state == .recording || self.state == .processing else { return }
+                guard let self, self.isCurrentRecognition(generation) else { return }
                 self.hud.show(.working)
             }
         )
         self.session = session
         session.onPartial = { [weak self] text in
-            guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
-                  self.state == .recording || self.state == .processing else { return }
+            guard let self, self.isCurrentRecognition(generation) else { return }
             self.previewText = text
             self.hud.model.preview = text
             if self.state == .recording {

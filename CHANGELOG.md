@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+- Dictionary terms can list spellings they are often heard as. Talkless replaces those exact spellings after recognition, before AI polishing, so fixes also work with polishing off and appear in the live preview.
+- Review suggestions offer Always fix, which adds the term and turns the heard spelling into an automatic fix.
+- Import and export the dictionary as plain text, one term per line with optional heard spellings after “=”.
+
+### Improved
+- AI polishing is told which misrecognitions belong to each term, so close variants are corrected too.
+- Keyboard shortcuts come back automatically when Accessibility is granted again, even with no Settings window open.
+
+## 2026.1031.51406
+
 ### Improved
 - When a missing permission blocks dictation or translation, Talkless opens the matching System Settings page (Accessibility or Microphone). Microphone access restricted by a management profile only shows a message.
 

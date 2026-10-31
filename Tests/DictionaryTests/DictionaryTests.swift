@@ -418,6 +418,66 @@ struct DictionaryTests {
         check(DictionaryReviewStore(settings: app, defaults: defaults).dismissedCount == 0, "invalid local dismissal data handled safely")
         let roundTrip = try JSONDecoder().decode(HistoryEntry.self, from: JSONEncoder().encode(entry()))
         check(roundTrip.kind == .dictation, "history schema remains compatible")
+
+        // Explicit "heard as" fixes.
+        func fix(_ text: String, _ rules: [(String, String)]) -> String {
+            DictionaryReplacements.apply(rules.map { DictionaryReplacement(heard: $0.0, term: $0.1) }, to: text).text
+        }
+        check(fix("open talk less now", [("talk less", "Talkless")]) == "open Talkless now", "Latin phrase replaced")
+        check(fix("Open TALK LESS.", [("talk less", "Talkless")]) == "Open Talkless.", "matching ignores case")
+        check(fix("talklessness", [("talkless", "Talkless")]) == "talklessness", "Latin matches whole words only")
+        check(fix("retalkless", [("talkless", "Talkless")]) == "retalkless", "no match inside a longer word")
+        check(fix("\u{7528}talkless\u{5199}", [("talkless", "Talkless")]) == "\u{7528}Talkless\u{5199}", "Han neighbors are word boundaries for Latin")
+        check(fix("\u{6211}\u{5728}\u{7528}\u{6258}\u{514B}\u{52D2}\u{65AF}\u{5199}\u{7A3F}", [("\u{6258}\u{514B}\u{52D2}\u{65AF}", "Talkless")]) == "\u{6211}\u{5728}\u{7528}Talkless\u{5199}\u{7A3F}", "Han spelling matches without spaces")
+        check(fix("\u{6258}\u{514B}\u{52D2}\u{65AF}\u{548C}\u{6258}\u{514B}\u{52D2}\u{65AF}", [("\u{6258}\u{514B}\u{52D2}\u{65AF}", "Talkless")]) == "Talkless\u{548C}Talkless", "every occurrence is fixed")
+        check(fix("open cloud code app", [("cloud code", "Claude Code"), ("code", "CODE")]) == "open Claude Code app",
+              "longer spelling wins and replaced text is not matched again")
+        check(fix("\u{FF54}\u{FF41}\u{FF4C}\u{FF4B}\u{FF4C}\u{FF45}\u{FF53}", [("talkles", "Talkless")]) == "Talkless", "full-width input matches")
+        check(fix("nothing here", [("talkles", "Talkless")]) == "nothing here", "no match leaves text unchanged")
+        check(DictionaryReplacements.apply([DictionaryReplacement(heard: "talkless", term: "Talkless")], to: "Talkless").count == 0,
+              "already-correct text does not count as a fix")
+        check(DictionaryReplacements.apply([DictionaryReplacement(heard: "a", term: "A")], to: "a b").text == "a b",
+              "single-character rules are ignored")
+        check(DictionaryReplacements.heardSpellings(in: "talk less\nTalk Less, \u{6258}\u{514B}\u{52D2}\u{65AF}\u{FF0C}\u{6258}\u{514B}") == ["talk less", "\u{6258}\u{514B}\u{52D2}\u{65AF}", "\u{6258}\u{514B}"],
+              "editor splits lines and commas and drops case duplicates")
+        let rules = [DictionaryReplacement(heard: "talk less", term: "Talkless"), DictionaryReplacement(heard: "cloud", term: "Claude")]
+        check(DictionaryReplacements.problem(heard: "Talk Less", term: "Talkless", rules: rules, terms: ["Talkless", "Claude"]) == nil,
+              "a term may keep its own heard spelling")
+        check(DictionaryReplacements.problem(heard: "cloud", term: "Talkless", rules: rules, terms: ["Talkless", "Claude"]) != nil,
+              "one heard spelling cannot fix two terms")
+        check(DictionaryReplacements.problem(heard: "claude", term: "Talkless", rules: rules, terms: ["Talkless", "Claude"]) != nil,
+              "a confirmed term is never replaced")
+        check(DictionaryReplacements.problem(heard: "talkless", term: "Talkless", rules: [], terms: ["Talkless"]) != nil,
+              "a term cannot fix itself")
+        check(DictionaryReplacements.problem(heard: "x", term: "Talkless", rules: [], terms: []) != nil, "too-short spellings rejected")
+        check(DictionaryReplacements.renaming("Talkless", to: "TalkLess", in: rules)
+              == [DictionaryReplacement(heard: "talk less", term: "TalkLess"), rules[1]], "rename keeps fixes")
+        check(DictionaryReplacements.renaming("Talkless", to: "Talk Less", in: rules) == [rules[1]],
+              "renaming onto a heard spelling drops that self-replacement")
+        check(DictionaryReplacements.renaming("Talkless", to: nil, in: rules) == [rules[1]], "deleting a term drops its fixes")
+        check(DictionaryReplacements.setting(["talkles"], for: "Talkless", in: rules)
+              == [rules[1], DictionaryReplacement(heard: "talkles", term: "Talkless")], "setting replaces only that term's fixes")
+        let fixDefaults = DictionaryMemoryDefaults()
+        let fixSettings = settings(fixDefaults)
+        fixSettings.dictionary = "Talkless"
+        fixSettings.dictionaryReplacements = rules
+        check(fixSettings.activeDictionaryReplacements == [rules[0]], "fixes for terms not in My terms are inactive")
+        check(settings(fixDefaults).dictionaryReplacements == rules, "fixes persist across launches")
+        fixDefaults.set(Data("malformed".utf8), forKey: "dictionaryReplacements.v1")
+        check(settings(fixDefaults).dictionaryReplacements.isEmpty, "malformed stored fixes are ignored safely")
+        let exported = DictionaryTransfer.export(terms: ["Talkless", "OpenAI"], rules: rules)
+        check(exported == "Talkless = talk less\nOpenAI\n", "export writes terms with their fixes")
+        let merged = DictionaryTransfer.merge("# shared list\n\nTalkless = talk less, talkles\nClaude = cloud\nNew Term\nBroken = Talkless\n=x",
+                                              into: "Talkless", rules: [rules[0]])
+        check(merged.dictionary == "Talkless\nClaude\nNew Term\nBroken", "import adds only new terms, keeping existing ones")
+        check(merged.rules == [rules[0], DictionaryReplacement(heard: "talkles", term: "Talkless"), DictionaryReplacement(heard: "cloud", term: "Claude")],
+              "import adds new fixes without duplicating existing ones")
+        check(merged.addedTerms == 3 && merged.addedFixes == 2 && merged.skipped == 2,
+              "a fix that would replace a confirmed term and an empty term are skipped")
+        let roundTripped = DictionaryTransfer.merge(DictionaryTransfer.export(terms: ["A1", "B2"], rules: [DictionaryReplacement(heard: "a one", term: "A1")]),
+                                                    into: "", rules: [])
+        check(roundTripped.dictionary == "A1\nB2" && roundTripped.rules == [DictionaryReplacement(heard: "a one", term: "A1")],
+              "export then import round-trips")
         print("Dictionary tests passed (\(assertions) assertions; offline synthetic data only)")
         if let index = CommandLine.arguments.firstIndex(of: "--screenshots"), CommandLine.arguments.count > index + 1 {
             try await screenshots(in: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
@@ -429,6 +489,8 @@ struct DictionaryTests {
         let defaults = DictionaryMemoryDefaults()
         let settings = AppSettings(defaults: defaults, credentialStore: DictionaryMemoryCredentials())
         settings.dictionary = "Talkless\nOpenAI\nuser_ID\nMy  Project\n\u{98DE}\u{4E66}"
+        settings.dictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless"),
+                                           DictionaryReplacement(heard: "\u{6258}\u{514B}\u{52D2}\u{65AF}", term: "Talkless")]
         let review = DictionaryReviewStore(settings: settings, defaults: defaults)
         let history = CurrentValueSubject<[HistoryEntry], Never>([
             HistoryEntry(kind: .dictation, app: "Synthetic Notes", raw: "Please open Notian before our meeting.",

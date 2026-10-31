@@ -148,10 +148,12 @@ Under **Translation > Keyboard shortcut**, click the shortcut field and record a
 
 Open **Settings > Dictionary**:
 
-- **My terms:** search, add, edit or delete preferred spellings for names, projects and technical terms. Capitalization and spaces within a term are preserved. Confirmed terms are hints for recognition and AI processing, not forced replacement rules.
+- **My terms:** search, add, edit or delete preferred spellings for names, projects and technical terms. Capitalization and spaces within a term are preserved. Confirmed terms are hints for recognition and AI processing.
+- **Often heard as:** when editing a term, list spellings recognition keeps producing instead (one per line), such as `talk less` or a Chinese transliteration for **Talkless**. After recognition, and before any AI polishing, those exact spellings are replaced with the term—so fixes work with polishing off, show in the live preview, and appear under the term as **Fixes**. Matching ignores case and full-width forms; Latin spellings match whole words only, Chinese spellings match anywhere. A spelling must be at least two characters, cannot be a confirmed term, and can fix only one term. Deleting a term removes its fixes.
+- **Import… / Export…** (the **⋯** menu) use plain UTF-8 text: one term per line, optionally followed by `= heard, heard`. Lines starting with `#` are ignored. Import only adds new terms and fixes; it never deletes or changes existing ones, and reports skipped entries.
 - **Review:** choose **Scan history** for a one-time local comparison of raw dictation and saved polished output, or enable **Automatically find suggestions in local history**. Automatic scanning is off by default.
 
-Review shows small spelling changes with **Heard** and **Polished** evidence and the number of distinct dictations. **Accept** adds the spelling to My terms. **Dismiss** hides it until you explicitly reset dismissals. Nothing is accepted automatically: AI edits can be wrong, so accept only spellings you recognize.
+Review shows small spelling changes with **Heard** and **Polished** evidence and the number of distinct dictations. **Accept** adds the spelling to My terms. **Always fix** also adds the heard spelling as a fix, so it is replaced every time. **Dismiss** hides it until you explicitly reset dismissals. Nothing is accepted automatically: AI edits can be wrong, so accept only spellings you recognize.
 
 Scanning considers up to 500 recent history entries and shows up to 100 suggestions, excluding voice-edit and translation entries and most large rewrites. It compares original and final dictation text locally, looking for short spelling substitutions rather than insertions, deletions, punctuation-only edits or common inflections. Suggestions are ranked by how many distinct dictations contain the candidate, then by recency. Dictation polished into another language is still a dictation entry, so the heuristics are not proof of a correct spelling. It makes no network or additional AI requests. Talkless does not monitor corrections you make in other apps after pasting.
 
@@ -171,7 +173,7 @@ The final text appears with a checkmark during insertion, which stays with dismi
 
 ### Final AI changes
 
-After ordinary dictation is polished, **amber backgrounds** mark literal additions and replacements in the final output compared with the finalized recognition transcript—not changes between live recognition partials. Dictionary matches retain their blue underline. These are text differences, **not grammar or spelling judgments**, and there are no grammar/spelling wavy underlines. Voice-editing results are not annotated this way.
+After ordinary dictation is polished or dictionary fixes apply, **amber backgrounds** mark literal additions and replacements in the final output compared with the finalized recognition transcript (before dictionary fixes, so fixes are marked too)—not changes between live recognition partials. Dictionary matches retain their blue underline. These are text differences, **not grammar or spelling judgments**, and there are no grammar/spelling wavy underlines. Voice-editing results are not annotated this way.
 
 Whitespace-only changes and whole-word deletions leave no colored span in the result. A shortened word such as “colour” → “color” is a replacement and is highlighted as a whole word. For responsiveness, revision highlighting is skipped if either input exceeds **512 visible comparison tokens or 64 KiB of UTF-8 text**. These are local comparison tokens, not provider billing tokens. The output is never truncated or changed by this limit. Review History for the full result and raw transcript.
 
@@ -225,7 +227,7 @@ Local Qwen recognition does not upload audio. Apple recognition runs on-device a
 
 Talkless stores:
 
-- **App preferences:** settings, provider endpoints/model IDs, dictionary terms and dismissed suggestions in macOS UserDefaults.
+- **App preferences:** settings, provider endpoints/model IDs, dictionary terms, dictionary fixes and dismissed suggestions in macOS UserDefaults.
 - **AI service credentials:** API keys in macOS Keychain. The separate **cloud speech-recognition key is stored in plaintext in UserDefaults**, not Keychain.
 - **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, text history in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`.
 

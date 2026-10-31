@@ -26,6 +26,14 @@ let package = Package(
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
-        )
+        ),
+        // Direct unit tests of app code via @testable import. Prefer this for new tests over
+        // the older scripts that extract and recompile source text.
+        .testTarget(
+            name: "TalklessTests",
+            dependencies: ["Talkless"],
+            path: "Tests/TalklessTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
     ]
 )

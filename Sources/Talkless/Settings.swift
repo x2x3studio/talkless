@@ -280,6 +280,13 @@ final class AppSettings: ObservableObject {
     }
     /// One term per line: proper nouns, names, technical terms, etc.
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
+    /// Explicit "heard as" fixes for My terms, applied after recognition.
+    @Published var dictionaryReplacements: [DictionaryReplacement] {
+        didSet {
+            if let data = try? JSONEncoder().encode(dictionaryReplacements) { defaults.set(data, forKey: Self.dictionaryReplacementsKey) }
+        }
+    }
+    private static let dictionaryReplacementsKey = "dictionaryReplacements.v1"
     /// Local suggestion mining is opt-in; it never sends history to a service.
     @Published var dictionaryReviewEnabled: Bool { didSet { save(dictionaryReviewEnabled, "dictionaryReviewEnabled") } }
     @Published var customInstructions: String { didSet { save(customInstructions, "customInstructions") } }
@@ -356,6 +363,8 @@ final class AppSettings: ObservableObject {
             d.set(data, forKey: Self.translationLanguagesKey)
         }
         dictionary = d.string(forKey: "dictionary") ?? ""
+        dictionaryReplacements = d.data(forKey: Self.dictionaryReplacementsKey)
+            .flatMap { try? JSONDecoder().decode([DictionaryReplacement].self, from: $0) } ?? []
         dictionaryReviewEnabled = d.object(forKey: "dictionaryReviewEnabled") as? Bool ?? false
         customInstructions = d.string(forKey: "customInstructions") ?? ""
 
@@ -462,6 +471,12 @@ final class AppSettings: ObservableObject {
     }
 
     var dictionaryTerms: [String] { DictionaryTerms.terms(in: dictionary) }
+
+    /// Rules whose term is still in My terms; a term removed elsewhere stops its fixes too.
+    var activeDictionaryReplacements: [DictionaryReplacement] {
+        let terms = Set(dictionaryTerms)
+        return dictionaryReplacements.filter { terms.contains($0.term) }
+    }
 
     var llmConfigured: Bool {
         // Validation builds a request locally; it never fetches models or sends data.

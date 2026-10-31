@@ -21,13 +21,14 @@ assert initialization.index("guide.beginFirstLaunchIfNeeded()") < initialization
 assert initialization.index("guide.beginFirstLaunchIfNeeded()") < initialization.index("settings = AppSettings.shared")
 assert "DictationController.requestAccessibility()" not in source
 assert "AVCaptureDevice.requestAccess" not in source
-assert "if !DictationController.accessibilityGranted || !controller.activateHotkey()" in source
+assert "if DictationController.accessibilityGranted { controller.activateHotkey() }" in source
+assert "PermissionMonitor.shared.start()" in source and "Timer.scheduledTimer" not in source
 assert "if setupGuide.shouldPresentOnLaunch { openSetupGuide() }" in source
 assert "if setupGuide.isPresented { setupGuide.skip() }" in source
 assert "publisher(for: .showSetupGuide)" in source
 startup_permission = source.split("// Startup only checks permission", 1)[1].split("if setupGuide.shouldPresentOnLaunch", 1)[0]
 assert startup_permission.count('record(event: "permission_blocked"') == 1
-assert startup_permission.index('record(event: "permission_blocked"') < startup_permission.index("permissionTimer =")
+assert startup_permission.index('record(event: "permission_blocked"') < startup_permission.index("PermissionMonitor.shared.start()")
 assert '"permission": "accessibility", "reason": "denied", "stage": "startup"' in startup_permission
 live = (root / "Sources/Talkless/SetupGuideLiveView.swift").read_text()
 assert 'shortcutsReady: controller.hotkeyActive' in live

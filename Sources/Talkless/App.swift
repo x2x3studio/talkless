@@ -43,7 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var setupWindow: NSWindow?
     private var testWindow: NSWindow?
     private var testTextView: NSTextView?
-    private var permissionTimer: Timer?
     private var updateController: UpdateController?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -154,17 +153,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 "permission": "accessibility", "reason": "denied", "stage": "startup",
             ])
         }
-        if !DictationController.accessibilityGranted || !controller.activateHotkey() {
-            permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if DictationController.accessibilityGranted, self.controller.activateHotkey() {
-                        self.permissionTimer?.invalidate()
-                        self.permissionTimer = nil
-                    }
-                }
-            }
+        if DictationController.accessibilityGranted { controller.activateHotkey() }
+        // One app-wide monitor re-enables shortcuts whenever Accessibility is (again) granted,
+        // including after a revoke and re-grant while no Settings window is open.
+        PermissionMonitor.shared.onAccessibilityGranted = { [weak self] in
+            guard let self, !self.controller.hotkeyActive else { return }
+            self.controller.activateHotkey()
         }
+        PermissionMonitor.shared.start()
         if setupGuide.shouldPresentOnLaunch { openSetupGuide() }
     }
 
@@ -264,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationWillTerminate(_ notification: Notification) {
         HistoryStore.shared.flush()
         Diagnostics.shared.finishSession()
-        permissionTimer?.invalidate()
+        PermissionMonitor.shared.stop()
     }
 
     private func updateIcon() {

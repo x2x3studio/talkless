@@ -114,9 +114,9 @@ private struct DictationSettingsTab: View {
     @ObservedObject var settings = AppSettings.shared
     let onConfigureAI: () -> Void
     let onPermissions: () -> Void
-    @State private var microphoneGranted = DictationController.microphoneStatus == .authorized
-    @State private var accessibilityGranted = DictationController.accessibilityGranted
-    private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    @ObservedObject private var permissions = PermissionMonitor.shared
+    private var microphoneGranted: Bool { permissions.microphoneStatus == .authorized }
+    private var accessibilityGranted: Bool { permissions.accessibilityGranted }
 
     private var permissionMessage: String {
         if !microphoneGranted && !accessibilityGranted {
@@ -247,20 +247,15 @@ private struct DictationSettingsTab: View {
             DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
         }
         .formStyle(.grouped)
-        .onReceive(refresh) { _ in
-            microphoneGranted = DictationController.microphoneStatus == .authorized
-            accessibilityGranted = DictationController.accessibilityGranted
-            if accessibilityGranted, !controller.hotkeyActive { controller.activateHotkey() }
-        }
     }
 }
 
 private struct SystemSettingsTab: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
-    @State private var accessibility = DictationController.accessibilityGranted
-    @State private var microphone = DictationController.microphoneStatus
-    private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    @ObservedObject private var permissions = PermissionMonitor.shared
+    private var accessibility: Bool { permissions.accessibilityGranted }
+    private var microphone: AVAuthorizationStatus { permissions.microphoneStatus }
 
     var body: some View {
         Form {
@@ -308,11 +303,6 @@ private struct SystemSettingsTab: View {
             DiagnosticsSection()
         }
         .formStyle(.grouped)
-        .onReceive(refresh) { _ in
-            accessibility = DictationController.accessibilityGranted
-            microphone = DictationController.microphoneStatus
-            if accessibility, !controller.hotkeyActive { controller.activateHotkey() }
-        }
     }
 }
 

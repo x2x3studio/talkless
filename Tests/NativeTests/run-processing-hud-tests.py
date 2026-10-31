@@ -174,6 +174,7 @@ struct HistoryEntry {
     let history = FakeHistory()
     var cancelled = false
     var targetApp: Int? = 1
+    var recordingReplacements: [DictionaryReplacement] = []
     var appChanged = false
     var accessibilityMissing = false
     enum PermissionPane { case accessibility, microphone }
@@ -438,6 +439,21 @@ TESTS = r'''
             precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == reason })
         }
         TextIO.copied = []
+        for polish in [false, true] {
+            Diagnostics.shared.events = []
+            let fixedTest = ProcessingHarness()
+            fixedTest.recordingPolishEnabled = polish
+            fixedTest.recordingReplacements = [DictionaryReplacement(heard: "TRANSCRIPT", term: "Transcript™")]
+            TextIO.inserted = []
+            fixedTest.stopAndProcess()
+            await fixedTest.processingTask?.value
+            let expected = polish ? "processed transcript" : "raw Transcript™"
+            precondition(TextIO.inserted == [expected], "Dictionary fixes apply before polish and without it")
+            precondition(fixedTest.history.entries.first?.raw == "raw Transcript™", "History keeps the fixed transcript")
+            precondition(fixedTest.hud.model.revisionOriginal == "raw transcript", "HUD compares against the recognizer's words")
+            precondition(Diagnostics.shared.events.contains { $0.0 == "recognition_complete" && $0.1["replacement_count"] == "1" })
+        }
+        print("PASS explicit dictionary fixes run after recognition, before polish, and are visible against recognized words")
         print("PASS switching apps or missing Accessibility copies instead of pasting, keeps history, and explains ⌘V")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
@@ -544,6 +560,7 @@ final class Diagnostics: @unchecked Sendable {
     var dictionaryTerms: [String] { termReads += 1; return terms }
     var voiceEditEnabled = false
     var llmConfigured = true
+    var activeDictionaryReplacements: [DictionaryReplacement] = []
     var speechLocale = "en-US"
     var asrAPIKey = "synthetic-not-sent"
     var asrBaseURL = "https://unused.invalid"
@@ -652,6 +669,7 @@ typealias AudioRecorder = FakeRecorder
     let recorder = FakeRecorder()
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
+    var recordingReplacements: [DictionaryReplacement] = []
     func insertionBlocker(for app: FakeApp?) -> (reason: String, message: String)? { nil }
     enum PermissionPane { case accessibility, microphone }
     var openedPanes: [PermissionPane] = []
@@ -693,6 +711,20 @@ STARTUP_TESTS = r'''
         preconditionFailure("Timed out waiting for fake lifecycle")
     }
     @MainActor static func main() async {
+        do {
+            let fixing = StartupHarness()
+            fixing.settings.activeDictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
+            fixing.startRecording()
+            await fixing.startupTask?.value
+            // A Settings edit mid-recording must not change this recording's fixes.
+            fixing.settings.activeDictionaryReplacements = []
+            FakeSession.latest?.onPartial?("open talk less")
+            precondition(fixing.hud.model.preview == "open Talkless" && fixing.previewText == "open Talkless",
+                         "Live preview shows the recording's dictionary fixes")
+            precondition(matched(fixing.hud.model) == ["Talkless"], "Fixed terms are highlighted live")
+            fixing.cancel()
+        }
+        print("PASS live preview applies the recording's dictionary fixes")
         for engine in FakeSettings.Engine.allCases {
             let test = StartupHarness()
             test.settings.asrEngine = engine
@@ -1036,7 +1068,8 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
                     str(swift), str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
-                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
+                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
     # Real HUDModel, real startup/cancel methods, only external boundaries substituted.
@@ -1053,13 +1086,14 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     '''
     startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
-                         ("startRecording", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
+                         ("startRecording", "isCurrentRecognition", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
                           "alternateFinishPressed", "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),
                     str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
-                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
+                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     diagnostic = (ROOT / "Sources/Talkless/MicrophoneDiagnostic.swift").read_text().replace("import AVFoundation\n", "")
     swift.write_text(diagnostic + MICROPHONE_STUBS)

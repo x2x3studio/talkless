@@ -30,4 +30,6 @@ python3 -I "$ROOT/Tests/HotkeyTests/run-tests.py"
 python3 -I "$ROOT/Tests/ShortcutRecorderTests/run-tests.py"
 bash "$ROOT/Tests/DiagnosticsTests/run-tests.sh"
 swift test --package-path "$ROOT/Tools/ReleaseTool"
+# Direct @testable unit tests of the app module (preferred for new tests).
+swift test --package-path "$ROOT"
 python3 -I "$ROOT/Tests/BundleTests/run-tests.py"

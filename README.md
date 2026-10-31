@@ -47,4 +47,4 @@ bash scripts/build-app.sh
 open dist/Talkless.app
 ```
 
-Run model-free tests with `bash scripts/test.sh`. Local builds are not notarized. See [release documentation](docs/releasing.md) for signing and distribution.
+Run model-free tests with `bash scripts/test.sh`. Write new unit tests in `Tests/TalklessTests` with Swift Testing and `@testable import Talkless` (`swift test`); the older scripts under `Tests/` extract and recompile source text and should not be extended for logic that can be tested directly. Local builds are not notarized. See [release documentation](docs/releasing.md) for signing and distribution.

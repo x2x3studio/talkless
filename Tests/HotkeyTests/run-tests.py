@@ -671,7 +671,7 @@ source = (hotkeys + "private struct DictationOperation" + operation + gesture_mo
           + "\n".join(method(name) for name in
                       ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish", "refreshRecordingHint",
                        "setShortcutCaptureActive", "updateTranslationShortcut", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
-                       "escapePressed", "cancel"))
+                       "escapePressed", "cancel", "isCurrentRecognition"))
           + TESTS)
 with tempfile.TemporaryDirectory(prefix="talkless-hotkey-tests-") as directory:
     path = Path(directory)
