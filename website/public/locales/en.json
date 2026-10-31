@@ -178,11 +178,8 @@
   "support.report.title": "Report a reproducible problem",
   "support.report.body": "Use the GitHub repository link in the header, then choose Issues. Include your Talkless version and build, macOS version, Mac model, speech engine, microphone and clear steps to reproduce. Say what you expected and what actually happened. This website does not collect or submit reports.",
   "support.report.diagnostics": "If diagnostics would help, use Settings \u2192 System \u2192 Diagnostics to export a local ZIP. Review its contents before attaching it; optional crash reports may include personal information and file paths. Nothing is automatically uploaded. Avoid sharing private dictation or selected text.",
-  "release.note.0": "Microphone startup and teardown no longer block the interface. Healthy recordings reuse their audio engine instead of repeatedly rebinding the same microphone.",
-  "release.note.1": "Unresponsive native audio operations time out without accumulating replacement workers or inserting partial text.",
-  "release.note.2": "Dictation keeps text visible through processing and uses one waveform for listening and final recognition. Icons indicate polishing and completion without replacing the transcript.",
-  "release.note.3": "Final AI additions and changed words are highlighted separately from dictionary matches; results remain briefly visible without delaying text insertion.",
-  "release.note.4": "The menu shows the configured hold or tap key, restores the Settings gear, and removes the AI-polishing shortcut row.",
-  "release.note.5": "Version information and update controls move to About, separate from system preferences.",
-  "release.note.6": "The website keeps help, privacy and release information onsite, with a single repository entry and stable download link."
+  "release.note.0": "Dictionary review merges suggestions without regard to case, skips capitalization-only changes, and avoids recommending existing terms again while preserving saved spellings.",
+  "release.note.1": "Removed the explanatory language-change hint from the translation panel.",
+  "release.note.2": "Translation shortcut capture now asks for a key combination, while dictation capture still asks for a single key.",
+  "release.note.3": "The completion checkmark now stays for 50 milliseconds after insertion instead of two seconds."
 }
