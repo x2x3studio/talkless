@@ -24,7 +24,7 @@ Source, tests and documentation remain English except the approved `en.lproj`/`z
 
 ## Prerequisites and current setup
 
-An Apple Silicon Mac needs Xcode command-line tools, Swift compatible with `Package.swift`, 1Password CLI (`op`), and GitHub CLI (`gh`). Build/sign/install/publish tooling uses Shell plus the standalone Swift package in `Tools/ReleaseTool`, without Python. Separate audio regression tests and optional fixture generation still use Python. Use pinned package dependencies and a clean, committed checkout. Do not run another app build against the same checkout during a release.
+An Apple Silicon Mac needs Xcode command-line tools, Swift compatible with `Package.swift`, 1Password CLI (`op`), and GitHub CLI (`gh`). Build/sign/install/publish tooling uses Shell plus the standalone Swift package in `Tools/ReleaseTool`, without Python. The model-free suite (scripts/test.sh), which the release job runs before building, and optional fixture generation require Python 3. Use pinned package dependencies and a clean, committed checkout. Do not run another app build against the same checkout during a release.
 
 The dedicated `talkless-mac-mini-arm64` runner is registered with labels `self-hosted`, `macOS`, `ARM64`, `talkless-macos-arm64`. It runs as a user LaunchAgent with its standard bundled Node runtime. Work directories, temporary files and caches use the internal disk. An external-SSD migration was reverted; no fixed-Node launcher or additional Full Disk Access grant is required. Mateo keeps its separate runner installation and service. Do not share working directories or move global developer caches.
 
@@ -154,11 +154,11 @@ Feed manifests update last, after the download is publicly available. GitHub has
 
 ## Packaged resources and build-path privacy
 
-SwiftPM's native resource accessor assumes a command-line product. Release builds use a compiler adapter that supplies app-aware accessor source at compilation time, rather than editing generated files that a later build plan can overwrite. Resource bundles stay in the standard Contents/Resources directory; no runtime fallback refers to the developer checkout.
+SwiftPM's native resource accessor assumes a command-line product. scripts/build-app.sh uses a compiler adapter for both local and release builds that supplies app-aware accessor source at compilation time, rather than editing generated files that a later build plan can overwrite. Resource bundles stay in the standard Contents/Resources directory; no runtime fallback refers to the developer checkout.
 
 The app resolves its localization bundle explicitly inside the running application. Missing localization falls back to English keys instead of trapping. The --verify-bundle command runs before normal application initialization: it checks packaged resources and bilingual strings, then exercises the dependency's actual resource loader without requesting permissions, reading preferences or downloading a model.
 
-Builds map source/debug paths to neutral prefixes and remove linker debug-map paths before signing. A binary scan rejects personal home-directory paths. Relocated bundle checks run with build directories inaccessible and networking denied, so a working developer checkout cannot hide a broken release. These checks supplement signing and notarization; a valid signature alone does not prove an app can load its resources.
+Builds map source/debug paths to neutral prefixes and remove linker debug-map paths before signing. A binary scan rejects personal home-directory and checkout paths. Relocated bundle checks copy the signed app, deny reads of the checkout, .build and compiler stage plus all network access, and require resource bundles to load from inside Contents/Resources. A working developer checkout therefore cannot hide a broken release. These checks supplement signing and notarization; a valid signature alone does not prove an app can load its resources.
 
 Git history and release assets are separate. Filtering commit contents does not alter already-uploaded ZIP/DMG files, signed update feeds, external clones or caches. Never modify an existing signed release in place to sanitize paths; publish a newly verified version with new hashes and signatures.
 

@@ -1,12 +1,12 @@
 # Talkless icon candidates
 
-Three original directions for **less typing through voice**, pending a user choice. None is a mute, disabled-microphone, or recording-only symbol. **These are studies, not a shipping replacement.** `Resources/AppIcon.png`, `Resources/AppIcon.icns`, and `Sources/Talkless/MenuBarIcon.swift` are unchanged.
+Archived first-round studies, superseded by the [Pip silhouette](../icon-candidates-round-two/README.md) shipped in 2026.1031.18018. Production artwork lives in [scripts/generate-icon.swift](../../../scripts/generate-icon.swift) and [MenuBarIcon.swift](../../../Sources/Talkless/MenuBarIcon.swift). These three alternatives were not adopted; their generator does not change the production assets.
 
 | Candidate | Concept | Trade-off |
 | --- | --- | --- |
 | **A — One Key** | A substantial ivory keycap carries a cut-out voice rhythm: one voice key replaces the work of a keyboard. Slate blue `#516781`. | Most tactile and closely tied to less typing; the key silhouette matters more than a text cursor. |
 | **B — Spoken Line** | A speech bubble already contains a written line and an insertion point. Deep mineral green `#326C68`. | Most conversational and distinctive as a silhouette; a bubble alone can suggest messaging, so the text cursor is essential. |
-| **C — Voice Cursor** | Three voice bars lead into an I-beam cursor, making the voice-to-text transition the entire mark. Burnished copper `#A8664D`. | Most immediately related to dictation and closest to the current identity; less object-like than A or B. |
+| **C — Voice Cursor** | Three voice bars lead into an I-beam cursor, making the voice-to-text transition the entire mark. Burnished copper `#A8664D`. | Most immediately related to dictation and closest to the earlier waveform identity; less object-like than A or B. |
 
 ## Visual system
 

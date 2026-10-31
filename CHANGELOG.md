@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Documentation
+- Archived the icon design studies and documented the selected Pip silhouette and published startup fix.
+
+## 2026.1031.18018
+
 ### Fixed
 - Fixed startup failure on Macs without the developer build directory by resolving all packaged resources inside the app.
 - Release builds no longer embed personal build-machine paths and verify resource loading independently of the source checkout.
