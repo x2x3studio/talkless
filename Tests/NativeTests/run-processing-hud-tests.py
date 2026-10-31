@@ -491,12 +491,18 @@ final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
     func record(event: String, metadata: [String: String] = [:]) {}
 }
+@MainActor enum LLMAPITransport {
+    static var preconnects: [String] = []
+    static func preconnect(baseURL: String, apiProtocol: String) { preconnects.append(baseURL) }
+}
 @MainActor final class FakeSettings {
     enum Engine: String, CaseIterable { case qwen, apple, openAICompatible }
     var asrEngine: Engine = .qwen
     var audioInputDeviceUID: String?
     var polishEnabled = true
     var llmConfig = 0
+    var llmBaseURL = "https://synthetic.invalid"
+    var llmProtocol = "responses"
     var recordingGestureMode = StartupHarness.Gesture.hold
     var terms = ["Talkless", "\u{5317}\u{4EAC}"]
     var termReads = 0
@@ -801,7 +807,10 @@ STARTUP_TESTS = r'''
                 test.settings.polishEnabled = enabled
                 test.settings.audioInputDeviceUID = "captured-input"
                 test.recorder.suspendStart = true
+                LLMAPITransport.preconnects = []
                 test.triggerPressed(at: timestamp)
+                // Only a recording that will polish warms the AI connection, once, at start.
+                precondition(LLMAPITransport.preconnects == (enabled ? ["https://synthetic.invalid"] : []))
                 let session = FakeSession.latest!
                 // Changes before the scheduled task runs still belong to the next input.
                 test.settings.audioInputDeviceUID = "next-input"
