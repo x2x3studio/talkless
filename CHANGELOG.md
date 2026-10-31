@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Improved
+- Start Dictation and Translate selection are clickable again in the menu bar menu, with your shortcuts shown underneath; while recording, the menu offers Finish Dictation.
+- Menu bar menu rows now share one icon column, so every title lines up.
+
+## 2026.1031.43249
+
 ### Fixed
 - If you switch to another app before the text is ready, Talkless copies it and asks you to press ⌘V instead of pasting into the wrong app.
 
