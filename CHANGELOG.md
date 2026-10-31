@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Improved
+- All clipboard use now follows one set of rules: pasting results, reading a selection for voice editing or translation, and every Copy button. Copying AI connection diagnostics no longer lets a pending paste restore overwrite what you just copied.
+
+## 2026.1031.64297
+
 ### Fixed
 - Voice editing now works in apps that do not expose selected text to Accessibility. Like translation, Talkless briefly copies the selection in the background and restores your clipboard; when it finds text, the recording switches to voice editing and the overlay shows the pencil. VS Code's whole-line copy with nothing selected is not treated as a selection.
 
