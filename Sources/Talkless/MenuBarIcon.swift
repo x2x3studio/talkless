@@ -48,12 +48,12 @@ enum MenuBarIcon {
                     .font: NSFont.systemFont(ofSize: badge == "@" ? 5.5 : 8.5, weight: .heavy),
                     .foregroundColor: NSColor.black,
                 ])
-                // Start every mark's ink right after a one-point gap from Pip (whose ink ends
-                // near x 17.3), so the pair reads as one compact icon; antialiasing needs
-                // about half a point of clearance from the gap.
+                // In the mark's rows (y 1.5–8.5) Pip's ink ends by x 16.75, at the cheek;
+                // starting the mark's ink at 18.3 keeps a clear pixel even at 1x, so the pair
+                // reads as one compact icon.
                 let ink = mark.boundingRect(with: NSSize(width: 20, height: 20),
                                             options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
-                mark.draw(at: NSPoint(x: 19.4 - ink.minX, y: badge == "@" ? 1.5 : 0))
+                mark.draw(at: NSPoint(x: 18.3 - ink.minX, y: badge == "@" ? 1.5 : 0))
             }
             return true
         }

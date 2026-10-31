@@ -399,8 +399,11 @@ struct HUDView: View {
     private var indicator: some View {
         switch model.phase {
         case .listening, .working, .recognizing:
-            Image(systemName: "waveform")
-                .font(.system(size: 13, weight: .medium))
+            // Voice editing shows its pencil from the first moment, so a stray selection
+            // is noticed (and can be cancelled with Esc) before anything is replaced.
+            Image(systemName: model.isEditMode ? "pencil.line" : "waveform")
+                .font(.system(size: model.isEditMode ? 14 : 13, weight: .medium))
+                .foregroundStyle(model.isEditMode ? AnyShapeStyle(Color(red: 0.35, green: 0.77, blue: 1)) : AnyShapeStyle(.primary))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
         case .polishing:
             Image(systemName: "sparkles")

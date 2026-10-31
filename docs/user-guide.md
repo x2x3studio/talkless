@@ -28,7 +28,7 @@ Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech re
 
 | Settings page | What you can change |
 | --- | --- |
-| **Dictation** | Recording mode and keys, AI polishing and its shortcut, output language, app-aware tone, additional instructions, voice editing, microphone |
+| **Dictation** | Recording mode and key, AI polishing, output language, app-aware tone, additional instructions, voice editing, microphone |
 | **Speech recognition** | Recognition engine, local model downloads, Apple recognition language, cloud recognition connection |
 | **Dictionary** | Confirmed terms, heard-as fixes, import/export and suggested spelling corrections |
 | **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |
@@ -98,9 +98,9 @@ If polishing fails, the raw transcript is inserted instead, with a brief error m
 
 ### Edit selected text by voice
 
-1. Enable **Dictation > Voice editing > Edit selected text with your voice**. It is off by default and works with polishing off.
+1. Enable **Dictation > Voice editing > Change selected text by voice**. It is off by default and is independent of the AI polishing switch.
 2. Select text in the foreground app.
-3. Use your dictation key and speak an instruction, such as “Make this shorter.” Finish normally.
+3. Use your dictation key and say how to change it, such as “Make this shorter” or “Translate into English.” The overlay shows a blue pencil instead of the waveform from the start, so you can tell voice editing has taken over; press Esc if you only meant to dictate. Finish normally.
 4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
 
 Voice editing requires a configured AI service and a selection readable through Accessibility. Some apps do not expose selections this way. If Talkless cannot read the selection, it records ordinary dictation instead; unlike translation, voice editing does not use a Copy fallback. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
@@ -153,7 +153,7 @@ Live highlighting requires an engine that supplies partial text (local Qwen or A
 
 ## Overlay
 
-The overlay keeps your latest transcript visible through recognition and AI processing instead of replacing it with a status message. Long dictation shows the latest lines. A small icon on the left indicates the phase: recording and final recognition share a waveform and the accessible label **Dictating**; polishing uses sparkles and voice editing uses a pencil. A text status appears only when there is no transcript yet. There are no start/stop sounds or shortcut-hint footer.
+The overlay keeps your latest transcript visible through recognition and AI processing instead of replacing it with a status message. Long dictation shows the latest lines. A small icon on the left indicates the phase: recording and final recognition share a waveform and the accessible label **Dictating**; polishing uses sparkles; voice editing shows a blue pencil from the start of recording. A text status appears only when there is no transcript yet. There are no start/stop sounds or shortcut-hint footer.
 
 The final text appears with a checkmark during insertion, which stays with dismissal scheduled after **50 ms**. This is best-effort scheduling, not an exact real-time duration. The confirmation does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
 

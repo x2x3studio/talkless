@@ -62,10 +62,20 @@ struct DictationProcessingSettingsView: View {
 
         Section(L10n.tr("Voice editing")) {
             Toggle(isOn: $settings.voiceEditEnabled) {
-                Text(L10n.tr("Edit selected text with your voice"))
-                Text(L10n.tr("Select text and speak an instruction. Works with polish off."))
+                Text(L10n.tr("Change selected text by voice"))
+                Text(L10n.tr("Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Text(L10n.tr("When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.voiceEditEnabled, !settings.llmConfigured {
+                Text(L10n.tr("Set up an AI service first; until then, dictation with a selection is ordinary dictation."))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

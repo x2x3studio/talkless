@@ -80,15 +80,14 @@ import AppKit
         }
     }
 
+    @MainActor static func idleBitmap(_ scale: Int) -> NSBitmapImageRep { raster(MenuBarIcon.image(for: .idle), scale: scale) }
+
     @MainActor static func checkRaster(_ bitmap: NSBitmapImageRep, state: MenuBarIcon.State, scale: Int) {
         var bodyPixels = 0
         for y in 0..<18 * scale {
             for x in 0..<25 * scale {
                 let a = alpha(bitmap, x, y)
                 if x < 18 * scale && a > 0.5 { bodyPixels += 1 }
-                if x >= 18 * scale && x < 19 * scale {
-                    precondition(a == 0, "State badge needs an uninterrupted transparent gutter")
-                }
                 if x < scale || x >= 24 * scale || y < scale || y >= 17 * scale {
                     precondition(a < 0.05, "Artwork must not clip or introduce a background tile")
                 }
@@ -109,10 +108,10 @@ import AppKit
         }
         precondition(minAlpha(around: CGPoint(x: 505, y: 649), radius: 0.5) < 0.6,
                      "Optical smile must remain open at native size")
-        // Badge column x 19..<24 pt: "?" while listening, "!" while recognizing, a wider "@"
+        // Badge column x 17..<24 pt: "?" while listening, "!" while recognizing, a wider "@"
         // while AI works, nothing while idle. Measure the ink's horizontal extent.
         var columns = Set<Int>(), rows = Set<Int>()
-        for y in 0..<18 * scale { for x in 19 * scale..<24 * scale where alpha(bitmap, x, y) > 0.5 { columns.insert(x); rows.insert(y) } }
+        for y in 0..<18 * scale { for x in 17 * scale..<24 * scale where alpha(bitmap, x, y) > 0.5 && alpha(idleBitmap(scale), x, y) == 0 { columns.insert(x); rows.insert(y) } }
         let width = CGFloat(columns.count) / CGFloat(scale), height = CGFloat(rows.count) / CGFloat(scale)
         switch state {
         case .idle: precondition(columns.isEmpty, "Idle has no badge")
@@ -241,9 +240,18 @@ import AppKit
                 let bitmap = raster(image, scale: scale)
                 checkRaster(bitmap, state: state, scale: scale)
                 for y in 0..<18 * scale {
-                    for x in 0..<19 * scale {
-                        precondition(alpha(bitmap, x, y) == alpha(idleMask, x, y),
-                                     "State changes must not move or alter Pip")
+                    for x in 0..<25 * scale {
+                        let pip = alpha(idleMask, x, y)
+                        if pip > 0 {
+                            precondition(alpha(bitmap, x, y) == pip, "State changes must not move or alter Pip")
+                        } else if alpha(bitmap, x, y) > 0 {
+                            // Mark ink stays at least one pixel (half a point at 2x) clear of Pip.
+                            for dx in -1...1 { for dy in -1...1 {
+                                let nx = x + dx, ny = y + dy
+                                guard nx >= 0, ny >= 0, nx < 25 * scale, ny < 18 * scale else { continue }
+                                precondition(alpha(idleMask, nx, ny) == 0, "State badge must stay separate from Pip")
+                            } }
+                        }
                     }
                 }
                 rendered.append(bitmap.representation(using: .png, properties: [:])!)

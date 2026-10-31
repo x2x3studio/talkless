@@ -277,7 +277,6 @@
 "Dutch" = "Dutch";
 "Edit" = "Edit";
 "Edit %@" = "Edit %@";
-"Edit selected text with your voice" = "Edit selected text with your voice";
 "Edit term" = "Edit term";
 "Editing" = "Editing";
 "Enable polishing" = "Enable polishing";
@@ -543,7 +542,6 @@
 "Secondary language" = "Secondary language";
 "Select All" = "Select All";
 "Select or enter a language model ID." = "Select or enter a language model ID.";
-"Select text and speak an instruction. Works with polish off." = "Select text and speak an instruction. Works with polish off.";
 "Select text in another app, then press %@ to translate it." = "Select text in another app, then press %@ to translate it.";
 "Select text, press the shortcut, then copy the translation or replace the selection." = "Select text, press the shortcut, then copy the translation or replace the selection.";
 "Selected day" = "Selected day";
@@ -816,3 +814,7 @@
 "Original: " = "Original: ";
 "Release Delete to clear this shortcut." = "Release Delete to clear this shortcut.";
 "Talkless — AI processing" = "Talkless — AI processing";
+"Change selected text by voice" = "Change selected text by voice";
+"Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result." = "Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result.";
+"When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off." = "When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off.";
+"Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "Set up an AI service first; until then, dictation with a selection is ordinary dictation.";

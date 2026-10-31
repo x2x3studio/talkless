@@ -277,7 +277,6 @@
 "Dutch" = "荷兰语";
 "Edit" = "编辑";
 "Edit %@" = "编辑%@";
-"Edit selected text with your voice" = "用语音编辑选中的文字";
 "Edit term" = "编辑词语";
 "Editing" = "正在编辑";
 "Enable polishing" = "开启润色";
@@ -543,7 +542,6 @@
 "Secondary language" = "次要语言";
 "Select All" = "全选";
 "Select or enter a language model ID." = "请选择或输入语言模型 ID。";
-"Select text and speak an instruction. Works with polish off." = "选中文字后说出指令。即使关闭润色，也可使用。";
 "Select text in another app, then press %@ to translate it." = "在其他 App 中选中文本，然后按 %@ 翻译。";
 "Select text, press the shortcut, then copy the translation or replace the selection." = "选中文字并按快捷键，然后复制译文或替换选中的文字。";
 "Selected day" = "选中日期";
@@ -816,3 +814,7 @@
 "Original: " = "原文：";
 "Release Delete to clear this shortcut." = "松开 Delete 即可清除这个快捷键。";
 "Talkless — AI processing" = "Talkless — AI 正在处理";
+"Change selected text by voice" = "用语音修改选中的文字";
+"Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result." = "在任意应用里选中一段文字，按听写键，说出要怎么改，比如“改短一点”“翻译成英文”。AI 会用改好的内容直接替换选中的文字。";
+"When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off." = "选中文字时，浮窗会显示铅笔图标而不是波浪。如果你只是想听写，按 Esc 取消即可。这个功能和“AI 润色”开关互不影响。";
+"Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "需要先配置 AI 服务；配置之前，选中文字时按听写键仍是普通听写。";
