@@ -610,16 +610,16 @@ final class DictationController: ObservableObject {
                 guard generation == self.generation, !Task.isCancelled else { return }
 
                 self.lastTranscript = output
-                // Switching apps during recognition/polishing must not paste into the new app.
-                if self.insertionTargetChanged(from: targetApp) {
-                    operation?.record("paste_skipped", ["reason": "target_changed"])
+                // Never lose the words when they cannot be pasted where dictation started.
+                if let blocker = self.insertionBlocker(for: targetApp) {
+                    operation?.record("paste_skipped", ["reason": blocker.reason])
                     TextIO.copyToClipboard(output)
                     self.history.add(HistoryEntry(
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                     ))
                     operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
                         "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
-                    self.finish(.error(L10n.tr("The app changed before the text was ready. It was copied; press ⌘V to paste.")))
+                    self.finish(.error(blocker.message))
                     return
                 }
                 stage = "insertion"
@@ -709,9 +709,15 @@ final class DictationController: ObservableObject {
         hud.hide()
     }
 
-    private func insertionTargetChanged(from app: NSRunningApplication?) -> Bool {
-        guard let app else { return false }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier
+    /// Pasting needs Accessibility (to post ⌘V) and the app dictation started in.
+    private func insertionBlocker(for app: NSRunningApplication?) -> (reason: String, message: String)? {
+        if !Self.accessibilityGranted {
+            return ("permission", L10n.tr("Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste."))
+        }
+        if let app, NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
+            return ("target_changed", L10n.tr("The app changed before the text was ready. It was copied; press ⌘V to paste."))
+        }
+        return nil
     }
 
     private func paste(_ text: String, into app: NSRunningApplication?) async {
@@ -841,7 +847,9 @@ final class DictationController: ObservableObject {
         guard token == translationGeneration, !Task.isCancelled else { return }
         guard let text = selected, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             if state == .idle {
-                hud.show(.error(L10n.tr("Could not read any selected text")))
+                hud.show(.error(Self.accessibilityGranted
+                    ? L10n.tr("Could not read any selected text")
+                    : L10n.tr("Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility.")))
             }
             return
         }

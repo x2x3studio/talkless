@@ -630,6 +630,8 @@
 "Tap to dictate" = "单击输入";
 "Target app changed; result saved" = "目标 App 已改变，结果已保存";
 "The app changed before the text was ready. It was copied; press ⌘V to paste." = "文字生成前已切换了 App，结果已复制，按 ⌘V 粘贴。";
+"Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste." = "缺少辅助功能权限，无法输入到其他 App。结果已复制，按 ⌘V 粘贴。";
+"Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility." = "缺少辅助功能权限，无法读取选中文字。请在“系统设置 › 隐私与安全性 › 辅助功能”中允许 Talkless。";
 "Target language" = "目标语言";
 "Telugu" = "泰卢固语";
 "Test Connection" = "测试连接";

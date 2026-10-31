@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Without Accessibility permission, dictation started from the menu no longer loses its text: Talkless copies it and explains the missing permission. Translating from the menu also names the missing permission instead of only saying no text was selected.
+
+## 2026.1031.47871
+
 ### Improved
 - The overlay shows a checkmark while inserting text instead of a download-like arrow.
 - When Accessibility or Microphone permission is missing, or the local speech model is not downloaded, the menu bar menu shows a warning row that opens the right setting.

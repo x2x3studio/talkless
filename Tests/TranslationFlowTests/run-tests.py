@@ -106,6 +106,7 @@ struct HistoryEntry {
     }
 }
 @MainActor final class FlowHarness {
+    static var accessibilityGranted = true
     enum State { case idle, recording, processing }
     var state: State = .idle
     let settings = FakeSettings()
@@ -155,6 +156,12 @@ TESTS = r'''
         TextIO.selection = " \n "
         await flow.translateSelection()
         precondition(LLMClient.requests.isEmpty && !flow.translationPanel.isVisible)
+        precondition(flow.hud.errors.last == "Could not read any selected text")
+        FlowHarness.accessibilityGranted = false
+        await flow.translateSelection()
+        precondition(flow.hud.errors.last?.contains("Accessibility permission") == true,
+                     "Without Accessibility, a missing selection names the permission")
+        FlowHarness.accessibilityGranted = true
         TextIO.selection = "The original selected sentence."
         await flow.translateSelection()
         flow.translationPanel.close()

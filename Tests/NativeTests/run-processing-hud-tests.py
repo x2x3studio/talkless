@@ -175,7 +175,12 @@ struct HistoryEntry {
     var cancelled = false
     var targetApp: Int? = 1
     var appChanged = false
-    func insertionTargetChanged(from app: Int?) -> Bool { precondition(app == 1); return appChanged }
+    var accessibilityMissing = false
+    func insertionBlocker(for app: Int?) -> (reason: String, message: String)? {
+        precondition(app == 1)
+        if accessibilityMissing { return ("permission", "Accessibility needed. Copied; press ⌘V to paste.") }
+        return appChanged ? ("target_changed", "The app changed. Copied; press ⌘V to paste.") : nil
+    }
     func cancel(reason: String = "user") {
         diagnosticOperation?.record("dictation_cancel", ["reason": reason])
         cancelled = true
@@ -409,10 +414,11 @@ TESTS = r'''
         precondition(TextIO.inserted.isEmpty && failedEdit.history.entries.isEmpty)
         LLMClient.fail = false
         print("PASS cancellation across all awaits prevents late preview/history; edit errors stay actionable")
-        for editing in [false, true] {
+        for (editing, missingAccessibility) in [(false, false), (true, false), (false, true), (true, true)] {
             let switched = ProcessingHarness()
             switched.editSelection = editing ? "selected text" : nil
-            switched.appChanged = true
+            switched.appChanged = !missingAccessibility
+            switched.accessibilityMissing = missingAccessibility
             TextIO.inserted = []
             TextIO.copied = []
             switched.stopAndProcess()
@@ -423,10 +429,11 @@ TESTS = r'''
                 preconditionFailure("Switching apps must explain that the text was copied")
             }
             precondition(switched.state == .idle)
-            precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == "target_changed" })
+            let reason = missingAccessibility ? "permission" : "target_changed"
+            precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == reason })
         }
         TextIO.copied = []
-        print("PASS switching apps before insertion copies instead of pasting, keeps history, and explains ⌘V")
+        print("PASS switching apps or missing Accessibility copies instead of pasting, keeps history, and explains ⌘V")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
         for outcome in ["success", "empty", "failure", "cancelled", "stale", "new_preparation", "non_qwen"] {
@@ -640,7 +647,7 @@ typealias AudioRecorder = FakeRecorder
     let recorder = FakeRecorder()
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
-    func insertionTargetChanged(from app: FakeApp?) -> Bool { false }
+    func insertionBlocker(for app: FakeApp?) -> (reason: String, message: String)? { nil }
     var previewText = ""
     var context: AppContext?
     var editSelection: String?

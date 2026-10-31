@@ -630,6 +630,8 @@
 "Tap to dictate" = "Tap to dictate";
 "Target app changed; result saved" = "Target app changed; result saved";
 "The app changed before the text was ready. It was copied; press ⌘V to paste." = "The app changed before the text was ready. It was copied; press ⌘V to paste.";
+"Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste." = "Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste.";
+"Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility." = "Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility.";
 "Target language" = "Target language";
 "Telugu" = "Telugu";
 "Test Connection" = "Test Connection";
