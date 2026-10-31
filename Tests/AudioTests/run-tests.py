@@ -49,6 +49,14 @@ private enum TestHardware {
     nonisolated(unsafe) static var setCalls = 0
     nonisolated(unsafe) static var selectionStatus: OSStatus = noErr
     nonisolated(unsafe) static var hasAudioUnit = true
+    nonisolated(unsafe) static var actualDevice: AudioDeviceID?
+    nonisolated(unsafe) static var currentDeviceStatus: OSStatus = noErr
+    nonisolated(unsafe) static var currentDeviceReads = 0
+    nonisolated(unsafe) static var changeActualOnRead = 0
+    nonisolated(unsafe) static var changeActualEveryRead = false
+    nonisolated(unsafe) static var ignoresSelection = false
+    nonisolated(unsafe) static var aggregateClass = false
+    nonisolated(unsafe) static var classStatus: OSStatus = noErr
     nonisolated(unsafe) static var devices: [AudioDeviceID] = [42, 99, 100]
     nonisolated(unsafe) static var selectedID: AudioDeviceID = 99
     nonisolated(unsafe) static var invalidFormat = false
@@ -73,15 +81,21 @@ private func TestSetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
     precondition(scope == kAudioUnitScope_Global && element == 0)
     precondition(size == MemoryLayout<AudioDeviceID>.size)
     TestHardware.setCalls += 1
-    TestAudioEngine.latest!.inputNode.actualDevice = data.assumingMemoryBound(to: AudioDeviceID.self).pointee
+    if !TestHardware.ignoresSelection {
+        TestAudioEngine.latest!.inputNode.actualDevice = data.assumingMemoryBound(to: AudioDeviceID.self).pointee
+    }
     return TestHardware.selectionStatus
 }
 private func TestGetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
     _ scope: AudioUnitScope, _ element: AudioUnitElement, _ data: UnsafeMutableRawPointer,
     _ size: UnsafeMutablePointer<UInt32>) -> OSStatus {
     MainActor.assertIsolated()
+    TestHardware.currentDeviceReads += 1
+    if TestHardware.changeActualEveryRead || TestHardware.currentDeviceReads == TestHardware.changeActualOnRead {
+        TestAudioEngine.latest!.inputNode.actualDevice += 1
+    }
     data.assumingMemoryBound(to: AudioDeviceID.self).pointee = TestAudioEngine.latest!.inputNode.actualDevice
-    return noErr
+    return TestHardware.currentDeviceStatus
 }
 private func TestGetPropertyDataSize(_ object: AudioObjectID,
     _ address: UnsafePointer<AudioObjectPropertyAddress>, _ qualifierSize: UInt32,
@@ -99,6 +113,10 @@ private func TestGetPropertyData(_ object: AudioObjectID,
     MainActor.assertIsolated()
     guard TestHardware.status == noErr else { return TestHardware.status }
     switch address.pointee.mSelector {
+    case kAudioObjectPropertyClass:
+        guard TestHardware.classStatus == noErr else { return TestHardware.classStatus }
+        data.assumingMemoryBound(to: AudioClassID.self).pointee = TestHardware.aggregateClass
+            ? kAudioAggregateDeviceClassID : kAudioDeviceClassID
     case kAudioHardwarePropertyDefaultInputDevice:
         TestHardware.defaultReads += 1
         data.assumingMemoryBound(to: AudioDeviceID.self).pointee = TestHardware.device
@@ -128,7 +146,7 @@ private func format(_ rate: Double, _ channels: AVAudioChannelCount) -> AVAudioF
 private final class TestAudioNode: @unchecked Sendable {
     private var callback: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
     private var oldCallback: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
-    var actualDevice = TestHardware.device
+    var actualDevice = TestHardware.actualDevice ?? TestHardware.device
     var hardware = format(48_000, 2)
     var output = TestHardware.invalidFormat ? format(0, 0)
         : (TestHardware.mismatchedFormat ? format(44_100, 1) : format(48_000, 2))
@@ -269,13 +287,86 @@ extension AudioRecorder {
         TestHardware.device = 42
         print("PASS explicit selection without default, reconnect UID resolution, no fallback")
 
+        // Default HAL input may be a private autoaggregate rather than the physical default.
+        // Its public class is diagnostic only; even an unreadable class must not veto capture.
+        for classStatus: OSStatus in [noErr, -50] {
+            TestHardware.actualDevice = 314
+            TestHardware.aggregateClass = true
+            TestHardware.classStatus = classStatus
+            let operation = UUID()
+            let calls = TestHardware.setCalls
+            let engines = TestHardware.enginesCreated
+            try recorder.start(operationID: operation)
+            let aggregate = TestAudioEngine.latest!
+            for _ in 0..<20 {
+                TestClock.now += 0.1
+                aggregate.deliver()
+                aggregate.notify()
+                await drain()
+                precondition(recorder.testMonitor() && recorder.interruptionError == nil)
+            }
+            precondition(recorder.duration > 1.5 && !recorder.stop().isEmpty)
+            precondition(TestHardware.setCalls == calls && TestHardware.enginesCreated == engines + 1)
+            let configuration = Diagnostics.shared.snapshot().first {
+                $0.0 == "audio_start_configuration" && $0.1["operation_id"] == operation.uuidString
+            }!.1
+            precondition(configuration["route_matches_requested"] == "true")
+            precondition(configuration["route_kind"] == (classStatus == noErr ? "aggregate" : "unknown"))
+            precondition(configuration["resolved_device_available"] == "true")
+            precondition(configuration["current_device_status"] == "0" && configuration["formats_compatible"] == "true")
+        }
+        TestHardware.classStatus = noErr
+        TestHardware.ignoresSelection = true
+        let explicitReads = TestHardware.defaultReads
+        for aggregateClass in [false, true] {
+            TestHardware.aggregateClass = aggregateClass
+            do { try recorder.start(deviceUID: "usb-mic"); fatalError("Explicit mismatch must fail regardless of route class") }
+            catch { precondition(error.localizedDescription.contains("did not switch to the selected microphone")) }
+            precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil && !recorder.isRunning)
+            precondition(TestHardware.defaultReads == explicitReads, "Never resolve default as fallback for explicit selection")
+        }
+        TestHardware.ignoresSelection = false
+        TestHardware.actualDevice = nil
+        TestHardware.aggregateClass = false
+        print("PASS stable default autoaggregate sustained buffers, class-read failure tolerated, explicit aggregate mismatch rejected")
+
+        TestHardware.currentDeviceStatus = -50
+        do { try recorder.start(); fatalError("Unreadable route must fail") }
+        catch { precondition(error.localizedDescription.contains("Cannot read the microphone audio input")) }
+        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
+        TestHardware.currentDeviceStatus = noErr
+        TestHardware.actualDevice = 0
+        do { try recorder.start(); fatalError("Unknown actual route must fail") }
+        catch { precondition(error.localizedDescription.contains("Cannot read the microphone audio input")) }
+        TestHardware.actualDevice = 314
+        TestHardware.changeActualEveryRead = true
+        do { try recorder.start(); fatalError("An unstable aggregate baseline must fail") }
+        catch { precondition(error.localizedDescription.contains("configuration changed while recording was starting")) }
+        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil && !recorder.isRunning)
+        TestHardware.changeActualEveryRead = false
+        TestHardware.currentDeviceReads = 0
+        TestHardware.changeActualOnRead = 2
+        try recorder.start() // A new actual ID is allowed only after two matching snapshots.
+        precondition(TestHardware.currentDeviceReads >= 5)
+        TestAudioEngine.latest!.deliver()
+        precondition(!recorder.stop().isEmpty)
+        TestHardware.currentDeviceReads = 0
+        TestHardware.changeActualOnRead = 3
+        do { try recorder.start(); fatalError("Actual route change at final preinstall check must fail") }
+        catch { precondition(error.localizedDescription.contains("configuration changed while recording was starting")) }
+        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
+        TestHardware.actualDevice = nil
+        TestHardware.changeActualOnRead = 0
+        print("PASS unreadable/unknown route distinguished, stable actual baseline required including final preinstall check")
+
         TestHardware.selectionStatus = -50
         do { try recorder.start(deviceUID: "usb-mic"); fatalError("Selection should fail") }
         catch { precondition(error.localizedDescription.contains("Core Audio error -50")) }
         TestHardware.selectionStatus = noErr; TestHardware.hasAudioUnit = false
         do { try recorder.start(); fatalError("Missing unit should fail") } catch is TalklessError {}
         TestHardware.hasAudioUnit = true; TestHardware.invalidFormat = true
-        do { try recorder.start(); fatalError("Invalid format should fail") } catch is TalklessError {}
+        do { try recorder.start(); fatalError("Invalid format should fail") }
+        catch { precondition(error.localizedDescription.contains("audio format is not ready")) }
         TestHardware.invalidFormat = false
         TestHardware.plans = [.init(throwsOnStart: true)]
         do { try recorder.start(); fatalError("Engine start should fail") } catch is TalklessError {}
@@ -283,8 +374,11 @@ extension AudioRecorder {
         print("PASS selection, missing unit, invalid format and engine start failures clean up")
 
         TestHardware.mismatchedFormat = true
-        do { try recorder.start(); fatalError("Default input cannot convert mismatched hardware/client formats") }
-        catch is TalklessError {}
+        TestHardware.actualDevice = 314
+        do { try recorder.start(); fatalError("Default aggregate cannot convert mismatched hardware/client formats") }
+        catch { precondition(error.localizedDescription.contains("audio format is not ready")) }
+        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
+        TestHardware.actualDevice = nil
         TestHardware.mismatchedFormat = false
         TestHardware.changeOutputOnRead = 2
         try recorder.start()
@@ -359,27 +453,34 @@ extension AudioRecorder {
         print("PASS asynchronous zero-audio recovery and same-session stale attempt tap rejection")
 
         // A real interruption after ANY delivered audio cannot restart or preserve partial data.
-        for kind in 0..<5 {
-            try recorder.start(deviceUID: kind == 3 ? "usb-mic" : nil)
-            let engine = TestAudioEngine.latest!
-            engine.deliver()
-            let engines = TestHardware.enginesCreated
-            switch kind {
-            case 0: engine.inputNode.output = format(32_000, 1)
-            case 1: TestHardware.device = 77
-            case 2: engine.isRunning = false
-            case 3: TestHardware.devices = [42, 100]
-            default: engine.inputNode.actualDevice = 77 // Actual route changed despite same system default.
+        // Exercise both a direct default and the private-aggregate default baseline.
+        for actual in [nil, AudioDeviceID(314)] {
+            TestHardware.actualDevice = actual
+            TestHardware.aggregateClass = actual != nil
+            for kind in 0..<5 {
+                try recorder.start(deviceUID: kind == 3 ? "usb-mic" : nil)
+                let engine = TestAudioEngine.latest!
+                engine.deliver()
+                let engines = TestHardware.enginesCreated
+                switch kind {
+                case 0: engine.inputNode.output = format(32_000, 1)
+                case 1: TestHardware.device = 77
+                case 2: engine.isRunning = false
+                case 3: TestHardware.devices = [42, 100]
+                default: engine.inputNode.actualDevice = 77 // Actual route changed despite same system default.
+                }
+                engine.notify()
+                // Deliberately finish before queued validation. Must discard samples and
+                // retain interruptionError; queued work must not resurrect recording.
+                precondition(recorder.stop().isEmpty && recorder.interruptionError != nil)
+                await drain()
+                precondition(!recorder.isRunning && TestHardware.enginesCreated == engines)
+                TestHardware.device = 42; TestHardware.devices = [42, 88, 100]
             }
-            engine.notify()
-            // Deliberately finish before queued validation. Must discard samples and
-            // retain interruptionError; queued work must not resurrect recording.
-            precondition(recorder.stop().isEmpty && recorder.interruptionError != nil)
-            await drain()
-            precondition(!recorder.isRunning && TestHardware.enginesCreated == engines)
-            TestHardware.device = 42; TestHardware.devices = [42, 88, 100]
         }
-        print("PASS format/default/actual-device/disconnect/stopped interruptions caught at stop before queued handler")
+        TestHardware.actualDevice = nil
+        TestHardware.aggregateClass = false
+        print("PASS direct/aggregate format/default/actual-device/disconnect/stopped interruptions caught at stop before queued handler")
 
         try recorder.start()
         let interrupted = TestAudioEngine.latest!
@@ -492,6 +593,13 @@ extension AudioRecorder {
         }
         precondition(logs.contains { $0.1["operation_id"] == operation.uuidString && $0.1["reason"] == "no_audio_timeout" })
         precondition(logs.contains { $0.1["device_changed"] == "true" })
+        precondition(logs.contains { $0.1["selected_device_changed"] == "true" && $0.1["actual_device_changed"] == "false" })
+        precondition(logs.contains { $0.1["actual_device_changed"] == "true" && $0.1["selected_device_changed"] == "false" })
+        precondition(logs.contains { $0.1["reason"] == "device_unavailable" && $0.1["resolved_device_available"] == "false" })
+        precondition(logs.contains { $0.1["reason"] == "route_mismatch" && $0.1["route_matches_requested"] == "false" })
+        precondition(logs.contains { $0.1["reason"] == "route_unavailable" && $0.1["current_device_status"] == "-50" })
+        precondition(logs.contains { $0.1["reason"] == "invalid_format" && $0.1["formats_compatible"] == "false" })
+        precondition(logs.contains { $0.1["reason"] == "configuration_race" })
         precondition(logs.contains { $0.1["format_changed"] == "true" })
         precondition(logs.contains { $0.0 == "audio_first_buffer" && $0.1["first_buffer_ms"] != nil })
         for (_, fields) in logs {

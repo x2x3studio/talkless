@@ -14,12 +14,12 @@ private struct RecorderPreview: View {
             Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
-            ShortcutRecorder(title: "Alternate finish key", value: "Right Command ⌘",
-                             defaultValue: "Automatic (Right Option ⌥)", isDefault: false,
+            ShortcutRecorder(title: "AI polishing shortcut", value: "Right Command ⌘",
+                             valueDetail: "Use AI polishing", defaultValue: "Automatic (Right Option ⌥)", isDefault: false,
                              allowsClearing: true, setCaptureActive: { _ in true }, onReset: { nil }) {
                 ShortcutRecorderRules.alternateError($0, primary: .fn)
             }
-            Text("Click its shortcut and press Delete or Backspace to disable alternate finish.")
+            Text("Click its shortcut and press Delete or Backspace to disable the AI polishing shortcut.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(24)
@@ -54,7 +54,9 @@ struct ShortcutRecorderTests {
             check(state.flagsChanged(keyCode: UInt16(key.keyCode), flags: []) == .record(key), "save on release")
             check(ShortcutRecorderRules.alternateError(key, primary: key) != nil, "reject alternate conflict")
             let alternate = AlternateFinishKey(rawValue: key.rawValue)!
-            check(ShortcutRecorderRules.primaryError(key, alternate: alternate) != nil, "reject primary conflict")
+            check(ShortcutRecorderRules.primaryError(key, alternate: alternate)
+                  == "\(key.title) is already the AI polishing shortcut. Record a different key.",
+                  "Primary conflict identifies the plain stable shortcut label")
             check(ShortcutRecorderRules.primaryError(key, alternate: .automatic) == nil, "automatic fallback stays valid")
         }
         check(AlternateFinishKey.automatic.resolved(for: .rightOption) == .rightCommand, "automatic resolves to real key")
@@ -110,6 +112,8 @@ struct ShortcutRecorderTests {
         for code: UInt16 in [51, 117] {
             state = ShortcutCaptureState(allowsClearing: true)
             check(state.keyDown(keyCode: code, flags: []) == .waiting, "clear waits for release")
+            check(state.message == "Release Delete to disable the AI polishing shortcut.",
+                  "Clear instruction names the shortcut rather than an abstract finish action")
             check(state.keyUp(keyCode: code, flags: []) == .record(nil), "clear alternate on release")
             state = ShortcutCaptureState(allowsClearing: false)
             _ = state.keyDown(keyCode: code, flags: [])

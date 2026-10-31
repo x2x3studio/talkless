@@ -5,6 +5,7 @@ import SwiftUI
 struct ShortcutRecorder: View {
     let title: String
     let value: String
+    var valueDetail: String? = nil
     var defaultValue: String? = nil
     var isDefault = true
     var allowsClearing = false
@@ -37,16 +38,23 @@ struct ShortcutRecorder: View {
                     }
                 }
                 Spacer(minLength: 8)
-                ShortcutRecorderRepresentable(
-                    value: value, accessibilityLabel: title, allowsClearing: allowsClearing,
-                    isEnabled: isEnabled, setCaptureActive: setCaptureActive, onRecord: onRecord,
-                    onTranslationRecord: onTranslationRecord,
-                    onStatus: { text, error in
-                        message = text
-                        isError = error
+                VStack(alignment: .trailing, spacing: 3) {
+                    ShortcutRecorderRepresentable(
+                        value: value, accessibilityLabel: title, allowsClearing: allowsClearing,
+                        isEnabled: isEnabled, setCaptureActive: setCaptureActive, onRecord: onRecord,
+                        onTranslationRecord: onTranslationRecord,
+                        onStatus: { text, error in
+                            message = text
+                            isError = error
+                        }
+                    )
+                    .frame(width: 230, height: 28)
+                    if let valueDetail {
+                        Text(valueDetail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                )
-                .frame(width: 230, height: 28)
+                }
                 if let onReset {
                     Button(L10n.tr("Reset")) {
                         Self.cancelCapture()
@@ -74,7 +82,7 @@ enum ShortcutRecorderRules {
     static func primaryError(_ key: TriggerKey?, alternate: AlternateFinishKey) -> String? {
         guard let key else { return L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier.") }
         if alternate.triggerKey == key {
-            return L10n.format("%@ is already the alternate finish key. Record a different key.", key.title)
+            return L10n.format("%@ is already the AI polishing shortcut. Record a different key.", key.title)
         }
         // Existing Automatic preferences adapt to the new primary key rather than collide.
         return nil
@@ -214,7 +222,7 @@ struct ShortcutCaptureState {
             pendingKey = nil
             if allowsClearing {
                 pendingClear = true
-                message = L10n.tr("Release Delete to disable alternate finish.")
+                message = L10n.tr("Release Delete to disable the AI polishing shortcut.")
                 isError = false
             } else {
                 reject(L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier."))

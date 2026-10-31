@@ -177,7 +177,8 @@ func testShortcutDefaults() -> Int {
             let conflicts = primary != .fn && alternate == .fn
             check((error != nil) == conflicts, "Primary reset refuses an explicit Fn alternate: \(context)")
             if conflicts {
-                check(error?.contains("Restore defaults") == true, "Conflict explains how to reset both shortcuts")
+                check(error == "\(TriggerKey.fn.title) is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys.",
+                      "Conflict names the stable AI polishing shortcut and the actual reset button")
                 check(beforeReset.isEqual(to: defaults.values), "Rejected primary reset writes nothing")
             }
             let expectedPrimary: TriggerKey = conflicts ? primary : .fn

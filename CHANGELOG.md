@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+- System-default microphones no longer fail startup solely because Core Audio uses a separate aggregate device. Explicit microphone selection remains strict.
+- Microphone startup errors distinguish an unavailable device from an unready format or audio route.
+
+### Improved
+- Shortcuts and setup now say Use AI polishing or Skip AI polishing, with plain instructions for the current input.
+
+## 2026.1031.22578
+
 ### Added
 - Live dictation highlights exact dictionary spellings with a subtle background and underline. Highlights indicate text matches, not proof of a dictionary-caused correction.
 - Overlay settings include a dictionary-match preview; each recording uses a fixed dictionary snapshot for recognition hints and highlights.

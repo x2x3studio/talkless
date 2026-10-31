@@ -13,8 +13,8 @@
 "%@ characters · %lld dictation · %@" = "%@ 个字符 · %lld 次语音输入 · %@";
 "%@ characters · %lld dictations · %@" = "%@ 个字符 · %lld 次语音输入 · %@";
 "%@ download" = "%@ 下载";
-"%@ is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts." = "%@ 已用作替代结束键。请先更改该按键，或使用“恢复默认设置”重置两个快捷键。";
-"%@ is already the alternate finish key. Record a different key." = "%@ 已用作替代结束的按键。请录入其他按键。";
+"%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys." = "%@ 已用作 AI 润色快捷键。请先更改它，或使用“重置录音快捷键”重置两个按键。";
+"%@ is already the AI polishing shortcut. Record a different key." = "%@ 已用作 AI 润色快捷键。请录入其他按键。";
 "%@ is already the dictation key. Record a different key." = "%@ 已用作语音输入键。请录入其他按键。";
 "%@ is not supported. Press Fn or a right-side Command, Option, or Control key." = "不支持%@。请按 Fn 或右侧 Command、Option、Control 键。";
 "%@ of %@" = "%@ / %@";
@@ -42,10 +42,6 @@
 "A disabled shortcut cannot have modifiers." = "停用的快捷键不能包含修饰键。";
 "A little space for your next thought." = "为下一个想法留一点空间。";
 "AI can clean up your transcript. It is not required for dictation, and your provider may charge for use." = "AI 可以整理转写文字。语音输入无需开启 AI，服务提供方可能收取费用。";
-"AI is currently off by default, so alternate finish uses AI." = "当前默认关闭 AI，使用替代结束将启用 AI。";
-"AI is currently on by default, so alternate finish skips AI." = "当前默认启用 AI，使用替代结束将跳过 AI。";
-"AI off" = "AI 已关闭";
-"AI on" = "AI 已开启";
 "AI polishing is enabled" = "AI 润色已开启";
 "AI polishing is optional" = "AI 润色可按需开启";
 "AI polishing · optional" = "AI 润色 · 可选";
@@ -94,10 +90,7 @@
 "Allow microphone access to record your voice." = "允许麦克风访问权限，以录制语音。";
 "Allow microphone and Accessibility access to dictate." = "允许麦克风和辅助功能访问权限，即可开始语音输入。";
 "Allowed" = "已允许";
-"Alternate finish" = "替代结束";
-"Alternate finish key" = "替代结束键";
-"Alternate finish skips AI for this recording." = "使用替代结束键，本次录音将跳过 AI 处理。";
-"Alternate finish uses AI for this recording." = "使用替代结束键，本次录音将使用 AI 处理。";
+"AI polishing shortcut" = "AI 润色快捷键";
 "An update is in progress. Continue in the update window." = "更新正在进行中。请在更新窗口中继续操作。";
 "Animate status indicators" = "启用状态指示动画";
 "Anthropic Messages" = "Anthropic Messages";
@@ -179,7 +172,7 @@
 "Clear history" = "清空历史记录";
 "Clear history…" = "清空历史记录…";
 "Clear saved history?" = "清空已保存的历史记录？";
-"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。录制快捷键时按 Delete 可禁用替代结束。";
+"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。录制快捷键时按 Delete 可停用 AI 润色快捷键。";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。仅支持单个按键。";
 "Click, then press a key to change this shortcut." = "点击后按下按键以更改此快捷键。";
 "Close" = "关闭";
@@ -302,7 +295,6 @@
 "Finish at your own pace" = "按自己的节奏设置";
 "Finish dictation before changing or deleting a model." = "请先结束语音输入，再更改或删除模型。";
 "Finish dictation before changing shortcuts." = "请先结束语音输入，再更改快捷键。";
-"Finish dictation with the opposite AI setting from the start of the recording. " = "结束语音输入时，使用与录音开始时相反的 AI 设置。";
 "Finish or dismiss the current update before changing channels." = "请先完成或关闭当前更新，再更改更新通道。";
 "Finnish" = "芬兰语";
 "Fn / Globe" = "Fn / 地球仪键";
@@ -311,7 +303,7 @@
 "Follow text cursor" = "跟随文本光标";
 "Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through." = "可获取文本光标位置时跟随光标，否则显示在屏幕底部。不抢占焦点，点击可穿透。";
 "Follows your text cursor without taking focus. Clicks pass through." = "跟随文字光标，不抢占焦点。点击可穿透悬浮窗。";
-"For AI polish and alternate finish. Translation has its own language." = "用于 AI 润色和替代结束。翻译使用单独的语言设置。";
+"Applies when you use AI polishing. Translation has its own language." = "使用 AI 润色时生效。翻译使用单独的语言设置。";
 "For AI polish, e.g. Always use digits for numbers." = "用于 AI 润色，例如：数字一律使用阿拉伯数字。";
 "Free router limits and availability vary. Other models may be paid." = "免费路由的限额和可用性会变化。其他模型可能收费。";
 "French" = "法语";
@@ -481,7 +473,7 @@
 "Recognizing" = "识别中";
 "Recommended" = "推荐";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "推荐 · MLX 4 位量化 · 下载更小、内存占用更低";
-"Record a different key from the dictation key. Alternate finish is disabled while they match." = "请选择与语音输入键不同的按键。两个按键相同时，替代结束功能将被禁用。";
+"Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match." = "请选择与语音输入键不同的按键。两个按键相同时，AI 润色快捷键将被停用。";
 "Record your voice" = "录制语音";
 "Recorded audio time for completed dictations." = "已完成语音输入的录音时长。";
 "Recorded time" = "录音时长";
@@ -489,7 +481,7 @@
 "Recording mode" = "录音模式";
 "Redo" = "重做";
 "Release %@ to save. Esc cancels." = "松开 %@ 保存。按 Esc 取消。";
-"Release Delete to disable alternate finish." = "松开 Delete 停用替代结束。";
+"Release Delete to disable the AI polishing shortcut." = "松开 Delete 停用 AI 润色快捷键。";
 "Release Delete to disable translation shortcut." = "松开 Delete 停用翻译快捷键。";
 "Release Esc to cancel." = "松开 Esc 取消。";
 "Release all keys to cancel." = "松开所有按键以取消。";
@@ -613,7 +605,7 @@
 "Thai" = "泰语";
 "That combination is reserved by macOS. Record a different shortcut." = "此组合已被 macOS 保留。请录制其他快捷键。";
 "That key" = "此按键";
-"That key is not supported for alternate finish." = "该按键不支持用作替代结束键。";
+"That key is not supported for the AI polishing shortcut." = "该按键不支持用作 AI 润色快捷键。";
 "That key or combination is not supported. Press Fn or a right-side modifier by itself." = "不支持此按键或组合键。请单独按 Fn 或右侧修饰键。";
 "The API key contains invalid characters." = "API 密钥包含无效字符。";
 "The API key could not be read from Keychain. The saved key has not been changed. %@" = "无法从钥匙串读取 API 密钥，已保存的密钥未被更改。%@";
@@ -753,8 +745,17 @@
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS 的“降低透明度”设置使背景保持不透明。你的偏好已保存。";
 "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS 找不到此 App 的登录项。请将 Talkless 重新安装到“应用程序”文件夹后重试。";
 "openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key." = "openrouter/free 使用动态变化的免费模型，不会回退到付费模型。需要你自己的 OpenRouter 密钥。";
-"polish" = "润色";
 "the selected model" = "所选模型";
 "toggle" = "切换";
-"use original" = "使用原文";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@”将不再用作词典提示。此操作不会删除历史记录或忽略待确认建议。";
+"Use AI polishing" = "使用 AI 润色";
+"Skip AI polishing" = "跳过 AI 润色";
+"Default: Use AI polishing" = "默认：使用 AI 润色";
+"Default: Skip AI polishing" = "默认：跳过 AI 润色";
+"While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged." = "录音时按此键结束录音，并仅为本次输入使用 AI 润色，不更改默认设置。";
+"While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged." = "录音时按此键结束录音，并仅为本次输入跳过 AI 润色，不更改默认设置。";
+"Your default is captured when recording starts." = "默认设置以录音开始时为准。";
+"The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again." = "音频输入未切换到所选麦克风。请在“设置 › 语音输入 › 音频”中重新选择后重试。";
+"The microphone audio format is not ready. Check your microphone and try again." = "麦克风音频格式尚未就绪，请检查麦克风后重试。";
+"The microphone configuration changed while recording was starting. Try again." = "录音启动时麦克风配置发生变化，请重试。";
+"Cannot read the microphone audio input. Check your microphone and try again." = "无法读取麦克风音频输入，请检查麦克风后重试。";

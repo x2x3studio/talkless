@@ -86,6 +86,23 @@ struct SetupGuideViewTests {
         let controls = SetupGuideControls(dictationKeyTitle: "Right ⌘", holdToTalk: false)
         check(controls.dictationInstruction == "Tap Right ⌘ to start; tap again to finish.", "Controls respect customized key and toggle gesture")
         check(SetupGuideControls(dictationKeyTitle: "Fn").dictationInstruction == "Hold Fn to talk; release to finish.", "Hold controls describe release-to-finish")
+        for enabled in [false, true] {
+            let controls = SetupGuideControls(alternateFinishKeyTitle: "Right ⌘", polishEnabled: enabled)
+            check(controls.polishingAction == (enabled ? "Skip AI polishing" : "Use AI polishing"),
+                  "Guide names the action for the current default")
+            check(controls.polishingInstruction == (enabled
+                ? "While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged."
+                : "While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged."),
+                  "Guide explains recording end, current-input scope, and unchanged default")
+            localization.interfaceLanguage = .simplifiedChinese
+            check(controls.polishingAction == (enabled ? "\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}" : "\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}"),
+                  "Guide uses plain Chinese action labels")
+            check(controls.polishingInstruction == (enabled
+                ? "\u{5F55}\u{97F3}\u{65F6}\u{6309}\u{6B64}\u{952E}\u{7ED3}\u{675F}\u{5F55}\u{97F3}，\u{5E76}\u{4EC5}\u{4E3A}\u{672C}\u{6B21}\u{8F93}\u{5165}\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}，\u{4E0D}\u{66F4}\u{6539}\u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}。"
+                : "\u{5F55}\u{97F3}\u{65F6}\u{6309}\u{6B64}\u{952E}\u{7ED3}\u{675F}\u{5F55}\u{97F3}，\u{5E76}\u{4EC5}\u{4E3A}\u{672C}\u{6B21}\u{8F93}\u{5165}\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}，\u{4E0D}\u{66F4}\u{6539}\u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}。"),
+                  "Chinese guide preserves end-recording and one-input scope")
+            localization.interfaceLanguage = .english
+        }
         check(SetupGuideStep.welcome.previous == .welcome && SetupGuideStep.done.next == .done, "Navigation clamps to guide boundaries")
         check(!state.snapshot.dictationReady, "Skipped requirements never claim ready")
         state.snapshot = .init(microphone: .granted, accessibility: .granted, speechReady: true)

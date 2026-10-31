@@ -13,8 +13,8 @@
 "%@ characters · %lld dictation · %@" = "%@ characters · %lld dictation · %@";
 "%@ characters · %lld dictations · %@" = "%@ characters · %lld dictations · %@";
 "%@ download" = "%@ download";
-"%@ is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts." = "%@ is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts.";
-"%@ is already the alternate finish key. Record a different key." = "%@ is already the alternate finish key. Record a different key.";
+"%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys." = "%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys.";
+"%@ is already the AI polishing shortcut. Record a different key." = "%@ is already the AI polishing shortcut. Record a different key.";
 "%@ is already the dictation key. Record a different key." = "%@ is already the dictation key. Record a different key.";
 "%@ is not supported. Press Fn or a right-side Command, Option, or Control key." = "%@ is not supported. Press Fn or a right-side Command, Option, or Control key.";
 "%@ of %@" = "%@ of %@";
@@ -42,10 +42,6 @@
 "A disabled shortcut cannot have modifiers." = "A disabled shortcut cannot have modifiers.";
 "A little space for your next thought." = "A little space for your next thought.";
 "AI can clean up your transcript. It is not required for dictation, and your provider may charge for use." = "AI can clean up your transcript. It is not required for dictation, and your provider may charge for use.";
-"AI is currently off by default, so alternate finish uses AI." = "AI is currently off by default, so alternate finish uses AI.";
-"AI is currently on by default, so alternate finish skips AI." = "AI is currently on by default, so alternate finish skips AI.";
-"AI off" = "AI off";
-"AI on" = "AI on";
 "AI polishing is enabled" = "AI polishing is enabled";
 "AI polishing is optional" = "AI polishing is optional";
 "AI polishing · optional" = "AI polishing · optional";
@@ -94,10 +90,7 @@
 "Allow microphone access to record your voice." = "Allow microphone access to record your voice.";
 "Allow microphone and Accessibility access to dictate." = "Allow microphone and Accessibility access to dictate.";
 "Allowed" = "Allowed";
-"Alternate finish" = "Alternate finish";
-"Alternate finish key" = "Alternate finish key";
-"Alternate finish skips AI for this recording." = "Alternate finish skips AI for this recording.";
-"Alternate finish uses AI for this recording." = "Alternate finish uses AI for this recording.";
+"AI polishing shortcut" = "AI polishing shortcut";
 "An update is in progress. Continue in the update window." = "An update is in progress. Continue in the update window.";
 "Animate status indicators" = "Animate status indicators";
 "Anthropic Messages" = "Anthropic Messages";
@@ -179,7 +172,7 @@
 "Clear history" = "Clear history";
 "Clear history…" = "Clear history…";
 "Clear saved history?" = "Clear saved history?";
-"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish.";
+"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut.";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.";
 "Click, then press a key to change this shortcut." = "Click, then press a key to change this shortcut.";
 "Close" = "Close";
@@ -302,7 +295,6 @@
 "Finish at your own pace" = "Finish at your own pace";
 "Finish dictation before changing or deleting a model." = "Finish dictation before changing or deleting a model.";
 "Finish dictation before changing shortcuts." = "Finish dictation before changing shortcuts.";
-"Finish dictation with the opposite AI setting from the start of the recording. " = "Finish dictation with the opposite AI setting from the start of the recording. ";
 "Finish or dismiss the current update before changing channels." = "Finish or dismiss the current update before changing channels.";
 "Finnish" = "Finnish";
 "Fn / Globe" = "Fn / Globe";
@@ -311,7 +303,7 @@
 "Follow text cursor" = "Follow text cursor";
 "Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through." = "Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through.";
 "Follows your text cursor without taking focus. Clicks pass through." = "Follows your text cursor without taking focus. Clicks pass through.";
-"For AI polish and alternate finish. Translation has its own language." = "For AI polish and alternate finish. Translation has its own language.";
+"Applies when you use AI polishing. Translation has its own language." = "Applies when you use AI polishing. Translation has its own language.";
 "For AI polish, e.g. Always use digits for numbers." = "For AI polish, e.g. Always use digits for numbers.";
 "Free router limits and availability vary. Other models may be paid." = "Free router limits and availability vary. Other models may be paid.";
 "French" = "French";
@@ -481,7 +473,7 @@
 "Recognizing" = "Recognizing";
 "Recommended" = "Recommended";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "Recommended · MLX 4-bit · Smaller download and memory footprint";
-"Record a different key from the dictation key. Alternate finish is disabled while they match." = "Record a different key from the dictation key. Alternate finish is disabled while they match.";
+"Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match." = "Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match.";
 "Record your voice" = "Record your voice";
 "Recorded audio time for completed dictations." = "Recorded audio time for completed dictations.";
 "Recorded time" = "Recorded time";
@@ -489,7 +481,7 @@
 "Recording mode" = "Recording mode";
 "Redo" = "Redo";
 "Release %@ to save. Esc cancels." = "Release %@ to save. Esc cancels.";
-"Release Delete to disable alternate finish." = "Release Delete to disable alternate finish.";
+"Release Delete to disable the AI polishing shortcut." = "Release Delete to disable the AI polishing shortcut.";
 "Release Delete to disable translation shortcut." = "Release Delete to disable translation shortcut.";
 "Release Esc to cancel." = "Release Esc to cancel.";
 "Release all keys to cancel." = "Release all keys to cancel.";
@@ -613,7 +605,7 @@
 "Thai" = "Thai";
 "That combination is reserved by macOS. Record a different shortcut." = "That combination is reserved by macOS. Record a different shortcut.";
 "That key" = "That key";
-"That key is not supported for alternate finish." = "That key is not supported for alternate finish.";
+"That key is not supported for the AI polishing shortcut." = "That key is not supported for the AI polishing shortcut.";
 "That key or combination is not supported. Press Fn or a right-side modifier by itself." = "That key or combination is not supported. Press Fn or a right-side modifier by itself.";
 "The API key contains invalid characters." = "The API key contains invalid characters.";
 "The API key could not be read from Keychain. The saved key has not been changed. %@" = "The API key could not be read from Keychain. The saved key has not been changed. %@";
@@ -753,8 +745,17 @@
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved.";
 "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again.";
 "openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key." = "openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key.";
-"polish" = "polish";
 "the selected model" = "the selected model";
 "toggle" = "toggle";
-"use original" = "use original";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.";
+"Use AI polishing" = "Use AI polishing";
+"Skip AI polishing" = "Skip AI polishing";
+"Default: Use AI polishing" = "Default: Use AI polishing";
+"Default: Skip AI polishing" = "Default: Skip AI polishing";
+"While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged." = "While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.";
+"While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged." = "While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.";
+"Your default is captured when recording starts." = "Your default is captured when recording starts.";
+"The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again." = "The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again.";
+"The microphone audio format is not ready. Check your microphone and try again." = "The microphone audio format is not ready. Check your microphone and try again.";
+"The microphone configuration changed while recording was starting. Try again." = "The microphone configuration changed while recording was starting. Try again.";
+"Cannot read the microphone audio input. Check your microphone and try again." = "Cannot read the microphone audio input. Check your microphone and try again.";

@@ -68,6 +68,21 @@ enum AudioInputDevices {
         return device
     }
 
+    /// Classification is diagnostic only. Private engine aggregates need not expose
+    /// membership, and a class read must never authorize an explicit route mismatch.
+    static func routeKind(actual: AudioDeviceID, requested: AudioDeviceID) -> String {
+        guard actual != kAudioObjectUnknown else { return "unknown" }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyClass, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: AudioClassID = 0
+        var size = UInt32(MemoryLayout<AudioClassID>.size)
+        if AudioObjectGetPropertyData(actual, &address, 0, nil, &size, &value) == noErr,
+           value == kAudioAggregateDeviceClassID { return "aggregate" }
+        return actual == requested ? "direct" : "unknown"
+    }
+
     private static func hasInputChannels(_ device: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,

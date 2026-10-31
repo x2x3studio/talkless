@@ -522,6 +522,8 @@ TESTS = r'''
         let disabled = GestureHarness()
         disabled.settings.effectiveAlternateFinishKey = nil
         disabled.toggleFromMenu()
+        precondition(disabled.hud.recordingHint == "Default: Use AI polishing",
+                     "Disabled shortcut shows only the captured default, not an unavailable action")
         disabled.flags(base, key: 61, raw: option)
         precondition(disabled.stops == 0)
         print("PASS collision defense and disabled auxiliary preserve primary behavior")
@@ -542,7 +544,15 @@ TESTS = r'''
             let normal = GestureHarness()
             normal.settings.polishEnabled = enabled
             normal.press(base)
+            let expectedHint = enabled
+                ? "Default: Use AI polishing · rightOption: Skip AI polishing"
+                : "Default: Skip AI polishing · rightOption: Use AI polishing"
+            precondition(normal.hud.recordingHint == expectedHint,
+                         "HUD names both the captured default and the key's concrete action")
             normal.settings.polishEnabled = !enabled
+            normal.refreshRecordingHint()
+            precondition(normal.hud.recordingHint == expectedHint,
+                         "Display refresh must retain the recording-start default, not the live setting")
             normal.release(base + 400_000_000)
             precondition(normal.stoppedPolish == enabled && normal.oppositeStops == 0)
         }

@@ -16,6 +16,12 @@ struct LocalizationTests {
         try expect(!en.isEmpty && Set(en.keys) == Set(zh.keys), "English and Simplified Chinese catalog keys must match")
         for (key, value) in en {
             try expect(!value.isEmpty && !(zh[key] ?? "").isEmpty, "Empty translation for \(key)")
+            for displayed in [value, zh[key]!] {
+                try expect(!displayed.localizedCaseInsensitiveContains("alternate finish")
+                           && !displayed.localizedCaseInsensitiveContains("alternate-finish")
+                           && !displayed.contains("\u{66FF}\u{4EE3}\u{7ED3}\u{675F}") && !displayed.contains("opposite AI"),
+                           "Polishing UI must use plain action wording: \(key)")
+            }
             if !key.hasPrefix("interface.language.") {
                 try expect(key == value, "English catalog must preserve the English source key: \(key)")
             }

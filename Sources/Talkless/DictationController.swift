@@ -475,8 +475,8 @@ final class DictationController: ObservableObject {
         if editSelection != nil {
             hud.model.recordingHint = nil
         } else {
-            let mode = recordingPolishEnabled ? L10n.tr("AI on") : L10n.tr("AI off")
-            let action = recordingPolishEnabled ? L10n.tr("use original") : L10n.tr("polish")
+            let mode = recordingPolishEnabled ? L10n.tr("Default: Use AI polishing") : L10n.tr("Default: Skip AI polishing")
+            let action = recordingPolishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
             hud.model.recordingHint = recordingAlternateFinishKey.map { L10n.format("%@ · %@: %@", mode, $0.title, action) } ?? mode
         }
     }

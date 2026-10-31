@@ -74,12 +74,12 @@ struct MenuTests {
         }
         let suffix = ["—", "Settings…", "Check for Updates…", "—", "Quit Talkless"]
         let fullState = MenuContent.State(alternateFinishKeyTitle: "Right Option ⌥", translationShortcutTitle: "⌃⌥T")
-        let fullTitles = ["Dictation (hold)", "Alternate finish", "Translate selection"] + suffix
+        let fullTitles = ["Dictation (hold)", "Use AI polishing", "Translate selection"] + suffix
         let idle = menu(fullState)
         check(titles(idle) == fullTitles, "Exact minimal ordering: shortcuts, settings and updates, quit")
         check(idle.items[0].toolTip?.contains("release to finish") == true, "Hold mode explains release")
-        check(idle.items[1].toolTip?.contains("AI is currently off by default") == true, "Alternate finish explains the saved AI default")
-        check(idle.items[1].toolTip?.contains("from the start of the recording") == true, "Alternate finish uses the session-start setting, not a live preference")
+        check(idle.items[1].toolTip == "While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged. Your default is captured when recording starts.", "AI-off default explains the action, recording end, input scope, and unchanged default")
+        check((idle.items[1].view as? MenuContent.ShortcutRow)?.accessibilityHelp() == idle.items[1].toolTip, "Accessible help describes the same scoped action")
 
         var toggleState = fullState
         toggleState.dictationKeyTitle = "Right Control ⌃"
@@ -88,14 +88,14 @@ struct MenuTests {
         toggleState.polishEnabled = true
         toggleState.translationShortcutTitle = "⌃⌥⌘R"
         let toggle = menu(toggleState)
-        check(titles(toggle) == ["Dictation (toggle)", "Alternate finish", "Translate selection"] + suffix,
+        check(titles(toggle) == ["Dictation (toggle)", "Skip AI polishing", "Translate selection"] + suffix,
               "Custom shortcut titles and toggle mode are reflected without actions")
         check(toggle.items[0].toolTip?.contains("tap again to finish") == true, "Toggle mode explains second tap")
-        check(toggle.items[1].toolTip?.contains("alternate finish skips AI") == true, "AI-on default explains the alternate purpose")
+        check(toggle.items[1].toolTip == "While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged. Your default is captured when recording starts.", "AI-on default describes skipping only this input")
         check(titles(menu()) == ["Dictation (hold)"] + suffix, "Disabled optional shortcuts leave no extra rows or separators")
         check(titles(menu(.init(translationShortcutTitle: "⌃⌥T"))) == ["Dictation (hold)", "Translate selection"] + suffix,
               "Translation is independent of alternate finish")
-        check(titles(menu(.init(alternateFinishKeyTitle: "Right Option ⌥"))) == ["Dictation (hold)", "Alternate finish"] + suffix,
+        check(titles(menu(.init(alternateFinishKeyTitle: "Right Option ⌥"))) == ["Dictation (hold)", "Use AI polishing"] + suffix,
               "Alternate finish is independent of translation")
 
         // The builder intentionally has no recording phase or permission state. Only the updater
@@ -127,6 +127,16 @@ struct MenuTests {
         let unavailable = idle.items.first { $0.title == "Check for Updates…" }!
         check(!unavailable.isEnabled && unavailable.action == nil && unavailable.target == nil, "Missing updater is noninteractive")
         check(unavailable.toolTip == "Updates are not configured for this build.", "Missing updater explains why")
+        localization.interfaceLanguage = .simplifiedChinese
+        let chineseUse = menu(fullState)
+        let chineseSkip = menu(toggleState)
+        check(chineseUse.items[1].title == "\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}" && chineseSkip.items[1].title == "\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}",
+              "Chinese menu names both contextual actions directly")
+        check(chineseUse.items[1].toolTip == "\u{5F55}\u{97F3}\u{65F6}\u{6309}\u{6B64}\u{952E}\u{7ED3}\u{675F}\u{5F55}\u{97F3}，\u{5E76}\u{4EC5}\u{4E3A}\u{672C}\u{6B21}\u{8F93}\u{5165}\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}，\u{4E0D}\u{66F4}\u{6539}\u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}。 \u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}\u{4EE5}\u{5F55}\u{97F3}\u{5F00}\u{59CB}\u{65F6}\u{4E3A}\u{51C6}。",
+              "Chinese use instruction preserves recording end, input scope and captured default")
+        check(chineseSkip.items[1].toolTip == "\u{5F55}\u{97F3}\u{65F6}\u{6309}\u{6B64}\u{952E}\u{7ED3}\u{675F}\u{5F55}\u{97F3}，\u{5E76}\u{4EC5}\u{4E3A}\u{672C}\u{6B21}\u{8F93}\u{5165}\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}，\u{4E0D}\u{66F4}\u{6539}\u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}。 \u{9ED8}\u{8BA4}\u{8BBE}\u{7F6E}\u{4EE5}\u{5F55}\u{97F3}\u{5F00}\u{59CB}\u{65F6}\u{4E3A}\u{51C6}。",
+              "Chinese skip instruction preserves recording end, input scope and captured default")
+        localization.interfaceLanguage = .english
         print("PASS \(assertions) native menu ordering, informational shortcuts, updater states, and target/action assertions")
 
         // Screenshot fixture: exact production NSMenu in a regular visible window. No production

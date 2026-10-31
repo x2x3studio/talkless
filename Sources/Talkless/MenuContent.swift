@@ -102,11 +102,11 @@ enum MenuContent {
         shortcut(L10n.format("Dictation (%@)", gesture), key: state.dictationKeyTitle,
                  help: dictationHelp + L10n.tr(" Esc cancels recording or processing."))
         if let key = state.alternateFinishKeyTitle {
-            let defaultHelp = state.polishEnabled
-                ? L10n.tr("AI is currently on by default, so alternate finish skips AI.")
-                : L10n.tr("AI is currently off by default, so alternate finish uses AI.")
-            shortcut(L10n.tr("Alternate finish"), key: key, help:
-                L10n.tr("Finish dictation with the opposite AI setting from the start of the recording. ") + defaultHelp)
+            let action = state.polishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
+            let help = state.polishEnabled
+                ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
+                : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.")
+            shortcut(action, key: key, help: help + " " + L10n.tr("Your default is captured when recording starts."))
         }
         if let key = state.translationShortcutTitle {
             shortcut(L10n.tr("Translate selection"), key: key,

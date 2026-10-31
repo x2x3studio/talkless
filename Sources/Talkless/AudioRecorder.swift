@@ -62,20 +62,43 @@ final class AudioRecorder: @unchecked Sendable {
     private struct Configuration {
         let device: AudioDeviceID
         let actualDevice: AudioDeviceID
-        let available: Bool
+        let resolvedAvailable: Bool
+        let currentDeviceStatus: OSStatus
+        let routeMatchesRequested: Bool
+        let routeKind: String
         let running: Bool
         let tap: AVAudioFormat
         let hardware: AVAudioFormat
 
+        var available: Bool {
+            resolvedAvailable && currentDeviceStatus == noErr && actualDevice != kAudioObjectUnknown
+        }
         var valid: Bool {
             [tap, hardware].allSatisfy {
                 $0.sampleRate.isFinite && $0.sampleRate > 0 && $0.channelCount > 0
             }
         }
+        var formatsCompatible: Bool {
+            valid && tap.sampleRate == hardware.sampleRate && tap.channelCount == hardware.channelCount
+        }
         func sameFormats(as other: Configuration) -> Bool {
             // Explicit input uses the hardware format. A stale client output format
             // catching up after selection is not a change to the installed tap.
             tap == other.tap && hardware == other.hardware
+        }
+        func sameRoute(as other: Configuration) -> Bool {
+            device == other.device && actualDevice == other.actualDevice
+        }
+        func startupFailure(requested: AudioDeviceID, previous: Configuration) -> String? {
+            if !resolvedAvailable { return "device_unavailable" }
+            if !available { return "route_unavailable" }
+            if device != requested { return "device_changed" }
+            if !routeMatchesRequested { return "route_mismatch" }
+            if !formatsCompatible { return "invalid_format" }
+            if !previous.available || !sameRoute(as: previous) || !sameFormats(as: previous) {
+                return "configuration_race"
+            }
+            return nil
         }
     }
 
@@ -130,7 +153,12 @@ final class AudioRecorder: @unchecked Sendable {
     private func installAndStart(session: UUID) throws {
         // Validate hardware before accessing inputNode, which can otherwise advertise
         // a fictitious format and make installTap raise an Objective-C exception.
-        var device = try AudioInputDevices.resolve(uid: deviceUID)
+        var device: AudioDeviceID
+        do { device = try AudioInputDevices.resolve(uid: deviceUID) }
+        catch {
+            log("audio_start_failed", fields: ["reason": "device_unavailable", "resolved_device_available": "false"])
+            throw error
+        }
         let engine = AVAudioEngine()
         let input = engine.inputNode
         guard let audioUnit = input.audioUnit else {
@@ -153,19 +181,16 @@ final class AudioRecorder: @unchecked Sendable {
         // Derive the converter and tap from ONE coherent snapshot, not an earlier read.
         // Bounded reacquisition handles negotiation between reads without a time delay.
         var configuration = snapshot(engine: engine)
-        var stable = false
+        var startupReason: String?
         for _ in 0..<3 {
             let next = snapshot(engine: engine)
-            stable = next.available && next.device == device && next.actualDevice == device
-                && next.valid && next.sameFormats(as: configuration)
-                && next.tap.sampleRate == next.hardware.sampleRate
-                && next.tap.channelCount == next.hardware.channelCount
+            startupReason = next.startupFailure(requested: device, previous: configuration)
             configuration = next
-            if stable { break }
+            if startupReason == nil { break }
         }
-        guard stable else {
-            log("audio_start_failed", configuration: configuration, fields: ["reason": "invalid_format"])
-            throw TalklessError.message(L10n.tr("No available microphone found"))
+        if let startupReason {
+            log("audio_start_failed", configuration: configuration, fields: ["reason": startupReason])
+            throw startupError(reason: startupReason)
         }
         let format = configuration.tap
         guard let converter = AVAudioConverter(from: format, to: Self.format) else {
@@ -191,13 +216,13 @@ final class AudioRecorder: @unchecked Sendable {
         // Check again after observer registration/logging, immediately before native
         // installation. HAL may still race any read; no Swift guard catches NSException.
         let current = snapshot(engine: engine)
-        guard current.available, current.device == device, current.actualDevice == device,
-              current.valid, current.sameFormats(as: configuration) else {
+        if let reason = current.startupFailure(requested: device, previous: configuration) {
+            log("audio_start_failed", configuration: current, fields: ["reason": reason])
             // No tap exists yet; detach state so outer cleanup cannot remove a missing tap.
             if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
             configurationObserver = nil
             self.engine = nil
-            throw TalklessError.message(L10n.tr(Self.interrupted))
+            throw startupError(reason: reason)
         }
         // AVAudioNodeTapBlock is non-Sendable: explicitly opt out of inherited MainActor isolation.
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
@@ -206,6 +231,26 @@ final class AudioRecorder: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         attemptStartedAt = ProcessInfo.processInfo.systemUptime
+    }
+
+    @MainActor
+    private func startupError(reason: String) -> TalklessError {
+        let message: String
+        switch reason {
+        case "device_unavailable":
+            message = deviceUID == nil
+                ? "No available microphone found. Connect a microphone and select it in System Settings › Sound › Input."
+                : "The selected microphone is unavailable. Reconnect it or choose another microphone in Settings › Dictation › Audio."
+        case "route_unavailable":
+            message = "Cannot read the microphone audio input. Check your microphone and try again."
+        case "route_mismatch":
+            message = "The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again."
+        case "invalid_format":
+            message = "The microphone audio format is not ready. Check your microphone and try again."
+        default:
+            message = "The microphone configuration changed while recording was starting. Try again."
+        }
+        return .message(L10n.tr(message))
     }
 
     private func configurationChanged(session: UUID, attempt: UUID) {
@@ -239,8 +284,18 @@ final class AudioRecorder: @unchecked Sendable {
             status = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
                                           kAudioUnitScope_Global, 0, &actual, &size)
         } else { status = -1 }
+        let routeAvailable = resolved != nil && status == noErr && actual != kAudioObjectUnknown
+        // AVAudioEngine may wrap the system default in a private aggregate. Do not pin
+        // that default or require aggregate membership metadata: capture its actual ID
+        // as the baseline, then compare BOTH IDs on every subsequent validation.
+        // Explicit selection is different: a successful setter must read back that device.
+        let routeMatches = routeAvailable && (deviceUID == nil || actual == resolved)
         return Configuration(device: resolved ?? AudioDeviceID(kAudioObjectUnknown), actualDevice: actual,
-                             available: resolved != nil && status == noErr && actual != kAudioObjectUnknown,
+                             resolvedAvailable: resolved != nil, currentDeviceStatus: status,
+                             routeMatchesRequested: routeMatches,
+                             routeKind: status == noErr
+                                ? AudioInputDevices.routeKind(actual: actual, requested: resolved ?? AudioDeviceID(kAudioObjectUnknown))
+                                : "unknown",
                              running: engine.isRunning, tap: deviceUID == nil ? output : hardware,
                              hardware: hardware)
     }
@@ -248,11 +303,11 @@ final class AudioRecorder: @unchecked Sendable {
     @MainActor
     private func failure(for configuration: Configuration) -> String? {
         guard let baseline else { return "invalid_format" }
-        if !configuration.available { return "device_unavailable" }
-        if configuration.device != baseline.device || configuration.actualDevice != baseline.actualDevice {
-            return "device_changed"
-        }
-        if !configuration.valid || !configuration.sameFormats(as: baseline) { return "format_changed" }
+        if !configuration.resolvedAvailable { return "device_unavailable" }
+        if !configuration.available { return "route_unavailable" }
+        if !configuration.sameRoute(as: baseline) { return "device_changed" }
+        if !configuration.routeMatchesRequested { return "route_mismatch" }
+        if !configuration.formatsCompatible || !configuration.sameFormats(as: baseline) { return "format_changed" }
         if !configuration.running { return "engine_stopped" }
         return lock.withLock { captureFailure }
     }
@@ -471,6 +526,11 @@ final class AudioRecorder: @unchecked Sendable {
             metadata["hardware_sample_rate"] = String(configuration.hardware.sampleRate)
             metadata["hardware_channel_count"] = String(configuration.hardware.channelCount)
             metadata["device_available"] = String(configuration.available)
+            metadata["resolved_device_available"] = String(configuration.resolvedAvailable)
+            metadata["current_device_status"] = String(configuration.currentDeviceStatus)
+            metadata["route_matches_requested"] = String(configuration.routeMatchesRequested)
+            metadata["route_kind"] = configuration.routeKind
+            metadata["formats_compatible"] = String(configuration.formatsCompatible)
             if let baseline {
                 metadata["before_sample_rate"] = String(baseline.tap.sampleRate)
                 metadata["before_channel_count"] = String(baseline.tap.channelCount)
@@ -480,7 +540,9 @@ final class AudioRecorder: @unchecked Sendable {
                 metadata["before_hardware_channel_count"] = String(baseline.hardware.channelCount)
                 metadata["before_engine_running"] = String(baseline.running)
                 metadata["format_changed"] = String(!configuration.sameFormats(as: baseline))
-                metadata["device_changed"] = String(configuration.device != baseline.device || configuration.actualDevice != baseline.actualDevice)
+                metadata["device_changed"] = String(!configuration.sameRoute(as: baseline))
+                metadata["selected_device_changed"] = String(configuration.device != baseline.device)
+                metadata["actual_device_changed"] = String(configuration.actualDevice != baseline.actualDevice)
             }
         }
         metadata.merge(fields) { _, value in value }

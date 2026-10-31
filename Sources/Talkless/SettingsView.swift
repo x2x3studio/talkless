@@ -242,8 +242,10 @@ private struct DictationSettingsTab: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ShortcutRecorder(
-                    title: L10n.tr("Alternate finish key"),
+                    title: L10n.tr("AI polishing shortcut"),
                     value: settings.alternateFinishKey.title(for: settings.triggerKey),
+                    valueDetail: settings.effectiveAlternateFinishKey == nil ? nil : settings.polishEnabled
+                        ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing"),
                     defaultValue: settings.defaultAlternateFinishKeyTitle,
                     isDefault: settings.isAlternateFinishKeyDefault,
                     allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
@@ -254,7 +256,7 @@ private struct DictationSettingsTab: View {
                     }
                     if let key {
                         guard let alternate = AlternateFinishKey(rawValue: key.rawValue) else {
-                            return L10n.tr("That key is not supported for alternate finish.")
+                            return L10n.tr("That key is not supported for the AI polishing shortcut.")
                         }
                         settings.alternateFinishKey = alternate
                     } else {
@@ -263,13 +265,14 @@ private struct DictationSettingsTab: View {
                     return nil
                 }
                 .disabled(controller.state != .idle)
-                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable alternate finish."))
+                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut."))
                 Text(settings.polishEnabled
-                     ? L10n.tr("Alternate finish skips AI for this recording.")
-                     : L10n.tr("Alternate finish uses AI for this recording."))
+                     ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
+                     : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged."))
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
-                    Text(L10n.tr("Record a different key from the dictation key. Alternate finish is disabled while they match."))
+                    Text(L10n.tr("Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match."))
                         .font(.caption).foregroundStyle(.orange)
                 }
                 HStack {

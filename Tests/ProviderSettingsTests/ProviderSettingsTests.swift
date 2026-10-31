@@ -356,7 +356,7 @@ struct ProviderSettingsTests {
         features.polishEnabled = false
         check(features.llmConfigured, "AI service remains configured with dictation polish off")
         check(features.voiceEditEnabled, "voice editing is independent of dictation polish")
-        check(features.outputLanguage == .japanese, "polish off retains output language for alternate finish")
+        check(features.outputLanguage == .japanese, "polish off retains output language for one-input Use AI polishing")
         check(features.translateTarget == "French", "polish off retains translation target")
         check(features.customInstructions == "Use digits for numbers.", "polish off retains writing preferences")
         check(!features.appToneEnabled, "polish off retains tone preference")

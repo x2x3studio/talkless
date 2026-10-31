@@ -185,7 +185,7 @@ final class AppSettings: ObservableObject {
     func resetTriggerKey() -> String? {
         guard !isTriggerKeyDefault else { return nil }
         guard alternateFinishKey.triggerKey != Self.defaultTriggerKey else {
-            return L10n.format("%@ is already the alternate finish key. Change that key first, or use Restore defaults to reset both shortcuts.", Self.defaultTriggerKey.title)
+            return L10n.format("%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys.", Self.defaultTriggerKey.title)
         }
         triggerKey = Self.defaultTriggerKey
         return nil

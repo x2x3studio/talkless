@@ -23,9 +23,9 @@ OpenRouter's preset uses `https://openrouter.ai/api/v1` and your own key. `openr
 
 ## Feature settings and transmitted text
 
-- **Settings > Dictation > AI processing** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. Normal finish uses the choice captured when recording starts; alternate finish reverses it for that dictation only, without changing the saved default.
+- **Settings > Dictation > AI processing** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. Finishing with the dictation key follows the default captured when recording starts. The **AI polishing shortcut** (Right Option by default) ends the current recording and chooses **Use AI polishing** when the default is off, or **Skip AI polishing** when it is on. This affects only that input, never the saved default.
 - Polishing sends a JSON-framed transcript plus editing instructions. Dictionary terms are candidate spellings, not mandatory replacements. With app-aware tone enabled, the prompt also identifies the frontmost app and its writing context. Additional instructions and a chosen output language are included when set.
-- **Settings > Dictation > Voice editing** enables selected-text editing, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms. It does not use the alternate-finish polishing choice.
+- **Settings > Dictation > Voice editing** enables selected-text editing, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms. The AI polishing shortcut is unavailable during voice editing.
 - **Settings > Translation** requires a configured AI service but is independent of the polishing toggle. A translation request includes the selected text and language instructions. Source/target settings and Auto direction are separate from dictation output language and interface language. Matching explicit source/target language IDs skips the provider; Auto detection alone is not that bypass. Changing languages in the translation panel can send a new request. See [selected-text translation](user-guide.md#selected-text-translation).
 
 ## Test Connection and its receipt

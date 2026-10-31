@@ -22,7 +22,7 @@ If macOS opens the emoji panel when you press Fn, set the Globe-key action to **
 
 ## Find your settings
 
-Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. Its dictation, alternate-finish, and translation rows are shortcut references, not clickable commands.
+Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. Its dictation, AI polishing, and translation rows are shortcut references, not clickable commands.
 
 | Settings page | What you can change |
 | --- | --- |
@@ -52,7 +52,7 @@ Choose **Settings > Dictation > Recording**:
 | **Hold to talk** — default | Hold the dictation key to record; release to finish. |
 | **Tap to toggle** | Press once to start; press again to finish. |
 | **Escape** | Cancel recording or processing without inserting the pending result. |
-| **Alternate finish key** | Finish this dictation with the opposite AI-polishing choice. |
+| **AI polishing shortcut** | Finish recording and use or skip AI polishing for this input only, without changing your default. |
 
 Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the default polishing choice are captured when you start.
 
@@ -60,22 +60,22 @@ Local Qwen and Apple recognition show live text in the overlay; cloud recognitio
 
 ### One-off AI polishing
 
-By default, **Fn** records and **Right Option** is the alternate finish key. Press alternate finish during recording, by itself in toggle mode or while holding the dictation key in hold mode:
+There are two choices: **Use AI polishing** or **Skip AI polishing**. Finishing with your dictation key follows the default captured when recording starts.
 
-| Polishing at recording start | Normal finish | Alternate finish |
-| --- | --- | --- |
-| Off | Original transcript | Request polishing |
-| On | Polish | Original transcript |
+By default, **Fn** records and **Right Option** is the **AI polishing shortcut**. While recording, press Right Option to end the recording and choose the action shown next to that key:
 
-This does not change your saved polishing preference. The overlay shows the current choice and alternate action. Alternate finish does nothing while idle and is unavailable during selected-text voice editing. If polishing fails or is not configured, Talkless keeps the original transcript.
+- With polishing **off** by default, the key shows **Use AI polishing** and requests polishing for this input.
+- With polishing **on** by default, the key shows **Skip AI polishing** and uses the original transcript for this input.
+
+Press it by itself in toggle mode, or while still holding the dictation key in hold mode. This affects **only the current input** and never changes your saved default. The menu and setup guide name the action directly; the recording overlay shows the captured default and the key's action. The shortcut does nothing while idle and is unavailable during selected-text voice editing. If polishing fails or is not configured, Talkless keeps the original transcript.
 
 ### Change or reset shortcuts
 
-In **Dictation > Recording**, click a shortcut field, press and release **Fn**, **Right Option**, **Right Command**, or **Right Control**. Dictation and alternate finish support only these single keys, not combinations. Escape cancels capture; Delete or Backspace clears the alternate binding. The dictation key cannot be cleared, and the two keys cannot be the same.
+In **Dictation > Recording**, click a shortcut field, press and release **Fn**, **Right Option**, **Right Command**, or **Right Control**. The dictation key and AI polishing shortcut support only these single keys, not combinations. Escape cancels capture; Delete or Backspace clears the AI polishing shortcut. The dictation key cannot be cleared, and the two keys cannot be the same.
 
-The alternate key's **Automatic** default uses Right Option, or Right Command if Right Option is your dictation key. Each row has its own **Reset**. **Reset recording shortcuts** restores Fn and Automatic without changing recording mode, translation or other settings. A reset that conflicts with the other custom key is rejected rather than overwriting it. Shortcut changes are unavailable during dictation.
+The AI polishing shortcut's **Automatic** default uses Right Option, or Right Command if Right Option is your dictation key. Each row has its own **Reset**. **Reset recording shortcuts** restores Fn and Automatic without changing recording mode, translation or other settings. A reset that conflicts with the other custom key is rejected rather than overwriting it. Shortcut changes are unavailable during dictation.
 
-Use the alternate key without unrelated keys already held. Its key event also passes through to the foreground app.
+Use the AI polishing shortcut without unrelated keys already held. Its key event also passes through to the foreground app.
 
 ### Choose a microphone
 
@@ -103,7 +103,7 @@ Configure **Settings > AI service** with your provider, credentials and model. T
 
 In **Dictation > AI processing**, enable **Polish dictation with AI** to clean up recognized text before insertion. It is off by default.
 
-- **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs, including a one-off alternate finish. It is not a recognition-language setting.
+- **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs, including when you choose **Use AI polishing** for one input. It is not a recognition-language setting.
 - **Adapt tone to the current app:** tailor polished text to chat, email, code or documents. This is on by default, but only has an effect when polishing runs.
 - **Additional instructions:** add writing preferences, such as “Always use digits for numbers.”
 

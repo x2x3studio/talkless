@@ -28,7 +28,7 @@ struct DictationProcessingSettingsView: View {
                     ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
                 }
                 .id(localization.locale.identifier)
-                Text(L10n.tr("For AI polish and alternate finish. Translation has its own language."))
+                Text(L10n.tr("Applies when you use AI polishing. Translation has its own language."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

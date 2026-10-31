@@ -96,6 +96,8 @@ let technicalFields = [
     "before_engine_running": "false", "interleaved": "false", "before_interleaved": "true",
     "device_changed": "false", "device_available": "true", "format_changed": "false",
     "audio_delivered": "true", "recovered": "true", "stage": "recording", "reason": "unchanged",
+    "current_device_status": "0", "route_kind": "aggregate", "resolved_device_available": "true",
+    "route_matches_requested": "true", "formats_compatible": "true", "selected_device_changed": "false", "actual_device_changed": "false",
 ]
 var unsafeFields = technicalFields
 for key in ["text", "transcript", "selected_text", "prompt", "audio", "device_uid", "device_name",
@@ -109,7 +111,7 @@ require(schemaEvents[0]["metadata"] as? [String: String] == technicalFields, "Te
 let cancellationReasons = ["escape", "combo", "user", "recorder_interruption", "recognition_error", "stop_interruption"]
 let audioReasons = ["unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped",
                    "no_audio_timeout", "conversion_failed", "start_failed", "recovery_exhausted", "invalid_format",
-                   "unavailable", "configuration_race", "configuration_change", "user"]
+                   "unavailable", "configuration_race", "configuration_change", "user", "route_mismatch", "route_unavailable"]
 for reason in cancellationReasons + audioReasons {
     schema.recordAsync(event: "dictation_cancel", metadata: ["reason": reason])
 }

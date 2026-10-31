@@ -13,6 +13,16 @@ struct SetupGuideControls: Equatable {
     var polishEnabled = false
     var translationShortcutTitle: String?
 
+    var polishingAction: String {
+        polishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
+    }
+
+    var polishingInstruction: String {
+        polishEnabled
+            ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
+            : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.")
+    }
+
     var dictationInstruction: String {
         holdToTalk
             ? L10n.format("Hold %@ to talk; release to finish.", dictationKeyTitle)
@@ -218,9 +228,8 @@ struct SetupGuideView: View {
                 shortcutRow("Esc", title: L10n.tr("Cancel"),
                             detail: L10n.tr("Cancel recording or processing without inserting text."))
                 if let key = snapshot.controls.alternateFinishKeyTitle {
-                    shortcutRow(key, title: L10n.tr("Alternate finish"), detail: snapshot.controls.polishEnabled
-                        ? L10n.tr("AI is currently on by default, so alternate finish skips AI.")
-                        : L10n.tr("AI is currently off by default, so alternate finish uses AI."))
+                    shortcutRow(key, title: snapshot.controls.polishingAction,
+                                detail: snapshot.controls.polishingInstruction)
                 }
                 if let key = snapshot.controls.translationShortcutTitle {
                     shortcutRow(key, title: L10n.tr("Translate selection"),
