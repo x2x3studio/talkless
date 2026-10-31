@@ -31,6 +31,8 @@ struct FakeApplication: Equatable {
 @MainActor final class FakeSettings {
     var llmConfigured = true
     var llmConfig = "isolated fake config"
+    var llmBaseURL = "https://synthetic.invalid"
+    var llmProtocol = "responses"
     var translationLanguages = TranslationLanguagePreferences(
         source: .languageID("en"), target: .languageID("fr")
     )
@@ -105,6 +107,10 @@ struct HistoryEntry {
         callback?()
     }
 }
+@MainActor enum LLMAPITransport {
+    static var preconnects = 0
+    static func preconnect(baseURL: String, apiProtocol: String) { preconnects += 1 }
+}
 @MainActor final class FlowHarness {
     static var accessibilityGranted = true
     enum PermissionPane { case accessibility, microphone }
@@ -153,7 +159,16 @@ TESTS = r'''
         let flow = FlowHarness()
         precondition(LLMClient.requests.isEmpty, "Constructing UI/settings never translates")
         flow.settings.llmConfigured = false
+        LLMAPITransport.preconnects = 0
         await flow.translateSelection()
+        precondition(LLMAPITransport.preconnects == 0, "No preconnect without a configured AI service")
+        flow.settings.llmConfigured = true
+        await flow.translateSelection()
+        precondition(LLMAPITransport.preconnects == 1, "A configured translation opens the AI connection early")
+        flow.translationPanel.close()
+        await settle()
+        LLMClient.requests = []
+        flow.settings.llmConfigured = false
         precondition(LLMClient.requests.isEmpty && flow.hud.errors.count == 1)
         flow.settings.llmConfigured = true
         TextIO.selection = " \n "

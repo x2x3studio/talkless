@@ -10,13 +10,14 @@ private final class MenuTarget: NSObject {
     }
     @objc func fix(_ sender: NSMenuItem) { calls.append("fix-\(sender.tag)") }
     @objc func dictate() { calls.append("dictate") }
+    @objc func copyLast() { calls.append("copyLast") }
     @objc func translate() { calls.append("translate") }
     @objc func openSettings() { calls.append("settings") }
     @objc func updates() { calls.append("updates") }
     @objc func quit() { calls.append("quit") }
 
     var actions: MenuContent.Actions {
-        .init(fix: #selector(fix(_:)), dictate: #selector(dictate), translate: #selector(translate), openSettings: #selector(openSettings), quit: #selector(quit))
+        .init(fix: #selector(fix(_:)), copyLastResult: #selector(copyLast), dictate: #selector(dictate), translate: #selector(translate), openSettings: #selector(openSettings), quit: #selector(quit))
     }
 }
 
@@ -115,6 +116,14 @@ struct MenuTests {
         check(target.calls == ["fix-2"], "The fix action receives the problem as its tag")
         target.calls = []
         check(titles(menu(fullState)) == fullTitles, "No problem rows or extra separator when everything works")
+        var withResult = fullState
+        withResult.hasLastResult = true
+        let resultMenu = menu(withResult)
+        check(titles(resultMenu) == ["Start Dictation", "Translate selection", "Copy Last Result"] + suffix,
+              "Copy Last Result appears after the commands once a result exists")
+        resultMenu.performActionForItem(at: 2)
+        check(target.calls == ["copyLast"], "Copy Last Result dispatches its action")
+        target.calls = []
         for (title, selector, expected) in [
             ("Start Dictation", #selector(MenuTarget.dictate), "dictate"),
             ("Translate selection", #selector(MenuTarget.translate), "translate"),

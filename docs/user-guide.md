@@ -197,7 +197,7 @@ Changes apply immediately. macOS **Reduce Transparency** and **Reduce Motion** t
 
 **Settings > History > Recent history** keeps up to **500** recent dictations, voice edits and translations, with the app name and date. Dictation entries also show raw text when it differs from the result.
 
-Right-click an entry for **Copy Result**, **Copy Raw Transcript**, or **Delete**. For a voice edit, the raw text is the spoken instruction; for a translation, it is the original selection. **Clear history…** deletes all saved entries after confirmation. History contains text, not audio.
+Search filters entries by result, raw text or app name. The copy button on each entry copies its result; right-click an entry for **Copy Result**, **Copy Raw Transcript**, or **Delete**. After a dictation in this session, the menu bar menu also offers **Copy Last Result**. For a voice edit, the raw text is the spoken instruction; for a translation, it is the original selection. **Clear history…** deletes all saved entries after confirmation. History contains text, not audio.
 
 ### View activity
 

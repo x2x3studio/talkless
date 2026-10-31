@@ -580,6 +580,16 @@ private struct HistoryTab: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var history = HistoryStore.shared
     @State private var confirmClear = false
+    @State private var search = ""
+
+    private var filteredEntries: [HistoryEntry] {
+        let query = search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return history.entries }
+        return history.entries.filter {
+            $0.output.localizedStandardContains(query) || $0.raw.localizedStandardContains(query)
+                || $0.app.localizedStandardContains(query)
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -596,8 +606,12 @@ private struct HistoryTab: View {
                     Button(L10n.tr("Clear history…")) { confirmClear = true }
                         .disabled(history.entries.isEmpty)
                 }
+                if !history.entries.isEmpty {
+                    TextField(L10n.tr("Search history"), text: $search)
+                        .textFieldStyle(.roundedBorder)
+                }
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(history.entries) { entry in
+                    ForEach(filteredEntries) { entry in
                         HistoryRow(entry: entry)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -611,6 +625,8 @@ private struct HistoryTab: View {
                     }
                     if history.entries.isEmpty {
                         Text(L10n.tr("No history yet")).foregroundStyle(.secondary)
+                    } else if filteredEntries.isEmpty {
+                        Text(L10n.tr("No matching history")).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -627,6 +643,7 @@ private struct HistoryTab: View {
 private struct HistoryRow: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     let entry: HistoryEntry
+    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -638,6 +655,16 @@ private struct HistoryRow: View {
                 Spacer()
                 Text(entry.date, format: .dateTime.month().day().hour().minute())
                     .font(.caption).foregroundStyle(.secondary)
+                Button {
+                    TextIO.copyToClipboard(entry.output)
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.tr("Copy Result"))
+                .accessibilityLabel(L10n.tr("Copy Result"))
             }
             Text(entry.output).lineLimit(4).textSelection(.enabled)
             if entry.raw != entry.output, entry.kind == .dictation {

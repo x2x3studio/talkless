@@ -859,6 +859,8 @@ final class DictationController: ObservableObject {
             }
             return
         }
+        // Open the AI connection while the selection is read; the request follows immediately.
+        LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
         // Capture the destination before the clipboard fallback can suspend.
         let targetApp = NSWorkspace.shared.frontmostApplication
         acquiringTranslationSelection = true

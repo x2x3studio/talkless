@@ -820,3 +820,7 @@
 "Imported %lld terms and %lld fixes. %lld entries skipped." = "已导入 %lld 个词条和 %lld 条自动改正，跳过 %lld 项。";
 "Exported %lld terms." = "已导出 %lld 个词条。";
 "The dictionary could not be exported." = "词典导出失败。";
+"Search history" = "搜索历史记录";
+"No matching history" = "没有匹配的历史记录";
+"Copy Last Result" = "复制上一次结果";
+"Copy the most recent dictation result to the clipboard." = "把最近一次听写结果复制到剪贴板。";

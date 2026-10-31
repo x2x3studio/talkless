@@ -27,11 +27,14 @@ enum MenuContent {
         var translationShortcutTitle: String?
         var dictation: DictationPhase = .idle
         var problems: [Problem] = []
+        /// Shown only once this session has a dictation or edit result.
+        var hasLastResult = false
     }
 
     struct Actions {
         /// Receives the problem row; its tag is the Problem raw value.
         var fix: Selector? = nil
+        var copyLastResult: Selector? = nil
         let dictate: Selector
         let translate: Selector
         let openSettings: Selector
@@ -102,6 +105,12 @@ enum MenuContent {
             translation.toolTip = L10n.format("Select text in another app, then press %@ to translate it.", key)
         }
         menu.addItem(symbol(translation, "character.bubble"))
+        if state.hasLastResult, let copy = actions.copyLastResult {
+            let item = action(L10n.tr("Copy Last Result"), copy, key: "")
+            item.keyEquivalentModifierMask = []
+            item.toolTip = L10n.tr("Copy the most recent dictation result to the clipboard.")
+            menu.addItem(symbol(item, "doc.on.clipboard"))
+        }
 
         menu.addItem(.separator())
         menu.addItem(symbol(action(L10n.tr("Settings…"), actions.openSettings, key: ","), "gearshape"))

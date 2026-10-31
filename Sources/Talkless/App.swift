@@ -284,9 +284,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             polishEnabled: settings.polishEnabled,
             translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title,
             dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing,
-            problems: currentProblems()
+            problems: currentProblems(),
+            hasLastResult: !controller.lastTranscript.isEmpty
         ), target: self, actions: .init(
             fix: #selector(fixProblem(_:)),
+            copyLastResult: #selector(copyLastResult),
             dictate: #selector(toggleDictation),
             translate: #selector(translateSelection),
             openSettings: #selector(openSettingsAction),
@@ -323,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func toggleDictation() { controller.toggleFromMenu() }
+    @objc private func copyLastResult() { TextIO.copyToClipboard(controller.lastTranscript) }
     @objc private func translateSelection() { Task { await controller.translateSelection() } }
     @objc private func openSettingsAction() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
