@@ -14,8 +14,7 @@ struct UpdateSettingsView: View {
             .id(localization.locale.identifier)
             .disabled(!updater.canChangeChannel)
             Text(L10n.tr("Beta includes prereleases. Returning to Stable does not downgrade Talkless."))
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .settingsNote()
             Toggle(L10n.tr("Automatically check for updates"), isOn: Binding(
                 get: { updater.automaticallyChecksForUpdates },
                 set: { updater.setAutomaticallyChecksForUpdates($0) }
@@ -23,8 +22,7 @@ struct UpdateSettingsView: View {
             .disabled(!updater.canChangeAutomaticChecks)
             .help(L10n.tr("Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress."))
             Text(L10n.tr("Checks every 30 minutes. You choose when to download and install."))
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .settingsNote()
             LabeledContent(L10n.tr("Last checked")) {
                 if let date = updater.lastUpdateCheckDate {
                     Text(date.formatted(.dateTime.year().month().day().hour().minute().locale(localization.locale)))
@@ -36,13 +34,11 @@ struct UpdateSettingsView: View {
             Button(updater.checkForUpdatesTitle) { updater.checkForUpdates(nil) }
                 .disabled(controller.state != .idle || !updater.canCheckForUpdates)
             if let status = updater.status {
-                Text(status).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(status).settingsNote()
             }
             if updater.canChangeAutomaticChecks && !updater.canChangeChannel {
                 Text(L10n.tr("Finish or dismiss the current update before changing channels."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
         }
     }

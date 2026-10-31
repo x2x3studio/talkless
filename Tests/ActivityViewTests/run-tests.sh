@@ -11,6 +11,7 @@ xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/DictationActivity.swift" \
   "$ROOT/Sources/Talkless/DictationActivityView.swift" \
+  "$ROOT/Sources/Talkless/SettingsStyle.swift" \
   "$ROOT/Tests/ActivityViewTests/ActivityViewTests.swift" \
   -o "$APP/Contents/MacOS/activity-view-tests"
 "$APP/Contents/MacOS/activity-view-tests" "$@"

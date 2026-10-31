@@ -419,6 +419,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-translation-flow-") as tempora
         str(localization_file),
         str(ROOT / "Sources/Talkless/TranslationLanguages.swift"),
         str(ROOT / "Sources/Talkless/LanguagePickerView.swift"),
+        str(ROOT / "Sources/Talkless/SettingsStyle.swift"),
         str(source), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)] + ([str(arguments.snapshots.resolve())] if arguments.snapshots else []), check=True)

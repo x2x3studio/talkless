@@ -49,6 +49,7 @@ xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$WORK/AboutSettings.swift" \
   "$ROOT/Sources/Talkless/UpdateSettingsView.swift" \
+  "$ROOT/Sources/Talkless/SettingsStyle.swift" \
   "$ROOT/Tests/AboutSettingsTests/AboutSettingsTests.swift" \
   -o "$APP/Contents/MacOS/about-settings-tests"
 "$APP/Contents/MacOS/about-settings-tests" "$@"

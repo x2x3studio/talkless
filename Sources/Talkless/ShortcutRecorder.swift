@@ -32,9 +32,7 @@ struct ShortcutRecorder: View {
                     Text(title)
                     if let defaultValue {
                         Text(L10n.format("Default: %@", defaultValue))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .settingsNote()
                     }
                 }
                 Spacer(minLength: 8)

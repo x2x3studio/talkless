@@ -1,12 +1,14 @@
 import Foundation
+import Testing
+@testable import Talkless
 
-@main
-struct TextRevisionHighlightTests {
-    static func main() {
+/// Migrated from a standalone swiftc script; runs under `swift test`.
+@MainActor @Suite struct TextRevisionHighlightTests {
+    @Test func all() {
         var assertions = 0
         func check(_ value: @autoclosure () -> Bool, _ description: String) {
             assertions += 1
-            guard value() else { fatalError("FAIL: \(description)") }
+            #expect(value(), "\("FAIL: \(description)")")
         }
         func expect(_ original: String, _ revised: String, _ expected: [String], _ description: String) {
             let ranges = TextRevisionHighlight.ranges(original: original, revised: revised)

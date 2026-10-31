@@ -23,13 +23,9 @@ struct TranslationSettingsView: View {
                 languageRow("Target language", selection: $settings.translationLanguages.target,
                             automaticLabel: L10n.tr("Auto · Primary or secondary"), allowCustom: true)
                 Text(L10n.tr("These choices are shared with the translation window. Changing them there also updates these defaults."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                 Text(L10n.tr("Select text, press the shortcut, then copy the translation or replace the selection."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             Section(L10n.tr("Automatic translation")) {
@@ -39,13 +35,9 @@ struct TranslationSettingsView: View {
                             automaticLabel: L10n.format("Auto · %@", automaticSecondaryLanguage.displayName))
                 Text(L10n.format("Auto translates into %@, or into %@ when the source is already %@.",
                                  primaryLanguage.displayName, secondaryLanguage.displayName, primaryLanguage.displayName))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                 Text(L10n.tr("Primary Auto follows the first supported macOS language, or English. Secondary Auto uses English, or Simplified Chinese when primary is English. Uncertain source detection uses the primary language."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                 if hasDuplicateLanguages {
                     Text(L10n.format("Primary and secondary are the same. Auto uses %@ as the alternate language.", secondaryLanguage.displayName))
                         .font(.caption)
@@ -60,9 +52,7 @@ struct TranslationSettingsView: View {
                     Button(L10n.tr("Manage languages…")) { showingPreferredLanguages = true }
                 }
                 Text(L10n.tr("Choose the languages shown first. More languages are always available; translation quality depends on your AI model."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             Section(L10n.tr("Keyboard shortcut")) {

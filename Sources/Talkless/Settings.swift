@@ -103,11 +103,7 @@ final class AppSettings: ObservableObject {
 
     private static let hudAppearanceKey = "hudAppearance.v1"
     @Published var hudAppearance: HUDAppearance {
-        didSet {
-            if let data = try? JSONEncoder().encode(hudAppearance) {
-                save(data, Self.hudAppearanceKey)
-            }
-        }
+        didSet { defaults.setEncoded(hudAppearance, forKey: Self.hudAppearanceKey) }
     }
 
     static let defaultRecordingGestureMode: RecordingGestureMode = .hold
@@ -123,11 +119,7 @@ final class AppSettings: ObservableObject {
     static let defaultTranslationShortcut: TranslationShortcut = .default
     private static let translationShortcutKey = "translationShortcut.v1"
     @Published var translationShortcut: TranslationShortcut {
-        didSet {
-            if let data = try? JSONEncoder().encode(translationShortcut) {
-                save(data, Self.translationShortcutKey)
-            }
-        }
+        didSet { defaults.setEncoded(translationShortcut, forKey: Self.translationShortcutKey) }
     }
     var isTranslationShortcutDefault: Bool { translationShortcut == Self.defaultTranslationShortcut }
     var areShortcutsDefault: Bool { isTriggerKeyDefault && isTranslationShortcutDefault }
@@ -205,11 +197,7 @@ final class AppSettings: ObservableObject {
     @Published var appToneEnabled: Bool { didSet { save(appToneEnabled, "appToneEnabled") } }
     private static let translationLanguagesKey = "translationLanguages.v1"
     @Published var translationLanguages: TranslationLanguagePreferences {
-        didSet {
-            if let data = try? JSONEncoder().encode(translationLanguages) {
-                save(data, Self.translationLanguagesKey)
-            }
-        }
+        didSet { defaults.setEncoded(translationLanguages, forKey: Self.translationLanguagesKey) }
     }
     /// Compatibility for integrations using the former free-text target. New UI and
     /// translation requests use translationLanguages and resolve Auto against the text.
@@ -224,9 +212,7 @@ final class AppSettings: ObservableObject {
     @Published var dictionary: String { didSet { save(dictionary, "dictionary") } }
     /// Explicit "heard as" fixes for My terms, applied after recognition.
     @Published var dictionaryReplacements: [DictionaryReplacement] {
-        didSet {
-            if let data = try? JSONEncoder().encode(dictionaryReplacements) { defaults.set(data, forKey: Self.dictionaryReplacementsKey) }
-        }
+        didSet { defaults.setEncoded(dictionaryReplacements, forKey: Self.dictionaryReplacementsKey) }
     }
     private static let dictionaryReplacementsKey = "dictionaryReplacements.v1"
     /// Local suggestion mining is opt-in; it never sends history to a service.
@@ -238,10 +224,8 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         self.credentialStore = credentialStore
         let d = defaults
-        hudAppearance = d.data(forKey: Self.hudAppearanceKey)
-            .flatMap { try? JSONDecoder().decode(HUDAppearance.self, from: $0) } ?? HUDAppearance()
-        let stored = d.data(forKey: Self.polishSettingsKey)
-            .flatMap { try? JSONDecoder().decode(StoredPolishSettings.self, from: $0) }
+        hudAppearance = d.decoded(HUDAppearance.self, forKey: Self.hudAppearanceKey) ?? HUDAppearance()
+        let stored = d.decoded(StoredPolishSettings.self, forKey: Self.polishSettingsKey)
         var states = stored?.providers ?? [:]
         var selected = stored?.selectedProvider ?? .deepSeek
         // Reading only the old polish fields lets an untouched installation use the
@@ -278,8 +262,7 @@ final class AppSettings: ObservableObject {
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? Self.defaultTriggerKey
         // The per-dictation AI polishing shortcut was retired; drop its stored preference.
         d.removeObject(forKey: "alternateFinishKey")
-        let storedTranslationShortcut = d.data(forKey: Self.translationShortcutKey)
-            .flatMap { try? JSONDecoder().decode(TranslationShortcut.self, from: $0) }
+        let storedTranslationShortcut = d.decoded(TranslationShortcut.self, forKey: Self.translationShortcutKey)
         translationShortcut = storedTranslationShortcut.flatMap { $0.validationError == nil ? $0 : nil }
             ?? Self.defaultTranslationShortcut
         audioInputDeviceUID = d.string(forKey: "audioInputDeviceUID")
@@ -295,20 +278,16 @@ final class AppSettings: ObservableObject {
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         voiceEditEnabled = d.object(forKey: "voiceEditEnabled") as? Bool ?? false
         appToneEnabled = d.object(forKey: "appToneEnabled") as? Bool ?? true
-        let storedLanguages = d.data(forKey: Self.translationLanguagesKey)
-            .flatMap { try? JSONDecoder().decode(TranslationLanguagePreferences.self, from: $0) }
+        let storedLanguages = d.decoded(TranslationLanguagePreferences.self, forKey: Self.translationLanguagesKey)
         var languages = storedLanguages
             ?? TranslationLanguagePreferences.migrated(legacyTarget: d.string(forKey: "translateTarget"))
         languages.normalizePreferredLanguages()
         translationLanguages = languages
         // Do not rewrite an unchanged preference on every launch (JSON key order is
         // unspecified). Persist migration once so the old text cannot reappear.
-        if storedLanguages != languages, let data = try? JSONEncoder().encode(languages) {
-            d.set(data, forKey: Self.translationLanguagesKey)
-        }
+        if storedLanguages != languages { d.setEncoded(languages, forKey: Self.translationLanguagesKey) }
         dictionary = d.string(forKey: "dictionary") ?? ""
-        dictionaryReplacements = d.data(forKey: Self.dictionaryReplacementsKey)
-            .flatMap { try? JSONDecoder().decode([DictionaryReplacement].self, from: $0) } ?? []
+        dictionaryReplacements = d.decoded([DictionaryReplacement].self, forKey: Self.dictionaryReplacementsKey) ?? []
         dictionaryReviewEnabled = d.object(forKey: "dictionaryReviewEnabled") as? Bool ?? false
         customInstructions = d.string(forKey: "customInstructions") ?? ""
 
@@ -349,9 +328,7 @@ final class AppSettings: ObservableObject {
         state.authMode = llmAuthMode
         providerStates[selectedPolishProvider.rawValue] = state
         let stored = StoredPolishSettings(selectedProvider: selectedPolishProvider, providers: providerStates)
-        if let data = try? JSONEncoder().encode(stored) {
-            defaults.set(data, forKey: Self.polishSettingsKey)
-        }
+        defaults.setEncoded(stored, forKey: Self.polishSettingsKey)
     }
 
     private func loadCredential(for provider: PolishProvider) -> String {

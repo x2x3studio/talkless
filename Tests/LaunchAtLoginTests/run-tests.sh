@@ -7,6 +7,7 @@ xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/LaunchAtLogin.swift" \
   "$ROOT/Sources/Talkless/LaunchAtLoginSettingsView.swift" \
+  "$ROOT/Sources/Talkless/SettingsStyle.swift" \
   "$ROOT/Tests/LaunchAtLoginTests/LaunchAtLoginTests.swift" \
   -o "$WORK/launch-at-login-tests"
 "$WORK/launch-at-login-tests"

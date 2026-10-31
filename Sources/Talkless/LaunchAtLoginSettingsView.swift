@@ -56,8 +56,7 @@ struct LaunchAtLoginControls: View {
             }
         }
         if let message = presentation.statusMessage {
-            Text(message).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(message).settingsNote()
         }
         if presentation.needsApproval {
             Button(L10n.tr("Open Login Items"), action: openLoginItems)

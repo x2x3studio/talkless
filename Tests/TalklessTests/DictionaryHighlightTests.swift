@@ -1,12 +1,14 @@
 import Foundation
+import Testing
+@testable import Talkless
 
-@main
-struct DictionaryHighlightTests {
-    static func main() {
+/// Migrated from a standalone swiftc script; runs under `swift test`.
+@MainActor @Suite struct DictionaryHighlightTests {
+    @Test func all() {
         var assertions = 0
         func check(_ value: @autoclosure () -> Bool, _ description: String) {
             assertions += 1
-            guard value() else { fatalError("FAIL: \(description)") }
+            #expect(value(), "\("FAIL: \(description)")")
         }
         func expect(_ text: String, terms: [String], _ expected: [String], _ description: String) {
             let ranges = DictionaryHighlightMatcher(terms: terms).ranges(in: text)

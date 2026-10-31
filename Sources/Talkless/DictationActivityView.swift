@@ -293,8 +293,7 @@ struct DictationActivityView: View {
             }
             if let error = store.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
         }
         .padding(20)

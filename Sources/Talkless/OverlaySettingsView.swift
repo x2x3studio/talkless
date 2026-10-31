@@ -22,11 +22,9 @@ struct OverlaySettingsView: View {
                 }
                 .id("sample-\(localization.locale.identifier)")
                 Text(L10n.tr("Underlined: dictionary match. Highlighted: changed by AI."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                 Text(L10n.tr("Sample text only. No audio recording or AI requests."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             Section(L10n.tr("Appearance")) {
@@ -49,8 +47,7 @@ struct OverlaySettingsView: View {
                     .help(L10n.tr("Solid backdrops are always opaque, so the opacity slider is unavailable."))
                 if reduceTransparency {
                     Text(L10n.tr("macOS Reduce Transparency keeps the backdrop solid. Your preference is saved."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .settingsNote()
                 }
             }
 
@@ -58,15 +55,13 @@ struct OverlaySettingsView: View {
                 Toggle(L10n.tr("Animate status indicators"), isOn: $appearance.animationsEnabled)
                 if reduceMotion {
                     Text(L10n.tr("macOS Reduce Motion keeps indicators still. Your preference is saved."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .settingsNote()
                 }
                 Toggle(L10n.tr("Follow text cursor"), isOn: $appearance.followsCaret)
                 Text(appearance.followsCaret
                      ? L10n.tr("Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through.")
                      : L10n.tr("Stays at the bottom center of the active display without taking focus. Clicks pass through."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                     .help(L10n.tr("Long dictation shows the latest lines. Choose the Long sample above to preview it."))
                 HStack {
                     Text(L10n.tr("Changes apply immediately."))

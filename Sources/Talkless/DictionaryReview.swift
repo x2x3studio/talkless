@@ -304,8 +304,7 @@ final class DictionaryReviewStore: ObservableObject {
     init(settings: AppSettings, defaults: UserDefaults = .standard) {
         self.settings = settings
         self.defaults = defaults
-        dismissed = defaults.data(forKey: Self.dismissalStorageKey)
-            .flatMap { try? JSONDecoder().decode(Set<String>.self, from: $0) } ?? []
+        dismissed = defaults.decoded(Set<String>.self, forKey: Self.dismissalStorageKey) ?? []
         dismissedCount = dismissed.count
         settings.$dictionaryReviewEnabled.dropFirst().sink { [weak self] enabled in
             guard let self else { return }
@@ -375,7 +374,7 @@ final class DictionaryReviewStore: ObservableObject {
     }
 
     private func persistDismissals(rescan: Bool = true) {
-        defaults.set(try? JSONEncoder().encode(dismissed), forKey: Self.dismissalStorageKey)
+        defaults.setEncoded(dismissed, forKey: Self.dismissalStorageKey)
         dismissedCount = dismissed.count
         if rescan {
             // Replace pending migration even with no history, so stale evidence is also pruned.

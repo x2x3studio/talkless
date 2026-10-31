@@ -1,11 +1,13 @@
 import Foundation
+import Testing
+@testable import Talkless
 
-@main
-struct TranslationLanguageTests {
-    static func main() throws {
+/// Migrated from a standalone swiftc script; runs under `swift test`.
+@MainActor @Suite struct TranslationLanguageTests {
+    @Test func all() throws {
         var count = 0
         func check(_ condition: @autoclosure () -> Bool, _ message: String) {
-            precondition(condition(), message)
+            #expect(condition(), "\(message)")
             count += 1
         }
         let defaults = TranslationLanguagePreferences()

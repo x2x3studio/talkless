@@ -29,9 +29,7 @@ struct DictationProcessingSettingsView: View {
                 }
                 .id(localization.locale.identifier)
                 Text(L10n.tr("Applies when you use AI polishing. Translation has its own language."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             Toggle(L10n.tr("Adapt tone to the current app"), isOn: $settings.appToneEnabled)
@@ -68,9 +66,7 @@ struct DictationProcessingSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Text(L10n.tr("When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .settingsNote()
             if settings.voiceEditEnabled, !settings.llmConfigured {
                 Text(L10n.tr("Set up an AI service first; until then, dictation with a selection is ordinary dictation."))
                     .font(.caption)

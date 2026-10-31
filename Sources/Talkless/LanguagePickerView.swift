@@ -60,9 +60,7 @@ struct LanguagePickerView: View {
                 TextField(L10n.tr("Language name"), text: $customDraft)
                     .textFieldStyle(.roundedBorder)
                 Text(L10n.tr("Enter a language or regional variant. Translation quality depends on your AI model."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
                 HStack {
                     Spacer()
                     Button(L10n.tr("Cancel")) { showingCustomLanguage = false }
@@ -148,9 +146,7 @@ struct PreferredTranslationLanguagesView: View {
             }
             .listStyle(.bordered)
             Text(L10n.tr("Your primary, secondary, and selected languages stay available even when unchecked. Translation quality depends on your AI model."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .settingsNote()
             HStack {
                 Button(L10n.tr("Restore defaults")) {
                     selectedIDs = Set(TranslationLanguages.commonLanguageIDs)

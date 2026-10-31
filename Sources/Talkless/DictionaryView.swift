@@ -345,7 +345,7 @@ private struct DictionaryTermEditor: View {
                 TextField(L10n.tr("One per line, e.g. a wrong spelling you keep getting"), text: $heardText, axis: .vertical)
                     .textFieldStyle(.roundedBorder).lineLimit(2...5)
                 Text(L10n.tr("These exact spellings are replaced with the term after recognition. Latin words match whole words only."))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
             if let validation { Text(validation).font(.caption).foregroundStyle(.secondary) }
             HStack {

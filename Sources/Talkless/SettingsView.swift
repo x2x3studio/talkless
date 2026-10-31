@@ -154,8 +154,7 @@ private struct DictationSettingsTab: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(L10n.tr("Permission needed")).font(.headline)
                             Text(permissionMessage)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .settingsNote()
                         }
                         Spacer(minLength: 4)
                         Button(L10n.tr("Open permissions")) { onPermissions() }
@@ -189,8 +188,7 @@ private struct DictationSettingsTab: View {
                       ? L10n.format("Hold %@ to talk; release to finish.", settings.triggerKey.title)
                       : L10n.format("Tap %@ to start talking; press again to finish.", settings.triggerKey.title))
                      + " " + L10n.tr("Esc cancels."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
 
                 ShortcutRecorder(
                     title: L10n.tr("Dictation key"), value: settings.triggerKey.title,
@@ -208,8 +206,7 @@ private struct DictationSettingsTab: View {
                 .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only."))
                 if settings.triggerKey == .fn {
                     Text(L10n.tr("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .settingsNote()
                 }
             }
 
@@ -238,8 +235,7 @@ private struct SystemSettingsTab: View {
                 }
                 .id(localization.locale.identifier)
                 Text(L10n.tr("Changes the interface only, not speech recognition, output, or translation languages."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             Section(L10n.tr("Permissions")) {
@@ -265,8 +261,7 @@ private struct SystemSettingsTab: View {
                     NotificationCenter.default.post(name: .showSetupGuide, object: nil)
                 }
                 Text(L10n.tr("Review permissions, speech recognition, and optional AI polishing."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
 
             LaunchAtLoginSettingsView()
@@ -285,8 +280,7 @@ private struct DiagnosticsSection: View {
     var body: some View {
         Section(L10n.tr("Diagnostics")) {
             Text(L10n.tr("Logs exclude audio, transcripts, API keys, and request contents. Nothing is uploaded automatically."))
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .settingsNote()
             Toggle(L10n.tr("Include recent macOS crash reports"), isOn: $includeCrashReports)
                 .disabled(exporting)
                 .help(L10n.tr("Include native backtraces from the last 7 days. An unclean exit can also mean Force Quit or power loss."))
@@ -337,8 +331,7 @@ private struct PermissionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                 Text(detail)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsNote()
             }
             Spacer(minLength: 8)
             if !granted {
@@ -392,8 +385,7 @@ private struct AboutSettingsTab: View {
                 Section(L10n.tr("Updates")) {
                     LabeledContent(L10n.tr("Installed version"), value: installedVersion)
                     Text(L10n.tr("Updates are not configured for this build."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .settingsNote()
                 }
             }
 
