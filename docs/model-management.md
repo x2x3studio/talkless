@@ -1,36 +1,48 @@
 # Local model management
 
-Talkless offers one built-in model: **Qwen3-ASR 0.6B, MLX 4-bit**. The former 1.7B catalogue entry has been removed; existing files are not automatically deleted. Selecting a model is not the same as downloading it; downloads start only from a user action. The catalogue pins repository revisions, file sizes, hashes and runtime format.
+This page describes the implementation accompanying **2026.1031.18018**. Open **Settings > Speech recognition** and choose **Qwen3 ASR** to see the managed model controls. The catalogue offers one model: **Qwen3 ASR · 0.6B**, MLX 4-bit, with nine pinned files totaling **712,778,752 bytes**. Weights are downloaded separately, not bundled with the app. GGUF checkpoints are not interchangeable with these MLX files.
 
-## Reference decisions
+## Download, use and recover
 
-SpeakMore's default local model is Qwen3-ASR 0.6B **GGUF Q8_0**, running through transcribe-cpp. Its fixed artifact catalogue, staged downloads, cancellation, resume and checksum validation informed the management design. Those GGUF files are not compatible with Talkless's native MLX runtime.
+| Row state | Available action |
+| --- | --- |
+| Not downloaded | **Download** |
+| Downloading / verifying | **Cancel**, retaining reusable progress |
+| Paused | **Resume** or **Delete…** |
+| Download failed | **Retry** or **Delete…**, with the error below the row |
+| Downloaded | **Use** if not already in use; **Delete…** |
+| Checking / deleting | Wait for the operation to finish |
 
-OpenLess's experimental TextStream uses the official Qwen3-ASR 0.6B original weights with Python MLX; its model-management UI separates the model being browsed from the active installed model. Its application-level macOS default is a cloud provider, not the experimental local model. Talkless independently implements the management concepts without copying OpenLess's AGPL implementation or visual assets.
+Opening the manager checks local files; it does not start a download. Restarting the app recovers staged progress as Paused, not an automatic network transfer. Resume/Retry uses the currently selected download source. A source change does not alter the expected files or checksums.
+
+**Use** selects an installed model, turns off the custom-folder override and chooses Qwen recognition. The saved managed-model selection, verified installation and loaded runtime are separate states. **In use** identifies the installed managed selection while Qwen is selected and the custom override is off; it is not by itself proof that the model has loaded. Its status can show **Preparing model…**, **Ready · kept in memory**, or a preparation failure. The app prewarms an available selected model while idle; a successful recognition can clear an earlier preparation failure.
+
+Download/source/selection/deletion controls are disabled during dictation or another model operation. Switching or deleting through the manager waits for the runtime to unload. **Delete…** requires confirmation, removes owned installed and staged files, and warns if the model is selected. It does not silently choose another installed model or download a replacement.
+
+For a failed download, check the row error and source, then **Retry**. For a damaged installed model, **Delete…** and download again: Retry does not overwrite an existing installed directory. Deletion refuses symlinks, unknown contents or a missing/mismatched ownership manifest. If the app reports an unmanaged folder, inspect and move it yourself rather than expecting the manager to erase it. The removed 1.7B catalogue entry is not automatically deleted or offered as a fallback.
 
 ## Download sources
 
-- Hugging Face: pinned `mlx-community` MLX conversions.
-- HF Mirror: matching repository/revision metadata, but requests may redirect to Hugging Face. It is not advertised as an independent regional guarantee.
-- Custom mirror: HTTPS, Hugging Face-compatible repository/revision/file paths; no credentials in the URL.
+- **Hugging Face** downloads the pinned `mlx-community/Qwen3-ASR-0.6B-4bit` revision.
+- **HF Mirror** uses the same pinned file paths and may redirect to Hugging Face. It is not an independent availability or regional-access guarantee.
+- **Custom mirror…** accepts a Hugging Face-compatible HTTPS base URL without credentials, a query or fragment. Paths are formed as `<base>/<repository>/resolve/<revision>/<file>`.
 
-ModelScope is not offered until an exact matching MLX artifact set is verified. A source change never changes the manifest or expected hashes.
+Talkless does not host model weights. No ModelScope source is offered. Network access is needed to obtain the files; Qwen recognition itself is local. Optional [AI polishing](ai-polish.md) is separate and sends text to the configured service.
 
-## Storage and lifecycle
+## Storage and verification
 
-Models live in the user's Application Support `Talkless/Models` directory. Downloads use staging folders and `.part` files, stream data to disk, validate HTTP Range responses, and verify complete file SHA-256 values before publishing an installed directory. If the server ignores Range, only that file restarts. App restarts recover partial progress. Cancellation retains reusable files.
+Managed files live under `~/Library/Application Support/Talkless/Models/`. Downloads stream to a staging directory and `.part` files. HTTP Range responses are validated; if a server ignores Range, only that file restarts. Completed files are checked for exact byte size and SHA-256, then the full manifest is rechecked before a same-volume directory rename publishes the installation.
 
-The active model is persisted separately from install state. No development-directory or alternate-size fallback is silently selected. Changing or deleting a managed model waits for the MLX runtime to unload and is blocked during dictation. A damaged managed install can be explicitly deleted and downloaded again. Arbitrary custom folders are not deleted by the manager.
+Startup inspection verifies the pinned files before marking an installation Downloaded. Later directory resolution checks safe paths and file sizes against that launch/install verification; it does not rehash every file on every dictation. Progress bytes can include an unverified partial file, so 100% transferred is not yet a verified installation.
 
-The runtime synthesizes `tokenizer.json` on first load. It is permitted as a bounded, regular JSON-object cache while all pinned source files remain verified. Symlinks, unrelated files and unmanaged folders are rejected.
+The runtime may generate `tokenizer.json` on first load. The manager permits this extra cache only as a regular, nonempty JSON object of at most 32 MiB; it still verifies the pinned tokenizer source files. Other unrelated files and symlinks are rejected.
 
-Advanced settings offer an explicit custom-model folder override. The catalogue remains the primary interface. Model weights are excluded from Git and application updates.
+**Advanced > Use a custom model folder** is an explicit override for a compatible Qwen3 ASR MLX folder, not another managed download source. **Choose Folder…** selects it; **Use Downloaded Models** returns to the managed selection. Custom folders do not receive the catalogue's pinned-checksum verification and are not managed or deleted by the catalogue. There is no automatic development-folder, alternate-size or Hugging Face cache fallback.
 
-## Validation performed
+## Regression checks
 
-- Native Swift tests cover range validation, interrupted and canceled downloads, restart recovery, checksum mismatch, oversized responses, atomic install, owned deletion, symlink safety, selection defaults and generated tokenizer caches.
-- The actual 0.6B model was downloaded from Hugging Face, canceled after initial progress, resumed through a newly created manager, and verified across all nine files (712,778,752 bytes).
-- The installed model completed a native application Mandarin transcription test. Reopening the manager after inference correctly recognizes the installation, including its generated tokenizer cache.
-- The icon is original reproducible AppKit/CoreGraphics artwork in `scripts/generate-icon.swift`.
+```sh
+bash Tests/ModelTests/run-tests.sh
+```
 
-Local recognition and second-stage API polishing are separate. See [AI polishing providers](ai-polish.md) for the implemented protocol adapters and remote model discovery. Additional cloud ASR providers and token-level local transcription updates remain outside this model-management scope.
+The suite uses small synthetic files and intercepted HTTP responses. It covers catalogue pins, safe paths, Range handling, canceled/interrupted transfers, restart recovery, checksum rejection, atomic publication, tokenizer-cache rules, owned deletion and selection defaults. It neither downloads the real model nor proves inference quality or compatibility with an arbitrary custom folder.

@@ -2,165 +2,214 @@
 
 [Back to Talkless](../README.md)
 
-macOS voice input using native Swift 6 and local Qwen3-ASR through MLX. Talkless runs as a menu bar app, not an input method, and is distributed directly rather than through the Mac App Store.
+Talkless puts spoken words into the app you are using. It runs in the macOS menu bar, not as an input method, and is distributed directly rather than through the Mac App Store.
 
-This guide describes the current source checkout, not necessarily the latest published release.
+## Install and set up
 
-## Build and launch
+Requires **Apple Silicon and macOS 26 or later**. You do not need Xcode to use a release build.
 
-Requires Apple Silicon, macOS 26+, Xcode with Swift 6.4 and the Metal Toolchain.
+1. Download the DMG from [Releases](https://github.com/x2x3studio/talkless/releases). Beta builds are marked **Pre-release**.
+2. Drag Talkless to **Applications** and open that copy.
+3. Follow the **Setup guide** to learn the controls and allow **Microphone** and **Accessibility** access. Microphone records your voice; Accessibility enables global shortcuts and text insertion.
+4. Open **Settings > Speech recognition**, download the local Qwen model, and wait for it to finish verifying and preparing.
+5. Click a text field in another app, hold **Fn**, speak, and release. Wait for recognition to finish and the text to appear.
 
-```sh
-swift package --build-system native resolve --force-resolved-versions
-bash scripts/build-app.sh
-open dist/Talkless.app
-```
+Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide does not test providers or send audio or text.
 
-On a fresh installation, Setup Guide introduces the recording controls and walks through microphone access, Accessibility, speech recognition, and optional AI processing. Permission requests and downloads wait for an explicit action; optional steps can be skipped. Existing installations are not forced through onboarding after an update. Reopen it from **Settings > System > Setup Guide** without resetting preferences.
+Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. Apple recognition, cloud recognition, and custom model folders are not verified by the guide; review those in Speech recognition settings. Existing installations are not forced through setup after an update.
 
-Open **Settings > Speech recognition** to download and manage local speech models. **Qwen3-ASR 0.6B, MLX 4-bit** is the single built-in model (712.8 MB including configuration/tokenizer files). Downloads start only when you click Download. No development-folder or alternate-model fallback is selected silently.
+If macOS opens the emoji panel when you press Fn, set the Globe-key action to **Do Nothing** in **System Settings > Keyboard**, or choose another dictation key.
 
-Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror can redirect to Hugging Face and is not guaranteed to provide independent regional access. ModelScope is not listed until matching MLX artifacts are verified; SpeakMore's GGUF Q8 files are not compatible with this MLX runtime.
+## Find your settings
 
-The manager supports progress, cancel/resume, retries, Use and confirmed Delete. Every file has a pinned revision, byte size and SHA-256; the model becomes usable only after verification. Verified files and partial downloads survive restarts. Installed models live in `~/Library/Application Support/Talkless/Models/`. Deletion affects only managed files and waits for runtime unload; downloads cannot delete arbitrary imported folders. Advanced settings retain an explicit custom-folder override.
+Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. Its dictation, alternate-finish, and translation rows are shortcut references, not clickable commands.
 
-The application icon is original artwork; regenerate it with `swift scripts/generate-icon.swift`. Model weights are not included in the app or its updates.
+| Settings page | What you can change |
+| --- | --- |
+| **Dictation** | Microphone, recording mode and keys, AI polishing, output language, app-aware tone, additional instructions, voice editing |
+| **Translation** | Source and target languages, automatic direction, preferred languages, translation shortcut |
+| **Speech recognition** | Recognition engine, local model downloads, Apple recognition language, cloud recognition connection |
+| **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |
+| **Dictionary** | Confirmed terms and suggested spelling corrections |
+| **Overlay** | Preview, backdrop, opacity, animations and cursor following |
+| **History** | Saved results and daily dictation activity |
+| **System** | Interface language, permissions, setup guide, launch at login, updates and diagnostics |
 
-The basic `build-app.sh` build is ad-hoc signed unless `CODE_SIGN_IDENTITY` is supplied; it is **not notarized** in either case. Such builds may need permission reapproval and are not distribution releases. The release pipeline signs and notarizes Beta/Stable artifacts separately.
+### Interface language and startup
 
-For local testing with the release identity and a fixed installation path, quit Talkless and run `bash scripts/install-local.sh`. It uses the configured signing references, builds with the same Developer ID as releases, verifies the signature and installs `/Applications/Talkless.app`. The old app is held only during replacement for failure rollback, then removed automatically; successful installs retain no backup. Launch that copy rather than changing build-directory apps; the initial switch from ad-hoc signing may require one permission grant. This local install is not notarized or published. See [release setup](releasing.md) for prerequisites and signing references.
+**System > Language > Interface language** offers **Follow System** (the default), **English**, and **Simplified Chinese**. Changes apply without restarting. They do not change recognition, dictation output or translation languages. Follow System uses the first supported macOS language, falling back to English; a Traditional Chinese preference is not treated as Simplified Chinese.
 
-## Settings
-
-Settings opens to **Dictation**. The sidebar is organized by task:
-
-- **Dictation:** microphone, recording mode and keys, AI polishing, output language, app-aware tone, selected-text voice editing, and additional instructions.
-- **Translation:** selected-text source/target languages, automatic direction, preferred languages and shortcut, separate from dictation's output language.
-- **Speech recognition:** recognition engine and local speech models.
-- **AI service:** shared provider, protocol, credentials and model for polishing, translation and voice editing; no master AI enable toggle.
-- **Dictionary**, **Overlay**, and **History:** terms and review, HUD appearance, and saved text.
-- **System:** interface language, permissions, launch at login, updates and diagnostics.
-
-**Settings > System > Language > Interface language** offers Follow System (the default), English and Simplified Chinese. Changes apply without restarting and affect the interface only, not speech recognition, dictation output, translation languages or provider settings. Follow System chooses a supported interface language from macOS preferences, falling back to English; it does not treat Traditional Chinese as Simplified Chinese.
-
-The menu bar menu lists the current dictation, alternate-finish, and enabled translation shortcuts as informational rows. Its only actions are Settings, Check for Updates, and Quit; recording and translation are invoked using their shortcuts.
-
-**Settings > System > Startup > Launch at login** uses macOS login-item registration. It is not enabled automatically. Turning it on starts Talkless when you sign in, not before login. If macOS requires approval, the page offers Open Login Items; the displayed state follows the system setting rather than a separate preference. Opening Settings never registers or unregisters a login item.
+**System > Startup > Launch at login** starts Talkless when you sign in. It is not enabled automatically. If macOS requires approval, use **Open Login Items**; the displayed state follows macOS's login-item setting.
 
 ## Dictation and shortcuts
 
-Grant microphone and Accessibility permissions in macOS System Settings; **Settings > System > Permissions** provides the permission controls. Fn is the default trigger and Hold to talk is the default mode: hold to speak, release to finish. Select Tap to toggle if you prefer pressing once to start and again to finish. Escape cancels. Configure the system Globe-key action to Do Nothing to avoid conflicts, or choose another trigger in Talkless settings. No VAD, silence gate or automatic pause-based recording stop is enabled. Polishing and selected-text voice editing are off by default for new users.
+### Recording controls
 
-**Settings > Dictation > Recording > Recording mode** has two choices: Hold to talk (release always finishes), or Tap to toggle (the next press finishes, regardless of how long the first press lasted). There is no timing-based automatic mode. The mode is captured at recording start. Reset restores Hold to talk without changing other preferences. Older Automatic recording preferences migrate to Hold to talk.
+Choose **Settings > Dictation > Recording**:
 
-For a one-off AI choice, press the **alternate finish key** while recording:
+| Control | Behavior |
+| --- | --- |
+| **Hold to talk** — default | Hold the dictation key to record; release to finish. |
+| **Tap to toggle** | Press once to start; press again to finish. |
+| **Escape** | Cancel recording or processing without inserting the pending result. |
+| **Alternate finish key** | Finish this dictation with the opposite AI-polishing choice. |
 
-| AI polish at recording start | Normal release or tap finish | Alternate finish |
+Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the default polishing choice are captured when you start.
+
+Local Qwen and Apple recognition show live text in the overlay; cloud recognition transcribes after you finish. The final text is pasted using the clipboard and Command-V. Keep the intended text field focused until it arrives: dictation uses the **current cursor**, rather than restoring focus to the app where you started. The previous clipboard contents are restored unless you copied something else in the meantime. If you need the result again, use History.
+
+### One-off AI polishing
+
+By default, **Fn** records and **Right Option** is the alternate finish key. Press alternate finish during recording, by itself in toggle mode or while holding the dictation key in hold mode:
+
+| Polishing at recording start | Normal finish | Alternate finish |
 | --- | --- | --- |
-| On | Polish | Use original transcript |
-| Off | Use original transcript | Request polishing |
+| Off | Original transcript | Request polishing |
+| On | Polish | Original transcript |
 
-This captures the dictation polishing default at recording start; the alternate key does not change it. The HUD shows the captured default and alternate action. Alternate finish never starts recording while idle and is unavailable during selected-text voice editing. If requested polishing fails or no provider is configured, the original transcript is retained.
+This does not change your saved polishing preference. The overlay shows the current choice and alternate action. Alternate finish does nothing while idle and is unavailable during selected-text voice editing. If polishing fails or is not configured, Talkless keeps the original transcript.
 
-**Settings > Dictation > Recording** lets you click either shortcut field and press then release **Fn, Right Option, Right Command, or Right Control** to save it without starting dictation. Only these single keys are supported, not key combinations. Escape cancels shortcut capture; Delete or Backspace clears the alternate binding. Conflicting bindings are rejected. Automatic (the default for unset preferences) uses Right Option unless that is the dictation key, then Right Command, until you record an explicit binding.
+### Change or reset shortcuts
 
-Each shortcut shows its default and has a **Reset** button. Reset affects that binding only; an explicit conflicting binding is left unchanged and reported. **Reset recording shortcuts** resets the dictation key to Fn and alternate finish to Automatic, without touching translation, recording mode, AI settings, microphone, or other preferences. Reset cancels any active shortcut capture before changing bindings; buttons are disabled when already at their defaults or while dictation is active.
+In **Dictation > Recording**, click a shortcut field, press and release **Fn**, **Right Option**, **Right Command**, or **Right Control**. Dictation and alternate finish support only these single keys, not combinations. Escape cancels capture; Delete or Backspace clears the alternate binding. The dictation key cannot be cleared, and the two keys cannot be the same.
 
-Press the alternate key by itself or while holding the primary dictation key. It finishes immediately, even if you then add another key for an application shortcut. Already-held unrelated modifiers or non-modifier keys prevent alternate finish; alternate-key events still pass through to the focused app.
+The alternate key's **Automatic** default uses Right Option, or Right Command if Right Option is your dictation key. Each row has its own **Reset**. **Reset recording shortcuts** restores Fn and Automatic without changing recording mode, translation or other settings. A reset that conflicts with the other custom key is rejected rather than overwriting it. Shortcut changes are unavailable during dictation.
+
+Use the alternate key without unrelated keys already held. Its key event also passes through to the foreground app.
+
+### Choose a microphone
+
+**Dictation > Audio > Microphone** defaults to **System default**. You can choose a specific input device without changing the Mac's system-wide microphone. Changes apply to the next recording; **Reset** restores System default.
+
+An unavailable chosen microphone is not silently replaced. Reconnect it or choose another. If the input route changes or disconnects during an established recording, Talkless stops and discards that interrupted recording; check the microphone and start again. A microphone that supplies no audio reports an error rather than recording indefinitely.
+
+## Choose speech recognition
+
+Open **Settings > Speech recognition**:
+
+- **Qwen3-ASR (local, offline)** is the default. The built-in model is **Qwen3 ASR · 0.6B**, in MLX 4-bit format, with an approximately **713 MB** download. It runs on your Mac and stays loaded between dictations. Model weights are not included in the app or app updates.
+- **Apple on-device recognition (offline)** offers a recognition **Language** picker and **Download Speech Model**. Required language assets may also be downloaded on first use.
+- **Cloud Whisper-compatible API** uses a separate API URL, API key and model. Presets are available for OpenAI, Groq and SiliconFlow. It uploads the full recording after you finish, along with dictionary hints, and may incur provider charges. These settings are separate from **AI service**.
+
+Local model downloads support progress, cancel/resume, retry, selection with **Use**, and confirmed deletion. Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror may redirect to Hugging Face; availability depends on your network. Files are verified before use. Advanced settings also allow an explicit custom MLX model folder.
+
+See [model management](model-management.md) for download sources, storage and custom-folder requirements.
+
+## Optional AI processing
+
+Configure **Settings > AI service** with your provider, credentials and model. This connection is shared by polishing, voice editing and translation; configuring it does **not** enable the first two features. Translation works independently of the polishing toggle. Requests use your own provider and may incur charges. See [AI providers and privacy](ai-polish.md) for supported services, connection testing and exactly what is sent.
+
+### Polish dictation
+
+In **Dictation > AI processing**, enable **Polish dictation with AI** to clean up recognized text before insertion. It is off by default.
+
+- **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs, including a one-off alternate finish. It is not a recognition-language setting.
+- **Adapt tone to the current app:** tailor polished text to chat, email, code or documents. This is on by default, but only has an effect when polishing runs.
+- **Additional instructions:** add writing preferences, such as “Always use digits for numbers.”
+
+If polishing fails, the raw transcript is inserted instead, with a brief error message.
+
+### Edit selected text by voice
+
+1. Enable **Dictation > Voice editing > Edit selected text with your voice**. It is off by default and works with polishing off.
+2. Select text in the foreground app.
+3. Use your dictation key and speak an instruction, such as “Make this shorter.” Finish normally.
+4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
+
+Voice editing requires a configured AI service and a selection readable through Accessibility. Some apps do not expose selections this way. If Talkless cannot read the selection, it records ordinary dictation instead; unlike translation, voice editing does not use a Copy fallback. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
 
 ## Selected-text translation
 
-Select text in the foreground app, then use the configurable translation shortcut (default Control-Option-T). Talkless reads the selection through Accessibility, falling back to Copy, sends it to the configured AI provider, and shows a panel with Copy and Replace Original actions. Translation requires a configured **AI service**, not the dictation polishing toggle. The shortcut supports recorded modifier-plus-key combinations and an independent **Reset** to Control-Option-T; clearing it disables the shortcut and removes its menu reference row.
+1. Configure **AI service**.
+2. Select text in another app and press **Control-Option-T**.
+3. Review the translation panel, then choose **Copy** or **Replace Original**. Keep the original selection in place if replacing it.
 
-**Settings > Translation** and the translation panel share remembered source and target choices, both initially **Auto**. They are independent of the interface and dictation output languages:
+Talkless reads the selection through Accessibility, falling back to Copy when needed. Translation does not record audio. **Close**, Escape, or clicking outside the panel dismisses it and cancels pending work. Copy and Replace Original also close the panel. Replacement is blocked if the foreground app has changed. Completed provider translations are saved in History even if you do not copy or replace them.
 
-- Source Auto detects the language locally. Short, mixed or uncertain text may remain unidentified; target Auto then uses the primary language. Choose an explicit source to correct detection.
-- Target Auto translates into the primary language, or into the secondary language when the source already belongs to the primary language's family. Primary Auto follows the first supported macOS language, falling back to English. Secondary Auto uses English, or Simplified Chinese when primary is English. A duplicated primary/secondary family uses that same alternate fallback.
-- Simplified and Traditional Chinese count as one family for Auto direction. Explicit targets still allow script conversion. An exact source/target match returns the original text without a provider request.
+### Languages and automatic direction
 
-Language menus offer 50 curated choices, with 13 preferred by default, plus **More languages**. In Settings, **Manage languages…** lets you search and save a preferred list; Cancel discards edits, and primary, secondary and currently selected languages stay accessible even when unchecked. This is a menu catalog, not a guarantee of provider language support or translation quality.
+**Settings > Translation** and the translation panel share remembered **Source language** and **Target language** choices. Both start at **Auto**, independently of interface language and dictation output language.
 
-Changing a language or using Swap languages in the panel remembers the choices and translates the **original selection** again, not the previous result. These explicit actions can make another provider request and incur charges; opening settings or changing the interface language does not. Closing the panel or making a newer request cancels pending work and discards stale results. Swap is unavailable when the source is unknown or both resolved languages are identical.
+- **Source Auto** detects language locally. For short, mixed or uncertain text, choose an explicit source if needed.
+- **Target Auto** translates into your **Primary language**, or into your **Secondary language** when the source already belongs to the primary language's family. An uncertain source uses the primary language.
+- **Primary Auto** follows the first supported macOS language, falling back to English. **Secondary Auto** uses English, or Simplified Chinese when primary is English. An explicitly duplicated primary/secondary language uses that same alternate fallback.
+- Simplified and Traditional Chinese count as one family for automatic direction. Explicit targets still allow script conversion. Choosing an explicit source and the exact same target returns the original text without a provider request; an AI service must still be configured.
 
-## Recognition
+Language menus offer **50 named languages**, with 13 preferred by default and the rest under **More languages**. **Manage languages…** lets you search, select preferred languages, restore defaults, and save or cancel changes. Primary, secondary and selected languages remain accessible even if unchecked. The target menu also has **Custom language…** for a language name outside the list. Availability in a menu does not guarantee your AI model's support or quality.
 
-**Settings > Dictation > Audio > Microphone** defaults to System default, or can target a named input device. Selection is saved by stable device UID and applied to the next recording without changing the system-wide microphone. The list refreshes while settings are visible. A missing explicit device stops recording setup with an error rather than silently using another microphone. Audio configuration notifications are checked rather than automatically treated as disconnections. A healthy unchanged microphone keeps recording; an actual route/format change or stopped engine interrupts an established recording and discards partial audio. Before any audio arrives, Talkless can retry startup once. If no audio arrives within three seconds of an engine starting, it reports an error instead of appearing to record indefinitely; a permitted startup retry receives its own three-second allowance. Reset restores System default.
+Changing a language in the panel or using **Swap languages** translates the **original selection again**, not the previous result. These actions update your saved choices and may make another chargeable request. Swap is unavailable for an unknown source, a custom target, or identical resolved languages. Changing settings alone does not start a translation.
 
-**Settings > Speech recognition** selects local Qwen (the default), Apple on-device recognition, or a cloud Whisper-compatible API. Qwen requires an explicitly downloaded model; Apple may download its required speech assets on first use. Cloud recognition uploads recorded audio and dictionary hints to the configured provider and may incur charges. The local Qwen pipeline works as follows:
+### Translation shortcut
 
-- Qwen runs in-process, not through Python or a CLI subprocess. The selected installed model is prepared at startup and after download/selection, then kept in memory between dictations. Stopping recording does not unload weights; model changes, deletion or process exit release them.
-- Raw Qwen language/control headers are parsed before display. Incomplete headers never become transcript text; malformed final headers produce an error rather than inserting metadata. Literal words such as `language English` inside the transcript remain untouched.
-- Audio callbacks copy PCM into a background queue. One actor serializes MLX model access.
-- Live text is a replaceable snapshot of the current acoustic window, decoded approximately every two seconds of new audio.
-- Windows are up to 30 seconds. Long dictations commit at a nearby low-energy boundary when available, retaining all remaining audio without acoustic overlap. Silence is not removed and does not stop recording.
-- Stopping finishes the active window only. Previously committed windows are not decoded again.
-- This is not a complete port of `mlx-qwen3-asr`'s encoder/KV prefix cache. Long uninterrupted speech may still split a word at a window boundary.
-- Completed dictation is pasted directly at the current input cursor using the clipboard and Command-V. It does not require reading or matching the original accessibility element or selection, and does not force focus back to the original app. Cancellation still prevents stale results from being pasted. Clipboard restoration and local history remain enabled.
+Under **Translation > Keyboard shortcut**, click the shortcut field and record a combination containing Command, Control or Option plus a supported non-modifier key. Reserved macOS combinations are rejected. Escape cancels capture; Delete or Backspace clears and disables the shortcut. **Reset** restores Control-Option-T without changing recording shortcuts. Disabled translation shortcuts are omitted from the menu bar reference.
+
+## Personal dictionary
+
+Open **Settings > Dictionary**:
+
+- **My terms:** search, add, edit or delete preferred spellings for names, projects and technical terms. Capitalization and spaces within a term are preserved. Confirmed terms are hints for recognition and AI processing, not forced replacement rules.
+- **Review:** choose **Scan history** for a one-time local comparison of raw dictation and saved polished output, or enable **Automatically find suggestions in local history**. Automatic scanning is off by default.
+
+Review shows small spelling changes with **Heard** and **Polished** evidence and the number of distinct dictations. **Accept** adds the spelling to My terms. **Dismiss** hides it until you explicitly reset dismissals. Nothing is accepted automatically: AI edits can be wrong, so accept only spellings you recognize.
+
+Scanning considers up to 500 recent history entries and shows up to 100 suggestions, excluding voice edits, translations and large rewrites. It makes no network or additional AI requests. Talkless does not monitor corrections you make in other apps after pasting.
 
 ## Overlay
 
-Dictation is silent: no start/stop sounds or routine success/empty-result messages. The HUD wraps live text within a maximum of 380 by 174 points, keeping the latest lines visible. After recording stops, it shows **Recognizing**, then **Polishing** only while AI polishing runs, or **Editing** for selected-text voice editing. By default it stays at the bottom center of the active display, keeping the same display through recording and processing without reading caret geometry. Enable **Follow text cursor** in Overlay settings to opt into caret tracking; unavailable caret geometry falls back to the screen bottom. It hides on completion; actionable errors remain visible.
+The recording overlay is quiet: no start/stop sounds or routine success messages. It shows the latest live text, then **Recognizing**, **Polishing**, or **Editing** as applicable. It hides after completion. Error messages are brief and **disappear after about three seconds**.
 
-**Settings > Overlay** provides a live sample preview with recording, recognizing, and polishing stages and short or long text. Choose a translucent or solid backdrop, adjust translucent background-only opacity from 20% to 100%, and toggle indicator animations. Solid is always opaque. Changes persist and apply immediately without recording audio or contacting a provider. Text and icons are not faded; macOS Reduce Transparency and Reduce Motion take priority. Reset appearance restores the defaults. The real overlay remains click-through and never takes focus.
+By default it stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. The menu bar icon adds a filled dot while recording and an outlined dot while processing.
 
-The app uses the Pip silhouette on a light tile. The menu bar uses the same silhouette without the tile in every state. A filled dot indicates recording and an outlined dot indicates processing. Template rendering adapts to light, dark, and selected menu bar appearances; accessible labels describe the current state.
+**Settings > Overlay** includes a sample-only live preview, with recording, recognizing and polishing stages and short/long recording text. No audio is recorded and no provider is contacted by the preview.
 
-## AI polishing
+- Choose **Translucent** or **Solid** backdrop.
+- Set translucent background opacity from **20% to 100%**; text and icons stay opaque. Solid is always opaque.
+- Toggle **Animate status indicators**.
+- Enable **Follow text cursor** to position the overlay near the caret when available, falling back to the screen bottom.
+- Use **Reset appearance** to restore defaults: translucent, 90% background opacity, animations on, cursor following off.
 
-**Settings > Dictation > AI processing** holds the polishing toggle, output language, app-aware tone, and additional instructions. Output language applies when dictation uses AI polishing, including a one-off alternate finish. Selected-text voice editing has its own **Voice editing** section on the same page. **Settings > AI service** configures their shared provider, also used by translation; configuring it does not turn on dictation polishing or voice editing.
+Changes apply immediately. macOS **Reduce Transparency** and **Reduce Motion** take priority over the corresponding appearance preferences.
 
-The shared AI service supports DeepSeek, OpenAI (Responses or Chat Completions), OpenRouter, native Gemini, native Anthropic, and a custom API endpoint. Provider settings are independent; keys are stored in macOS Keychain. Fetch Models fills a picker when the endpoint supports discovery, with manual model IDs as a fallback. Connection testing sends only an explicit fixed test. See [provider configuration and privacy](ai-polish.md).
+## History and daily activity
 
-OpenRouter starts with `https://openrouter.ai/api/v1` and `openrouter/free`; add your own OpenRouter API key. The free router selects from changing free models, not a guaranteed DeepSeek endpoint. Free-tier limits and availability vary. Talkless does not configure paid fallbacks; manually choosing another model may incur charges. See [OpenRouter's free router](https://openrouter.ai/openrouter/free).
+### Recover or delete text
 
-Dictionary has separate My terms and Review sections. Search, add, edit, or delete confirmed spellings in My terms; existing newline-based terms are retained and capitalization is preserved. Only confirmed terms are passed to local Qwen, Apple and API speech recognition, and to AI polishing. They are hints rather than forced replacements.
+**Settings > History > Recent history** keeps up to **500** recent dictations, voice edits and translations, with the app name and date. Dictation entries also show raw text when it differs from the result.
 
-Review compares saved raw dictation with polished output locally to suggest small spelling corrections, including Chinese and Latin terms. Each candidate shows the heard/polished evidence and the number of distinct dictations. Accept adds that spelling to My terms; Dismiss stays hidden until an explicit reset. Suggestions are never accepted automatically. Scan history runs once on demand; automatic local suggestions are opt-in and off by default. Scanning uses up to 500 recent history entries, excludes edits/translations and large rewrites, displays up to 100 candidates, and makes no network or additional AI requests. AI changes are evidence, not ground truth: review each spelling before accepting. Talkless does not monitor edits made in other apps after pasting.
+Right-click an entry for **Copy Result**, **Copy Raw Transcript**, or **Delete**. For a voice edit, the raw text is the spoken instruction; for a translation, it is the original selection. **Clear history…** deletes all saved entries after confirmation. History contains text, not audio.
 
-## Daily activity
+### View activity
 
-**Settings > History** shows a calendar heatmap of completed dictation, starting with this feature's first launch. Older transcript history is not imported. Click the character, dictation, or recorded-time summary to choose the calendar metric. The period selector shows approximately three months, six months, or a year (13, 26, or 52 weeks). Hover, focus, or click a day for its details; the Activity options menu provides the exact daily table, tracking information, and Clear activity. Fixed intensity thresholds keep colors consistent when changing the date range. Edits and translations are excluded; characters count final output graphemes, not words or model tokens.
+The **Activity** section above history counts completed **dictations only**, not voice edits or translations:
 
-Daily totals are retained for 400 calendar days in local `activity.json`, using the time zone captured when tracking starts. The file contains counts, durations, dates, and a bounded set of recent entry IDs, not transcript text or audio. Dates before tracking began are shown as Not recorded; the initial day counts only since tracking began. Clear history removes saved transcripts but keeps daily totals. Clear activity separately confirms deletion of totals and starts a fresh baseline without importing older history.
+- Click **Characters**, **Dictations**, or **Minutes** to choose the calendar metric. Characters are final-text characters, not words or model tokens; minutes are recorded audio time.
+- Choose **Last 3 months**, **Last 6 months**, or **Last year** (13, 26 or 52 weeks).
+- Hover, focus or click a day for details. The **Activity options** menu offers **Show daily table**, **About these statistics**, and **Clear activity…**.
 
-## Updates
+Activity records new dictations from its tracking start date; older history is not imported. Days before tracking began are **Not recorded**, not zero. The first day and today may be partial. Daily totals stay on your Mac for 400 calendar days, using the time zone captured when tracking began, without transcript text or audio.
 
-**Settings > System > Updates** offers Stable and Beta channels. Returning to Stable does not downgrade an installed beta. "Automatically check for updates" is enabled by default for new preferences and checks the selected channel every 30 minutes while Talkless is running. Existing automatic-check preferences are preserved. Checks during dictation or another update session wait until the next interval; manual checking remains available when idle. You choose when to download and install. Turning off automatic checks does not cancel an update already in progress. Local builds without valid update feed URLs and a signing public key cannot check for updates.
+**Clearing or deleting history does not clear activity.** Clear activity separately confirms deletion of totals and starts a new baseline; it does not delete transcripts or import older history.
 
-The page also shows the installed version/build and **Last checked**, which records the last attempt, including unsuccessful checks, not proof that the app is current. **Show update…** returns to an active update window when available. Sparkle retains its standard release-note, download and install UI; new releases provide versioned English and Simplified Chinese notes.
+## Updates and troubleshooting
 
-The [release workflow](releasing.md) defaults to Beta for trusted pushes to `main`; Stable requires an explicit version tag. Both require reviewed [English](../CHANGELOG.md) and [Simplified Chinese](../CHANGELOG.zh-Hans.md) changelog entries. Publication still depends on a successful release job.
+**Settings > System > Updates** shows the installed version/build, update channel and last check attempt. Choose **Stable** or **Beta**; returning to Stable does not downgrade an installed beta.
+
+Automatic checks are on by default for new preferences and run every **30 minutes** while Talkless is running. Checks during dictation or an active update session wait until a later interval. You choose when to download and install. Turning automatic checks off does not cancel an update in progress. **Last checked** is the time of the last attempt, not proof that you are up to date. Use **Check for Updates…**, or **Show update…** when an update window is already available.
+
+For permission problems, open **System > Permissions**. Allow Talkless in macOS **Privacy & Security > Microphone** and **Accessibility**, then return to Talkless. If macOS asks you to quit and reopen the app, do so. Check the chosen microphone and speech model if recording still cannot start.
+
+**System > Diagnostics** offers **Export diagnostics…**, **Open logs**, and **Open crash reports**. Exports create a local ZIP; nothing is uploaded automatically. Optional macOS crash reports may contain personal information and file paths. See [troubleshooting and diagnostics](diagnostics.md) before sharing an export.
 
 ## Local data and privacy
 
-Talkless does not use a `~/.talkless` configuration directory:
+Local Qwen recognition does not upload audio. Apple recognition runs on-device after its required assets are available. Cloud recognition uploads recorded audio; optional AI features send the text and context needed for their requests. Review [AI providers and privacy](ai-polish.md) for details.
 
-- **UserDefaults:** app preferences, provider endpoints/model IDs, confirmed dictionary terms and dismissed suggestions.
-- **macOS Keychain:** AI polishing keys. The separate legacy **cloud ASR key is still stored in plaintext in UserDefaults**, not Keychain.
-- **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, up to 500 text-only history entries in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`. History includes raw and final text, the app name, and timing metadata, not audio. Delete entries or clear them in Settings > History.
+Talkless stores:
 
-Local Qwen recognition does not upload audio. Optional cloud recognition sends audio; AI polishing, voice editing and translation send the text/context needed for those requests. See [provider privacy](ai-polish.md) and [diagnostics export](diagnostics.md) before sharing data.
+- **App preferences:** settings, provider endpoints/model IDs, dictionary terms and dismissed suggestions in macOS UserDefaults.
+- **AI service credentials:** API keys in macOS Keychain. The separate **cloud speech-recognition key is stored in plaintext in UserDefaults**, not Keychain.
+- **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, text history in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`.
 
-## Reproducible checks
+Logs exclude audio, transcripts, API keys and request contents. Use History's deletion controls for saved text and **Clear activity** for daily totals. Talkless does not use a `~/.talkless` configuration folder.
 
-Model weights, generated recordings, local results, dependencies, and build products are excluded from Git. Swift packages are locked in `Package.resolved`; third-party source is fetched rather than committed. First-party source, tests and documentation stay English, except approved `Localizable.strings` and `InfoPlist.strings` under `Sources/Talkless/Resources/en.lproj/` and `zh-Hans.lproj/`, and the root `CHANGELOG.zh-Hans.md`. UI translations belong in those catalogs, not inline source text; Mandarin recognition remains supported.
-
-Run the model-free regression suite (no paid provider calls, microphone recording, or ASR model downloads). It requires the selected Xcode toolchain and Python 3; first-time SwiftPM dependency resolution can require network access.
-
-```sh
-bash scripts/test.sh
-```
-
-Separately, test local Qwen with a built app and an installed model. Fixture generation requires `say` with the Tingting voice installed, `ffmpeg`, and Python 3, and refuses to overwrite existing WAV files.
-
-```sh
-bash Tests/Fixtures/generate.sh
-
-dist/Talkless.app/Contents/MacOS/Talkless \
-  --test-audio "$PWD/Tests/Fixtures/mandarin.wav" \
-  --test-output /tmp/talkless-result.txt --test-keep-open
-```
-
-The file test drives the same native Qwen adapter and controller with real-time-paced 16 kHz mono PCM. It uses the app's selected Qwen model and dictionary but bypasses microphone capture, polishing, history writes and external paste. Synthetic fixtures do not establish human speech accuracy. `--test-output` writes to the specified file; choose an unused path.
-
-Local ASR state tests cover sample preservation across windows, tail delivery, replaceable preview, cancellation/stale callbacks, bounded backlog, finish completion races, and boundary selection. Optional [live polishing tests](ai-polish.md#optional-live-polishing-smoke-tests) are separate, explicitly opt-in, and may incur API charges.
+For building and testing from source, see the [README's development section](../README.md#development); signing and distribution are covered in [release documentation](releasing.md).

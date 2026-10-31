@@ -1,50 +1,73 @@
 # Recording diagnostics
 
-**Settings > System > Diagnostics** provides **Export diagnostics…**, **Open logs**, and **Open crash reports**. Exporting creates a local ZIP and never uploads it. Relaunch after a crash before exporting so the previous unclean-session marker is recorded.
+This page describes the implementation accompanying **2026.1031.18018**. **Settings > System > Diagnostics** offers **Export diagnostics…**, **Open logs** and **Open crash reports**. Export creates a local ZIP; Talkless does not upload it. Relaunch after an unexpected exit before exporting so the previous-session marker is recorded.
 
-These labels follow **Settings > System > Language** (Follow System, English or Simplified Chinese); structured event names and metadata remain stable, not translated. For interface or translation issues, report the interface choice and the separate translation source/target and primary/secondary choices without sharing private text. For update issues, include the installed version/build, channel and displayed status from **Settings > System > Updates**. **Last checked** means the last attempt, not necessarily a successful check; release notes appear in Sparkle's standard update window.
+## What is collected
 
-Local structured event logs retain up to three 5 MB files. Each event has a millisecond UTC timestamp, a session-local sequence number and monotonic elapsed milliseconds. A random operation ID links a recording to its audio startup, recognition, optional AI processing and insertion attempt. Critical pre-native lifecycle checkpoints are flushed synchronously; audio callbacks never log or write files.
+Logs live in `~/Library/Application Support/Talkless/Diagnostics/`: `diagnostics.ndjson` plus two rotated files, each limited to 5,000,000 bytes. New events rotate out the oldest file; this is a size limit, not a retention period. Logging is best-effort and does not prevent startup on a full or unwritable disk.
 
-## What the logs show
+Each event contains a millisecond UTC timestamp, random session ID, session-local sequence number and monotonic elapsed milliseconds. Random operation IDs link recording, audio startup, recognition, AI processing and insertion attempts. Use sequence/elapsed time for ordering within a session; the wall clock can change. Critical pre-native-work and failure checkpoints are flushed synchronously. The realtime audio tap does not write or enqueue log events; first-buffer and summary data are collected outside it.
 
-- Application startup before localization initializes, including a missing localization-bundle event without recording its path.
-- Recording mode, hotkey timing, permission blocks and unavailable models.
-- Audio startup time, first-buffer latency, buffer/sample counts and recording duration.
-- Configuration notifications, before/after sample rates and channel counts, engine state, and whether the selected route or format changed. Device names and stable device identifiers are not logged.
-- A bounded startup recovery attempt, a genuine interruption, or a microphone that never delivers its first audio buffer.
-- Cancellation reasons: Escape, shortcut combinations, explicit cancellation, recorder interruption, or recognition failure. These no longer collapse into an unexplained cancellation event.
-- Recognition, polishing and editing timings, empty results, fallback to the original transcript, and insertion attempts. An insertion API returning does not prove that the target app accepted the text.
+Approved events and metadata describe:
 
-First-buffer and summary events are collected outside the realtime audio callback. Logging is not continuous audio tracing, and elapsed time measures lifecycle events, not speech content.
+- Startup, missing localization resources, permissions and unavailable/busy models.
+- Recording mode, physical hotkey timing, stage durations, sample/frame/buffer counts and first-buffer latency.
+- Audio configuration notifications, engine state, numeric formats and route-change flags, not device names or stable device identifiers.
+- Startup recovery, interruption, no-audio timeout and explicit cancellation reasons such as Escape, shortcut combinations or recognition failure.
+- Empty recognition, polishing fallback and insertion attempts. `paste_returned` means the insertion call returned, not that another app confirmed accepting text.
 
-Only approved event names and metadata are accepted. Audio, transcript text, API keys, prompt contents, arbitrary error descriptions and request URLs are not recorded. The exported system summary omits serial numbers and user identifiers. **Include recent macOS crash reports** is opt-in: these raw system reports contain backtraces and may include local paths or other metadata. Inspect them before sharing. An unclean-session marker can also indicate Force Quit or power loss; it does not prove a crash.
+Only allowlisted event names and metadata are retained. Logs omit audio, transcripts, selected text, prompts, API keys, request URLs, response bodies and arbitrary error descriptions. Interface labels follow the selected UI language; event identifiers do not.
 
-## Recording startup fixes
+## Export and error interpretation
 
-The Swift 6 audio tap previously inherited MainActor isolation from its setup method. Core Audio delivers samples on a background thread, causing an executor assertion before processing. An explicit Sendable tap removes that inherited actor requirement.
+The ZIP includes a snapshot of the rotating logs, `system.json` and explanatory `README.txt`. The system summary includes app/OS versions, hardware model, architecture, CPU count and memory, not serial numbers, user names or host names.
 
-A preflight checks that the requested Core Audio input device exists and exposes input channels before constructing AVAudioEngine. Without a microphone, an apparently valid fallback format can otherwise reach exception-prone tap installation. The app reports the missing device instead. Device disconnection races in the older macOS audio API remain a limitation.
+**Include recent macOS crash reports** is off by default. Opting in copies raw `Talkless*.ips` reports modified in the last seven days: at most 10 reports, 10 MB each and 25 MB total. These reports are not sanitized and may contain local paths or other personal metadata. Inspect the archive before sharing. Reports can take time to appear; their absence does not rule out a crash.
 
-System default uses the engine's default route without forcing a device assignment. An explicit microphone is still selected per engine, never by changing the system-wide input. A configuration notification triggers validation of the route, negotiated format and running state; it is not itself proof of disconnection. Healthy, unchanged capture continues. A stopped or reconfigured engine may be rebuilt once only before any audio has been delivered. After capture begins, a real interruption discards partial audio instead of stitching recordings or inserting an incomplete transcript. Stop also validates state so releasing the key cannot bypass a pending interruption. Each successfully started attempt gets a three-second first-buffer allowance; a single pre-audio recovery receives its own allowance. A microphone delivering no audio then reports an error. Silence still supplies buffers and does not trigger this timeout.
+`session.previous_unclean_exit` means the prior session marker was not removed. Force Quit, power loss or interrupted shutdown can cause it; it does not prove a crash. Talkless leaves fatal signals and Objective-C exceptions to macOS rather than installing its own crash handler. A user-facing error and a structured diagnostic reason are also different: for example, the interruption message mentions a changed/disconnected device, while the recorded cause may be a stopped engine or changed format.
 
-Recording uses an explicit Hold to talk or Tap to toggle mode captured at startup, not duration-based tap/hold classification. Hold always finishes on release; Toggle finishes on the next press. Release diagnostics use physical Core Graphics event timestamps rather than callback-processing time, so cold audio initialization does not inflate the recorded key duration. See [recording modes](user-guide.md#dictation-and-shortcuts).
+For a report, include the failure time, app version/build, recording mode and visible error, without private dictated text. For update problems also include the channel and displayed status in **Settings > System > Updates**; Last checked records an attempt, not necessarily success. AI connection receipts are a separate, explicit copy action described in [AI service](ai-polish.md#test-connection-and-its-receipt).
 
-## Regression checks
+## Startup and packaged resources
+
+Normal launch starts diagnostics before resolving localization or constructing application settings/controllers. A missing localization bundle records `startup_resource_error` with `reason=localization_missing`, not a filesystem path.
+
+A separate read-only packaging probe runs before normal app initialization:
+
+```sh
+/Applications/Talkless.app/Contents/MacOS/Talkless --verify-bundle
+```
+
+It prints one JSON report and exits `0` for success or `1` for failure. It checks packaged English/Chinese strings, permission strings, the SwiftPM resource manifest/bundles and resource containment, MLX Metal library, icon and Sparkle binary. On successful inspection it also exercises Hub's local resource accessor. It does not initialize app settings, diagnostics, permissions or models, and does not download a model or make an API request. The report includes resolved app/resource paths: it is not a sanitized diagnostics receipt. Passing this probe does not test microphone capture, inference or paste.
+
+## Audio startup and recovery
+
+The audio tap explicitly uses a Sendable callback so it does not inherit MainActor isolation when Core Audio invokes it on a background thread. Before constructing the engine, the app checks that the requested input device exists and has input channels. It reacquires a coherent route/format and checks again immediately before installing the tap. Device-disconnection races in the native API remain possible; Swift guards cannot catch an Objective-C exception.
+
+**System default** leaves the engine's default route alone. An explicit microphone is assigned to that engine only, not made the system-wide default; an unavailable selected device is not silently replaced. A configuration notification triggers validation, not automatic cancellation. Healthy unchanged capture continues.
+
+A stopped/reconfigured engine may be rebuilt **once, before any audio has been delivered**. Recovery does not stitch a new route onto an existing recording. After capture begins, a real interruption discards partial audio; Stop also validates native state so key release cannot bypass an interruption handler still in the queue. Stale callbacks from earlier attempts/sessions are ignored.
+
+Each successfully started attempt receives a three-second first-buffer allowance, checked by a periodic monitor. A permitted pre-audio recovery gets its own allowance. A running microphone that delivers no buffers reports **The microphone did not deliver audio** rather than retrying indefinitely. Silence still supplies buffers and is not this timeout. Conversion failures and missing/invalid input formats have distinct failure paths.
+
+Recording mode is captured at startup: Hold finishes on release; Toggle finishes on the next press. Release timing uses the physical event timestamp, not delayed callback processing after cold startup. See [dictation and shortcuts](user-guide.md#dictation-and-shortcuts).
+
+## Regression checks and hardware probe
 
 ```sh
 python3 -I Tests/AudioTests/run-tests.py
 python3 -I Tests/HotkeyTests/run-tests.py
 bash Tests/DiagnosticsTests/run-tests.sh
+python3 -I Tests/LocalizationTests/run-bundle-tests.py
 ```
 
-Audio tests check optimized Swift isolation, a negative control restoring the original defect, actual stereo resampling from synthetic background callbacks, repeated start/stop, missing-device rejection, startup notifications, harmless configuration notifications, bounded pre-audio recovery, true interruptions, stale callbacks, immediate stop races and first-buffer timeout. Native-device state is simulated; these tests do not establish that the reporter's hardware problem is resolved.
+Audio tests use synthetic callbacks and simulated native-device state, including optimized callback isolation and a negative control for the old MainActor defect, resampling, bounded recovery, stale callbacks, stop races and no-buffer timeout. Diagnostics tests cover schema filtering, rotation, write failures, queued export snapshots and opt-in crash filtering. These checks do not establish that a particular microphone/driver problem is fixed.
 
-A signed installed app provides an explicit hardware-only smoke test:
+For an explicit hardware smoke test with an installed app:
 
 ```sh
 open -n -W --stdout /tmp/talkless-mic.stdout --stderr /tmp/talkless-mic.stderr \
   /Applications/Talkless.app --args --test-microphone
 ```
 
-This requires previously granted microphone permission, captures for three seconds without saving audio, and does not run ASR or paste. On the development Mac mini with no available input device, the fixed build returned a normal missing-microphone error rather than raising the prior audio exception. The background-callback assertion fix still needs confirmation with the reporter's actual microphone and hotkey setup.
+This requires existing microphone permission and uses the system-default input. It captures for three seconds without saving audio, running ASR or pasting. Success prints `Microphone test passed: <count> background audio callbacks.` Failure prints `Microphone test failed: <error>` and the app exits nonzero. This mode takes the app's startup path; unlike `--verify-bundle`, it is not isolated from normal settings initialization. It does not exercise the configured hotkey or an explicitly selected microphone.

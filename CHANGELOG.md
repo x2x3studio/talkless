@@ -4,6 +4,7 @@
 
 ### Documentation
 - Archived the icon design studies and documented the selected Pip silhouette and published startup fix.
+- Updated the user, AI, model, diagnostic, and release guides against current behavior, including shortcuts, translation, history, and privacy boundaries.
 
 ## 2026.1031.18018
 

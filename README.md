@@ -6,9 +6,10 @@ Talkless is a macOS menu bar app for voice input. Hold a key, speak, and release
 
 ## What it does
 
-- **Dictation:** local speech recognition with live text. Hold to talk or tap to toggle.
+- **Dictation:** local speech recognition with live previews. Hold to talk or tap to toggle, with a quiet, customizable overlay.
 - **Optional AI:** polish dictation, edit selected text by voice, or translate a selection using your own provider.
-- **Personal dictionary:** keep names and specialist terms consistent.
+- **Personal dictionary:** add preferred spellings and review suggested corrections from local history.
+- **History and activity:** copy past results and see daily dictation totals.
 - **Simple setup:** a guided first run, English and Simplified Chinese interfaces, and configurable shortcuts.
 
 ## Get started
@@ -16,10 +17,10 @@ Talkless is a macOS menu bar app for voice input. Hold a key, speak, and release
 Requires **Apple Silicon and macOS 26 or later**.
 
 1. Download the DMG from [Releases](https://github.com/x2x3studio/talkless/releases). Beta builds are marked **Pre-release**.
-2. Move Talkless to Applications and open it. Follow the setup guide to grant permissions and download the speech model.
-3. Click a text field, hold **Fn**, speak, and release. **Escape** cancels.
+2. Move Talkless to Applications and open it. Follow the setup guide to allow Microphone and Accessibility access, then download the local speech model in **Settings > Speech recognition**.
+3. Click a text field, hold **Fn**, speak, and release. **Escape** cancels recording or processing.
 
-Talkless lives in the menu bar. Open **Settings** there to change the microphone, shortcuts, recognition engine, or AI provider. Set the macOS Globe-key action to **Do Nothing** if it conflicts with Fn.
+Talkless lives in the menu bar, not the Dock or input-source menu. Open **Settings** there to change the microphone, shortcuts, recognition engine, or AI provider. Set the macOS Globe-key action to **Do Nothing** if it conflicts with Fn. AI polishing and voice editing are off by default.
 
 ## Your data
 

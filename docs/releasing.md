@@ -91,9 +91,10 @@ The release helper then:
 
 1. Verifies the app's signature, Developer ID authority, Team ID, secure timestamp, version/build, default update channel, and updater configuration.
 2. Submits a temporary ZIP to Apple's notary service, requires `Accepted`, then staples/validates the app. Transient stapling failures retry up to 40 times.
-3. Creates a DMG with the stapled app and `/Applications` shortcut, then signs, notarizes, staples, and validates it.
-4. Creates the **final ZIP from the stapled app**, not from the pre-notarization archive. Only complete updater configuration enables Sparkle signing of this final ZIP.
-5. Writes checksums and deterministic JSON metadata, then promotes the finished staging directory. Existing release output directories are never overwritten.
+3. Scans the stapled executable for build-machine paths and verifies a relocated signed copy with checkout access and networking denied. The resource probe must finish within 30 seconds; credentials are not passed into it.
+4. Creates a DMG with the stapled app and `/Applications` shortcut, then signs, notarizes, staples, and validates it.
+5. Creates the **final ZIP from the stapled app**, not from the pre-notarization archive. Only complete updater configuration enables Sparkle signing of this final ZIP.
+6. Writes checksums and deterministic JSON metadata, then promotes the finished staging directory. Existing release output directories are never overwritten.
 
 Artifacts in `dist/releases/0.1.0-1/` are:
 
@@ -159,6 +160,15 @@ SwiftPM's native resource accessor assumes a command-line product. scripts/build
 The app resolves its localization bundle explicitly inside the running application. Missing localization falls back to English keys instead of trapping. The --verify-bundle command runs before normal application initialization: it checks packaged resources and bilingual strings, then exercises the dependency's actual resource loader without requesting permissions, reading preferences or downloading a model.
 
 Builds map source/debug paths to neutral prefixes and remove linker debug-map paths before signing. A binary scan rejects personal home-directory and checkout paths. Relocated bundle checks copy the signed app, deny reads of the checkout, .build and compiler stage plus all network access, and require resource bundles to load from inside Contents/Resources. A working developer checkout therefore cannot hide a broken release. These checks supplement signing and notarization; a valid signature alone does not prove an app can load its resources.
+
+For an already-built app, run the same read-only resource probe directly:
+
+```sh
+dist/Talkless.app/Contents/MacOS/Talkless --verify-bundle
+bash scripts/release-tool.sh verify-relocated-bundle "$PWD/dist/Talkless.app" "$PWD/.build"
+```
+
+The first command prints a JSON report and exits nonzero for missing or invalid resources. It does not start the menu bar app or test recording. The second also checks the signature and denies access to the checkout while verifying the relocated copy. Neither command publishes or installs an app.
 
 Git history and release assets are separate. Filtering commit contents does not alter already-uploaded ZIP/DMG files, signed update feeds, external clones or caches. Never modify an existing signed release in place to sanitize paths; publish a newly verified version with new hashes and signatures.
 
