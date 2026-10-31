@@ -199,68 +199,21 @@ private struct DictationSettingsTab: View {
                     setCaptureActive: controller.setShortcutCaptureActive,
                     onReset: settings.resetTriggerKey
                 ) { key in
-                    if let error = ShortcutRecorderRules.primaryError(key, alternate: settings.alternateFinishKey) {
-                        return error
-                    }
+                    if let error = ShortcutRecorderRules.primaryError(key) { return error }
                     guard let key else { return L10n.tr("The dictation key cannot be cleared.") }
                     settings.triggerKey = key
                     return nil
                 }
                 .disabled(controller.state != .idle)
                 .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only."))
-                if settings.triggerKey == .fn || settings.effectiveAlternateFinishKey == .fn {
+                if settings.triggerKey == .fn {
                     Text(L10n.tr("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel."))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack {
-                    Spacer()
-                    Button(L10n.tr("Reset recording shortcuts")) {
-                        ShortcutRecorder.cancelCapture()
-                        settings.restoreRecordingShortcutDefaults()
-                    }
-                    .disabled(settings.areRecordingShortcutsDefault || controller.state != .idle)
-                    .help(L10n.tr("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged."))
-                }
             }
 
-            // The polishing shortcut sits with the polishing switch it depends on.
-            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI) {
-                ShortcutRecorder(
-                    title: L10n.tr("AI polishing shortcut"),
-                    value: settings.alternateFinishKey.title(for: settings.triggerKey),
-                    valueDetail: settings.effectiveAlternateFinishKey == nil ? nil : settings.polishEnabled
-                        ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing"),
-                    defaultValue: settings.defaultAlternateFinishKeyTitle,
-                    isDefault: settings.isAlternateFinishKeyDefault,
-                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
-                    onReset: settings.resetAlternateFinishKey
-                ) { key in
-                    if let error = ShortcutRecorderRules.alternateError(key, primary: settings.triggerKey) {
-                        return error
-                    }
-                    if let key {
-                        guard let alternate = AlternateFinishKey(rawValue: key.rawValue) else {
-                            return L10n.tr("That key is not supported for the AI polishing shortcut.")
-                        }
-                        settings.alternateFinishKey = alternate
-                    } else {
-                        settings.alternateFinishKey = .disabled
-                    }
-                    return nil
-                }
-                .disabled(controller.state != .idle)
-                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut."))
-                Text(settings.polishEnabled
-                     ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
-                     : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if settings.effectiveAlternateFinishKey == nil && settings.alternateFinishKey != .disabled {
-                    Text(L10n.tr("Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match."))
-                        .font(.caption).foregroundStyle(.orange)
-                }
-            }
+            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
 
             AudioInputSettingsView(settings: settings)
         }

@@ -13,7 +13,7 @@ python3 -I - "$ROOT/Sources/Talkless/Settings.swift" "$WORK/ShortcutDisplay.swif
 from pathlib import Path
 import sys
 source = Path(sys.argv[1]).read_text()
-Path(sys.argv[2]).write_text('import Foundation\n' + source[source.index('enum TriggerKey:'):source.index('enum AlternateFinishKey:')])
+Path(sys.argv[2]).write_text('import Foundation\n' + source[source.index('enum TriggerKey:'):source.index('enum ASREngine:')])
 PY
 xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \

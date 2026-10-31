@@ -9,8 +9,6 @@ final class HotkeyMonitor {
     }
     var onPress: (CGEventTimestamp) -> Void = { _ in }
     var onRelease: (CGEventTimestamp) -> Void = { _ in }
-    /// Armed only during a recording; never starts a session while idle.
-    var onAlternateFinish: (CGEventTimestamp) -> Void = { _ in }
     /// Another key was pressed while holding the trigger (a keyboard shortcut, not dictation).
     var onComboKey: (CGEventTimestamp) -> Void = { _ in }
     /// Return true to consume this Escape key event.
@@ -19,21 +17,13 @@ final class HotkeyMonitor {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var triggerDown = false
-    private var alternateFinishKey: TriggerKey?
-    private var lastFlags: CGEventFlags = []
-    private var heldKeys: Set<Int64> = []
-
-    /// The caller snapshots its setting at recording start and disarms on every exit.
-    func armAlternateFinish(_ key: TriggerKey?) {
-        alternateFinishKey = key == triggerKey ? nil : key
-    }
 
     var isRunning: Bool { tap != nil }
 
     func start() -> Bool {
         if tap != nil { return true }
         let mask = (1 << CGEventType.flagsChanged.rawValue)
-            | (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.keyDown.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
             let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(refcon).takeUnretainedValue()
@@ -62,19 +52,11 @@ final class HotkeyMonitor {
         tap = nil
         source = nil
         triggerDown = false
-        alternateFinishKey = nil
-        lastFlags = []
-        heldKeys.removeAll()
     }
 
     /// Startup/recovery may miss presses as well as releases. Rebuild without firing actions.
     private func reconcilePhysicalState() {
-        lastFlags = CGEventSource.flagsState(.combinedSessionState)
-        triggerDown = isDown(triggerKey, flags: lastFlags)
-        let modifiers: Set<Int64> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-        heldKeys = Set((Int64(0)...127).filter {
-            !modifiers.contains($0) && CGEventSource.keyState(.combinedSessionState, key: CGKeyCode($0))
-        })
+        triggerDown = isDown(triggerKey, flags: CGEventSource.flagsState(.combinedSessionState))
     }
 
     /// Return false to consume the event.
@@ -87,17 +69,6 @@ final class HotkeyMonitor {
 
         case .flagsChanged:
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            let previousFlags = lastFlags
-            lastFlags = event.flags
-            if let alternate = alternateFinishKey, alternate != triggerKey,
-               keyCode == alternate.keyCode,
-               isDown(alternate, flags: event.flags), !isDown(alternate, flags: previousFlags),
-               heldKeys.isEmpty, hasOnlyFinishModifiers(event.flags, alternate: alternate) {
-                // Disarm before invoking the callback: duplicate events or releases cannot finish twice.
-                alternateFinishKey = nil
-                onAlternateFinish(event.timestamp)
-                return true
-            }
             guard keyCode == triggerKey.keyCode else { return true }
             let down = isDown(triggerKey, flags: event.flags)
             if down && !triggerDown {
@@ -110,18 +81,11 @@ final class HotkeyMonitor {
             return true
 
         case .keyDown:
-            lastFlags = event.flags
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            heldKeys.insert(keyCode)
             if keyCode == Int64(kVK_Escape) {
                 return !onEscape()
             }
             if triggerDown { onComboKey(event.timestamp) }
-            return true
-
-        case .keyUp:
-            lastFlags = event.flags
-            heldKeys.remove(event.getIntegerValueField(.keyboardEventKeycode))
             return true
 
         default:
@@ -138,24 +102,6 @@ final class HotkeyMonitor {
         case .rightCommand: return raw & 0x10 != 0     // NX_DEVICERCMDKEYMASK
         case .rightControl: return raw & 0x2000 != 0   // NX_DEVICERCTLKEYMASK
         }
-    }
-
-    private func hasOnlyFinishModifiers(_ flags: CGEventFlags, alternate: TriggerKey) -> Bool {
-        func mask(_ key: TriggerKey) -> UInt64 {
-            switch key {
-            case .fn: return CGEventFlags.maskSecondaryFn.rawValue
-            case .rightOption: return CGEventFlags.maskAlternate.rawValue | 0x40
-            case .rightCommand: return CGEventFlags.maskCommand.rawValue | 0x10
-            case .rightControl: return CGEventFlags.maskControl.rawValue | 0x2000
-            }
-        }
-        var allowed = mask(alternate)
-        if triggerDown { allowed |= mask(triggerKey) }
-        // Include device-specific left/right bits so left Option plus right Option is not a bare press.
-        // Caps Lock is a latched typing mode, not an unrelated held shortcut modifier.
-        let modifiers = CGEventFlags([.maskShift, .maskControl, .maskAlternate, .maskCommand,
-                                      .maskSecondaryFn]).rawValue | 0x207F
-        return flags.rawValue & modifiers & ~allowed == 0
     }
 }
 

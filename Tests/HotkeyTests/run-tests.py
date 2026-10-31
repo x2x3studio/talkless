@@ -20,8 +20,6 @@ hotkeys = hotkeys.split("/// A standard keyboard shortcut", 1)[0]
 hotkeys = hotkeys.replace("private func handle(type:", "func handle(type:")
 # Deterministic physical-state queries for event-tap recovery; never depend on the user's held keys.
 hotkeys = hotkeys.replace("CGEventSource.flagsState(.combinedSessionState)", "TestKeyboardState.flags")
-hotkeys = hotkeys.replace("CGEventSource.keyState(.combinedSessionState, key: CGKeyCode($0))",
-                          "TestKeyboardState.heldKeys.contains($0)")
 
 
 def method(name):
@@ -38,7 +36,7 @@ def method(name):
 
 
 fields = []
-for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled", "recordingAlternateFinishKey",
+for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled",
              "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
     match = re.search(r"^    private (?:var|let) " + name + r"\b[^\n]*", controller, re.M)
     assert match, f"Missing production field: {name}"
@@ -63,7 +61,6 @@ enum L10n {
 }
 @MainActor enum TestKeyboardState {
     static var flags: CGEventFlags = []
-    static var heldKeys: Set<Int64> = []
 }
 enum TriggerKey {
     case fn, rightOption, rightCommand, rightControl
@@ -81,7 +78,6 @@ struct Settings {
     var recordingGestureMode: RecordingGestureMode = .hold
     var polishEnabled = true
     var triggerKey: TriggerKey = .fn
-    var effectiveAlternateFinishKey: TriggerKey? = .rightOption
 }
 final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
@@ -91,7 +87,6 @@ final class Diagnostics: @unchecked Sendable {
 @MainActor final class FakeHUD {
     enum Phase { case listening(handsFree: Bool), error(String) }
     var model: FakeHUD { self }
-    var recordingHint: String?
     func setDictionaryTerms(_ terms: [String]) {}
     func show(_ phase: Phase) {}
     func hide() {}
@@ -144,7 +139,6 @@ final class Diagnostics: @unchecked Sendable {
     var onSetup: (() -> Void)?
     var starts = 0
     var stops = 0
-    var oppositeStops = 0
     var stoppedPolish: Bool?
     var editSelection: String?
     var settings = Settings()
@@ -156,7 +150,6 @@ final class Diagnostics: @unchecked Sendable {
         monitor.onPress = { [weak self] in self?.triggerPressed(at: $0) }
         monitor.onRelease = { [weak self] in self?.triggerReleased(at: $0) }
         monitor.onComboKey = { [weak self] in self?.comboKeyPressed(at: $0) }
-        monitor.onAlternateFinish = { [weak self] in self?.alternateFinishPressed(at: $0) }
         monitor.onEscape = { [weak self] in self?.escapePressed() ?? false }
     }
     func startRecording() {
@@ -175,15 +168,13 @@ __ERROR_CALLBACK__
 __RECORDER_ERROR_CALLBACK__
         }
         state = .recording
-        configureRecordingFinish()
+        recordingPolishEnabled = settings.polishEnabled
     }
-    func stopAndProcess(useOppositePolish: Bool = false) {
+    func stopAndProcess() {
         guard state == .recording else { return }
         stops += 1
-        oppositeStops += useOppositePolish ? 1 : 0
-        stoppedPolish = useOppositePolish ? !recordingPolishEnabled : recordingPolishEnabled
+        stoppedPolish = recordingPolishEnabled
         pressedAt = nil
-        hotkeys.armAlternateFinish(nil)
         state = .processing
     }
     @discardableResult
@@ -379,187 +370,54 @@ TESTS = r'''
             menu.press(base + 200_000_000)
             precondition(menu.stops == 1 && menu.state == .processing,
                          "Primary press finishes menu recordings regardless of selected interaction")
-
             for releasePrimary in [false, true] {
-                // Hold must use alternate/Escape before release; releasing would already finish.
+                // Hold mode finishes on release, so Escape is tested while still held.
                 if releasePrimary && mode == .hold { continue }
-                for opposite in [false, true] {
-                    let test = GestureHarness()
-                    test.settings.recordingGestureMode = mode
-                    test.press(base)
-                    if releasePrimary { test.release(base + 100_000_000) }
-                    if opposite {
-                        test.flags(base + 200_000_000, key: 61, raw: option | (releasePrimary ? 0 : fn))
-                        precondition(test.state == .processing && test.oppositeStops == 1 && test.stops == 1)
-                    } else {
-                        test.event(.keyDown, at: base + 200_000_000, key: 53)
-                        precondition(test.state == .idle && test.stops == 0 && test.pressedAt == nil)
-                    }
-                    test.release(base + 250_000_000)
-                    precondition(test.starts == 1 && test.stops == (opposite ? 1 : 0),
-                                 "Trailing primary release cannot act after alternate finish or Escape")
-                }
+                let test = GestureHarness()
+                test.settings.recordingGestureMode = mode
+                test.press(base)
+                if releasePrimary { test.release(base + 100_000_000) }
+                test.event(.keyDown, at: base + 200_000_000, key: 53)
+                precondition(test.state == .idle && test.stops == 0 && test.pressedAt == nil)
+                test.release(base + 250_000_000)
+                precondition(test.starts == 1 && test.stops == 0, "Trailing primary release cannot act after Escape")
             }
         }
-        print("PASS menu starts, alternate finish, and Escape for all recording modes")
-        for (key, code, mask) in modifiers {
-            for enabled in [true, false] {
-                for handsFree in [true, false] {
-                    let test = GestureHarness()
-                    test.settings.recordingGestureMode = handsFree ? .toggle : .hold
-                    test.settings.polishEnabled = enabled
-                    test.settings.effectiveAlternateFinishKey = key
-                    test.press(base)
-                    if handsFree { test.release(base + 50_000_000) }
-                    test.settings.polishEnabled = !enabled
-                    test.settings.effectiveAlternateFinishKey = nil
-                    test.flags(base + 600_000_000, key: code, raw: mask | (handsFree ? 0 : fn))
-                    precondition(test.state == .processing && test.stops == 1 && test.oppositeStops == 1)
-                    precondition(test.stoppedPolish == !enabled && test.pressedAt == nil,
-                                 "Opposite finish must use the start snapshot, not changed Settings")
-                    test.state = .idle // even a fast completion must not restart on trailing releases
-                    test.flags(base + 650_000_000, key: code, raw: handsFree ? 0 : fn)
-                    test.release(base + 700_000_000)
-                    precondition(test.state == .idle && test.starts == 1 && test.stops == 1)
-                }
-            }
-        }
-        print("PASS every auxiliary modifier, both defaults, hold/hands-free, release suppression")
+        print("PASS menu starts and Escape for all recording modes")
 
+        // The retired AI polishing shortcut: no other modifier ever finishes or starts a recording.
+        for (primary, primaryCode, primaryMask) in [(.fn, CGKeyCode(63), fn)] + modifiers {
+            for (other, otherCode, otherMask) in modifiers where other != primary {
+                for handsFree in [false, true] {
+                    let test = GestureHarness()
+                    test.settings.triggerKey = primary
+                    test.monitor.triggerKey = primary
+                    test.settings.recordingGestureMode = handsFree ? .toggle : .hold
+                    test.flags(base, key: primaryCode, raw: primaryMask)
+                    if handsFree { test.flags(base + 50_000_000, key: primaryCode, raw: 0) }
+                    let held = handsFree ? 0 : primaryMask
+                    test.flags(base + 400_000_000, key: otherCode, raw: held | otherMask)
+                    test.flags(base + 450_000_000, key: otherCode, raw: held)
+                    precondition(test.state == .recording && test.stops == 0,
+                                 "\(other) never finishes a \(primary) recording")
+                }
+            }
+        }
         let idle = GestureHarness()
         idle.flags(base, key: 61, raw: option)
         idle.flags(base + 10, key: 61, raw: 0)
-        precondition(idle.state == .idle && idle.starts == 0)
-        idle.state = .processing
-        idle.flags(base + 20, key: 61, raw: option)
-        precondition(idle.starts == 0 && idle.stops == 0)
-        print("PASS auxiliary is inert in idle and processing")
+        precondition(idle.state == .idle && idle.starts == 0, "Other modifiers never start dictation")
+        print("PASS other modifiers are inert for every dictation key and mode")
 
-        let preheld = GestureHarness()
-        preheld.flags(base, key: 61, raw: option)
-        preheld.flags(base + 10, key: 63, raw: fn | option)
-        preheld.flags(base + 20, key: 61, raw: fn | option) // duplicate held press
-        preheld.flags(base + 30, key: 61, raw: fn) // release never finishes
-        precondition(preheld.state == .recording && preheld.stops == 0)
-        preheld.flags(base + 40, key: 61, raw: fn | option) // a fresh press can finish
-        precondition(preheld.oppositeStops == 1)
-        print("PASS pre-held auxiliary and its release are ignored until a fresh press")
-
-        for unrelated: UInt64 in [CGEventFlags.maskShift.rawValue | 0x2,
-                                   CGEventFlags.maskCommand.rawValue | 0x8,
-                                   CGEventFlags.maskControl.rawValue | 0x1,
-                                   CGEventFlags.maskAlternate.rawValue | 0x20] {
-            let chord = GestureHarness()
-            chord.toggleFromMenu()
-            precondition(chord.flags(base, key: 61, raw: option | unrelated),
-                         "Unrelated modifier chords must be passed through")
-            precondition(chord.state == .recording && chord.stops == 0)
-            chord.flags(base + 10, key: 61, raw: unrelated)
-            precondition(chord.stops == 0)
-        }
-        let heldKey = GestureHarness()
-        heldKey.toggleFromMenu()
-        heldKey.event(.keyDown, at: base, key: 0)
-        heldKey.flags(base + 10, key: 61, raw: option)
-        precondition(heldKey.stops == 0, "Adding auxiliary to an existing key chord is not a finish")
-        heldKey.flags(base + 20, key: 61, raw: 0)
-        heldKey.event(.keyUp, at: base + 30, key: 0)
-        heldKey.flags(base + 40, key: 61, raw: option)
-        precondition(heldKey.oppositeStops == 1)
-        print("PASS unrelated left/right modifier and held-key chords do not finish")
-
-        let capsLock = GestureHarness()
-        capsLock.toggleFromMenu()
-        capsLock.flags(base, key: 61, raw: option | CGEventFlags.maskAlphaShift.rawValue)
-        precondition(capsLock.oppositeStops == 1, "Latched Caps Lock must not block alternate finish")
-        for type in [CGEventType.tapDisabledByTimeout, .tapDisabledByUserInput] {
-            let recovered = GestureHarness()
-            recovered.toggleFromMenu()
-            recovered.event(.keyDown, at: base, key: 0)
-            // The tap missed key-up. Recovery should clear stale held keys, without invoking an action.
-            TestKeyboardState.flags = []
-            TestKeyboardState.heldKeys = []
-            recovered.event(type, at: base + 10)
-            precondition(recovered.state == .recording && recovered.stops == 0)
-            recovered.flags(base + 20, key: 61, raw: option)
-            precondition(recovered.oppositeStops == 1)
-            let stillHeld = GestureHarness()
-            stillHeld.toggleFromMenu()
-            stillHeld.event(.keyDown, at: base, key: 0)
-            TestKeyboardState.heldKeys = [0]
-            stillHeld.event(type, at: base + 10)
-            stillHeld.flags(base + 20, key: 61, raw: option)
-            precondition(stillHeld.stops == 0, "Recovery must not forget keys that are still physically held")
-            let missedPress = GestureHarness()
-            missedPress.toggleFromMenu()
-            // A letter was pressed while disabled; no keyDown was delivered to the monitor.
-            TestKeyboardState.heldKeys = [0]
-            missedPress.event(type, at: base + 10)
-            missedPress.flags(base + 20, key: 61, raw: option)
-            precondition(missedPress.stops == 0,
-                         "Recovery must discover newly held keys, not just filter previously tracked keys")
-            missedPress.flags(base + 30, key: 61, raw: 0)
-            missedPress.event(.keyUp, at: base + 40, key: 0)
-            missedPress.flags(base + 50, key: 61, raw: option)
-            precondition(missedPress.oppositeStops == 1)
-            let modifierOnly = GestureHarness()
-            modifierOnly.toggleFromMenu()
-            TestKeyboardState.heldKeys = [57] // latched Caps Lock is not a held ordinary key
-            modifierOnly.event(type, at: base + 10)
-            modifierOnly.flags(base + 20, key: 61, raw: option | CGEventFlags.maskAlphaShift.rawValue)
-            precondition(modifierOnly.oppositeStops == 1)
-            TestKeyboardState.heldKeys = []
-        }
-        print("PASS Caps Lock and event-tap recovery without fabricated finish actions")
-
-        let collision = GestureHarness()
-        collision.settings.triggerKey = .rightOption
-        collision.monitor.triggerKey = .rightOption
-        collision.settings.effectiveAlternateFinishKey = .rightOption
-        collision.flags(base, key: 61, raw: option)
-        collision.flags(base + 400_000_000, key: 61, raw: 0)
-        precondition(collision.stops == 1 && collision.oppositeStops == 0)
-        let disabled = GestureHarness()
-        disabled.settings.effectiveAlternateFinishKey = nil
-        disabled.toggleFromMenu()
-        precondition(disabled.hud.recordingHint == "This input: AI polishing",
-                     "Disabled shortcut shows only this recording's captured state, not an unavailable action")
-        disabled.flags(base, key: 61, raw: option)
-        precondition(disabled.stops == 0)
-        print("PASS collision defense and disabled auxiliary preserve primary behavior")
-
-        for (primary, primaryCode, primaryMask) in [(.fn, CGKeyCode(63), fn)] + modifiers {
-            for (alternate, alternateCode, alternateMask) in modifiers where alternate != primary {
-                let test = GestureHarness()
-                test.settings.triggerKey = primary
-                test.monitor.triggerKey = primary
-                test.settings.effectiveAlternateFinishKey = alternate
-                test.flags(base, key: primaryCode, raw: primaryMask)
-                test.flags(base + 400_000_000, key: alternateCode, raw: primaryMask | alternateMask)
-                precondition(test.stops == 1 && test.oppositeStops == 1,
-                             "Each supported primary can combine with a different auxiliary")
-            }
-        }
         for enabled in [true, false] {
             let normal = GestureHarness()
             normal.settings.polishEnabled = enabled
             normal.press(base)
-            let expectedHint = enabled
-                ? "This input: AI polishing · Press rightOption to skip polishing"
-                : "This input: no AI polishing · Press rightOption to use polishing"
-            precondition(normal.hud.recordingHint == expectedHint,
-                         "HUD names both the captured default and the key's concrete action")
             normal.settings.polishEnabled = !enabled
-            normal.settings.effectiveAlternateFinishKey = .rightCommand
             normal.settings.recordingGestureMode = .toggle
-            normal.refreshRecordingHint()
-            precondition(normal.hud.recordingHint == expectedHint,
-                         "Display refresh must retain recording-start state and key, not live settings")
-            precondition(normal.recordingPolishEnabled == enabled && normal.recordingAlternateFinishKey == .rightOption
-                         && normal.recordingGestureMode == .hold && normal.state == .recording && normal.stops == 0,
-                         "Relabeling must not mutate any recording snapshot or finish recording")
             normal.release(base + 400_000_000)
-            precondition(normal.stoppedPolish == enabled && normal.oppositeStops == 0)
+            precondition(normal.stoppedPolish == enabled && normal.recordingGestureMode == .hold,
+                         "Polishing follows the recording-start snapshot, not changed Settings")
         }
         let changedTrigger = GestureHarness()
         changedTrigger.press(base)
@@ -571,24 +429,36 @@ TESTS = r'''
         changedTrigger.state = .idle
         changedTrigger.updateTriggerKey()
         precondition(changedTrigger.monitor.triggerKey == .rightControl)
-        print("PASS all primary/auxiliary pairs and snapshot normal finish/trigger changes")
+        print("PASS polish snapshot and dictation key changes wait for idle")
+
+        for type in [CGEventType.tapDisabledByTimeout, .tapDisabledByUserInput] {
+            let recovered = GestureHarness()
+            recovered.press(base)
+            // The tap missed the release; recovery reads the physical state without acting.
+            TestKeyboardState.flags = []
+            recovered.event(type, at: base + 10)
+            precondition(recovered.state == .recording && recovered.stops == 0,
+                         "Event-tap recovery never fabricates a finish")
+            recovered.press(base + 20)
+            precondition(recovered.state == .recording && recovered.stops == 0, "A fresh hold press does not finish")
+            recovered.release(base + 30)
+            precondition(recovered.stops == 1, "The next real release finishes normally")
+        }
+        print("PASS event-tap recovery without fabricated actions")
 
         let editing = GestureHarness()
         editing.editSelection = "selected text"
         editing.toggleFromMenu()
-        precondition(editing.hud.recordingHint == nil)
         editing.flags(base, key: 61, raw: option)
-        precondition(editing.stops == 0, "Voice edit cannot advertise or accept raw/polish override")
-        editing.alternateFinishPressed(at: base + 10)
-        precondition(editing.stops == 0)
+        precondition(editing.stops == 0, "Voice edit ignores other modifiers too")
         editing.toggleFromMenu()
-        precondition(editing.stops == 1 && editing.oppositeStops == 0)
+        precondition(editing.stops == 1)
         let escape = GestureHarness()
         escape.toggleFromMenu()
         escape.event(.keyDown, at: base, key: 53)
         escape.flags(base + 10, key: 61, raw: option)
-        precondition(escape.state == .idle && escape.stops == 0 && escape.hud.recordingHint == nil)
-        print("PASS voice edit exclusion and Escape cancellation disarm auxiliary")
+        precondition(escape.state == .idle && escape.stops == 0)
+        print("PASS voice edit and Escape cancellation")
 
         let capture = GestureHarness()
         capture.hotkeyActive = true
@@ -669,7 +539,7 @@ operation = controller.split("private struct DictationOperation", 1)[1].split("/
 source = (hotkeys + "private struct DictationOperation" + operation + gesture_mode + STUBS.replace("__ERROR_CALLBACK__", error_callback.group(1)).replace("__RECORDER_ERROR_CALLBACK__", recorder_error_callback.group(1))
           + "\n".join(fields) + "\n"
           + "\n".join(method(name) for name in
-                      ("triggerPressed", "triggerReleased", "alternateFinishPressed", "configureRecordingFinish", "refreshRecordingHint",
+                      ("triggerPressed", "triggerReleased",
                        "setShortcutCaptureActive", "updateTranslationShortcut", "updateTriggerKey", "comboKeyPressed", "toggleFromMenu",
                        "escapePressed", "cancel", "isCurrentRecognition"))
           + TESTS)

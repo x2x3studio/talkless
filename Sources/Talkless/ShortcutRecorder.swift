@@ -79,20 +79,8 @@ struct ShortcutRecorder: View {
 
 /// Validation is independent of preferences so rejected recordings never get persisted.
 enum ShortcutRecorderRules {
-    static func primaryError(_ key: TriggerKey?, alternate: AlternateFinishKey) -> String? {
-        guard let key else { return L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier.") }
-        if alternate.triggerKey == key {
-            return L10n.format("%@ is already the AI polishing shortcut. Record a different key.", key.title)
-        }
-        // Existing Automatic preferences adapt to the new primary key rather than collide.
-        return nil
-    }
-
-    static func alternateError(_ key: TriggerKey?, primary: TriggerKey) -> String? {
-        guard let key else { return nil }
-        if key == primary {
-            return L10n.format("%@ is already the dictation key. Record a different key.", key.title)
-        }
+    static func primaryError(_ key: TriggerKey?) -> String? {
+        guard key != nil else { return L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier.") }
         return nil
     }
 }
@@ -222,7 +210,7 @@ struct ShortcutCaptureState {
             pendingKey = nil
             if allowsClearing {
                 pendingClear = true
-                message = L10n.tr("Release Delete to disable the AI polishing shortcut.")
+                message = L10n.tr("Release Delete to clear this shortcut.")
                 isError = false
             } else {
                 reject(L10n.tr("The dictation key cannot be cleared. Press Fn or a right-side modifier."))

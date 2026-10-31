@@ -18,14 +18,10 @@
 " · So far today" = " · 今日截至目前";
 "%@ %@" = "%@ %@";
 "%@ %@ per day" = "每天 %@ %@";
-"%@ (%@)" = "%@（%@）";
 "%@ (build %@)" = "%@（构建 %@）";
 "%@ characters · %lld dictation · %@" = "%@ 个字符 · %lld 次语音输入 · %@";
 "%@ characters · %lld dictations · %@" = "%@ 个字符 · %lld 次语音输入 · %@";
 "%@ download" = "%@ 下载";
-"%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys." = "%@ 已用作 AI 润色快捷键。请先更改它，或使用“重置录音快捷键”重置两个按键。";
-"%@ is already the AI polishing shortcut. Record a different key." = "%@ 已用作 AI 润色快捷键。请录入其他按键。";
-"%@ is already the dictation key. Record a different key." = "%@ 已用作语音输入键。请录入其他按键。";
 "%@ is not supported. Press Fn or a right-side Command, Option, or Control key." = "不支持%@。请按 Fn 或右侧 Command、Option、Control 键。";
 "%@ of %@" = "%@ / %@";
 "%@ overlay preview" = "%@悬浮窗预览";
@@ -100,7 +96,6 @@
 "Allow microphone access to record your voice." = "允许麦克风访问权限，以录制语音。";
 "Allow microphone and Accessibility access to dictate." = "允许麦克风和辅助功能访问权限，即可开始语音输入。";
 "Allowed" = "已允许";
-"AI polishing shortcut" = "AI 润色快捷键";
 "An update is in progress. Continue in the update window." = "更新正在进行中。请在更新窗口中继续操作。";
 "Animate status indicators" = "启用状态指示动画";
 "Anthropic Messages" = "Anthropic Messages";
@@ -118,7 +113,6 @@
 "Auto · %@" = "自动 · %@";
 "Auto · Detect language" = "自动 · 检测语言";
 "Auto · Primary or secondary" = "自动 · 主要或次要语言";
-"Automatic" = "自动";
 "Automatic translation" = "自动翻译";
 "Automatic update checks are turned off. Use Check for Updates to check manually." = "自动检查更新已关闭。请使用“检查更新”手动检查。";
 "Automatically check for updates" = "自动检查更新";
@@ -181,7 +175,6 @@
 "Clear history" = "清空历史记录";
 "Clear history…" = "清空历史记录…";
 "Clear saved history?" = "清空已保存的历史记录？";
-"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。录制快捷键时按 Delete 可停用 AI 润色快捷键。";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。仅支持单个按键。";
 "Click, then press a key combination with Command, Control, or Option to change this shortcut." = "点击后按下包含 Command、Control 或 Option 的组合键以更改此快捷键。";
 "Click, then press a key to change this shortcut." = "点击后按下按键以更改此快捷键。";
@@ -193,7 +186,6 @@
 "Completed dictations. Edits and translations are not included." = "已完成的语音输入次数，不含编辑和翻译。";
 "Configuration complete" = "配置完成";
 "Configure a service before enabling polishing." = "请先配置服务，再开启润色。";
-"Configure an AI service in Settings to polish. Using the original transcript." = "请在设置中配置 AI 服务以使用润色。将使用原始转写文本。";
 "Configure an AI service in Settings to translate selected text" = "请在设置中配置 AI 服务以翻译选中文本";
 "Configure the shared provider and model, or test the connection." = "配置共用的服务商和模型，或测试连接。";
 "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements." = "确认后的词语可在启用识别和 AI 润色时提供提示，不会强制替换文本。";
@@ -256,11 +248,6 @@
 "Speech model not downloaded · Open Settings" = "语音模型未下载 · 去设置";
 "Hold %@" = "长按%@";
 "Tap %@" = "单击%@";
-"This input: AI polishing" = "本次使用 AI 润色";
-"This input: no AI polishing" = "本次跳过 AI 润色";
-"Press %@ to skip polishing" = "按%@跳过润色";
-"Press %@ to use polishing" = "按%@使用润色";
-"%@ · %@" = "%@ · %@";
 "Dictation key" = "语音输入键";
 "Dictation or a model change is already in progress" = "语音输入或模型更改正在进行中";
 "Dictations" = "语音输入次数";
@@ -506,7 +493,6 @@
 "Recognizing" = "识别中";
 "Recommended" = "推荐";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "推荐 · MLX 4 位量化 · 下载更小、内存占用更低";
-"Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match." = "请选择与语音输入键不同的按键。两个按键相同时，AI 润色快捷键将被停用。";
 "Record your voice" = "录制语音";
 "Recorded audio time for completed dictations." = "已完成语音输入的录音时长。";
 "Recorded time" = "录音时长";
@@ -514,7 +500,6 @@
 "Recording mode" = "录音模式";
 "Redo" = "重做";
 "Release %@ to save. Esc cancels." = "松开 %@ 保存。按 Esc 取消。";
-"Release Delete to disable the AI polishing shortcut." = "松开 Delete 停用 AI 润色快捷键。";
 "Release Delete to disable translation shortcut." = "松开 Delete 停用翻译快捷键。";
 "Release Esc to cancel." = "松开 Esc 取消。";
 "Release all keys to cancel." = "松开所有按键以取消。";
@@ -530,11 +515,9 @@
 "Reset microphone to System default" = "将麦克风重置为系统默认";
 "Reset microphone to System default. Other settings are unchanged." = "将麦克风重置为系统默认。其他设置保持不变。";
 "Reset recording mode" = "重置录音模式";
-"Reset recording shortcuts" = "重置录音快捷键";
 "Restore %@. Shortcuts and other settings are unchanged." = "恢复为%@。快捷键和其他设置保持不变。";
 "Restore defaults" = "恢复默认设置";
 "Restore the default for %@" = "恢复%@的默认设置";
-"Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged." = "恢复两个录音快捷键。录音模式、翻译和其他设置保持不变。";
 "Resume" = "继续";
 "Retry" = "重试";
 "Review (%lld)" = "待确认（%lld）";
@@ -641,7 +624,6 @@
 "Thai" = "泰语";
 "That combination is reserved by macOS. Record a different shortcut." = "此组合已被 macOS 保留。请录制其他快捷键。";
 "That key" = "此按键";
-"That key is not supported for the AI polishing shortcut." = "该按键不支持用作 AI 润色快捷键。";
 "That key or combination is not supported. Press Fn or a right-side modifier by itself." = "不支持此按键或组合键。请单独按 Fn 或右侧修饰键。";
 "The API key contains invalid characters." = "API 密钥包含无效字符。";
 "The API key could not be read from Keychain. The saved key has not been changed. %@" = "无法从钥匙串读取 API 密钥，已保存的密钥未被更改。%@";
@@ -784,12 +766,8 @@
 "the selected model" = "所选模型";
 "toggle" = "切换";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@”将不再用作词典提示。此操作不会删除历史记录或忽略待确认建议。";
-"Use AI polishing" = "使用 AI 润色";
-"Skip AI polishing" = "跳过 AI 润色";
 "Default: Use AI polishing" = "默认：使用 AI 润色";
 "Default: Skip AI polishing" = "默认：跳过 AI 润色";
-"While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged." = "录音时按此键结束录音，并仅为本次输入使用 AI 润色，不更改默认设置。";
-"While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged." = "录音时按此键结束录音，并仅为本次输入跳过 AI 润色，不更改默认设置。";
 "Your default is captured when recording starts." = "默认设置以录音开始时为准。";
 "The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again." = "音频输入未切换到所选麦克风。请在“设置 › 语音输入 › 音频”中重新选择后重试。";
 "The microphone audio format is not ready. Check your microphone and try again." = "麦克风音频格式尚未就绪，请检查麦克风后重试。";
@@ -836,3 +814,4 @@
 "Heard: " = "原文：";
 "Instruction: " = "指令：";
 "Original: " = "原文：";
+"Release Delete to clear this shortcut." = "松开 Delete 即可清除这个快捷键。";

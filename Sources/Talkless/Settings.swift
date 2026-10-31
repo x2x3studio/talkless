@@ -43,44 +43,6 @@ enum RecordingGestureMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum AlternateFinishKey: String, CaseIterable, Identifiable {
-    case automatic, disabled, fn, rightOption, rightCommand, rightControl
-
-    var id: String { rawValue }
-
-    var triggerKey: TriggerKey? {
-        switch self {
-        case .automatic, .disabled: nil
-        case .fn: .fn
-        case .rightOption: .rightOption
-        case .rightCommand: .rightCommand
-        case .rightControl: .rightControl
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .automatic: L10n.tr("Automatic")
-        case .disabled: L10n.tr("Disabled")
-        case .fn: TriggerKey.fn.title
-        case .rightOption: TriggerKey.rightOption.title
-        case .rightCommand: TriggerKey.rightCommand.title
-        case .rightControl: TriggerKey.rightControl.title
-        }
-    }
-
-    func resolved(for primary: TriggerKey) -> TriggerKey? {
-        if self == .automatic { return primary == .rightOption ? .rightCommand : .rightOption }
-        guard let triggerKey, triggerKey != primary else { return nil }
-        return triggerKey
-    }
-
-    func title(for primary: TriggerKey) -> String {
-        guard self == .automatic, let key = resolved(for: primary) else { return title }
-        return L10n.format("%@ (%@)", title, key.title)
-    }
-}
-
 enum ASREngine: String, CaseIterable, Identifiable {
     /// Local Qwen3-ASR, running on Apple Silicon through MLX.
     case qwen
@@ -154,15 +116,10 @@ final class AppSettings: ObservableObject {
     }
 
     static let defaultTriggerKey: TriggerKey = .fn
-    static let defaultAlternateFinishKey: AlternateFinishKey = .automatic
 
     @Published var triggerKey: TriggerKey { didSet { save(triggerKey.rawValue, "triggerKey") } }
-    @Published var alternateFinishKey: AlternateFinishKey { didSet { save(alternateFinishKey.rawValue, "alternateFinishKey") } }
 
-    var effectiveAlternateFinishKey: TriggerKey? { alternateFinishKey.resolved(for: triggerKey) }
     var isTriggerKeyDefault: Bool { triggerKey == Self.defaultTriggerKey }
-    // Automatic is a preference, not merely today's resolved key.
-    var isAlternateFinishKeyDefault: Bool { alternateFinishKey == Self.defaultAlternateFinishKey }
     static let defaultTranslationShortcut: TranslationShortcut = .default
     private static let translationShortcutKey = "translationShortcut.v1"
     @Published var translationShortcut: TranslationShortcut {
@@ -173,37 +130,20 @@ final class AppSettings: ObservableObject {
         }
     }
     var isTranslationShortcutDefault: Bool { translationShortcut == Self.defaultTranslationShortcut }
-    var areRecordingShortcutsDefault: Bool { isTriggerKeyDefault && isAlternateFinishKeyDefault }
-    var areShortcutsDefault: Bool { areRecordingShortcutsDefault && isTranslationShortcutDefault }
+    var areShortcutsDefault: Bool { isTriggerKeyDefault && isTranslationShortcutDefault }
 
     func resetTranslationShortcut() {
         if !isTranslationShortcutDefault { translationShortcut = Self.defaultTranslationShortcut }
     }
-    var defaultAlternateFinishKeyTitle: String { Self.defaultAlternateFinishKey.title(for: triggerKey) }
 
-    /// A single-row reset must not overwrite or disable the other custom binding.
+    /// Returns an error message for the recorder row; resetting the only recording key cannot conflict.
     func resetTriggerKey() -> String? {
-        guard !isTriggerKeyDefault else { return nil }
-        guard alternateFinishKey.triggerKey != Self.defaultTriggerKey else {
-            return L10n.format("%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys.", Self.defaultTriggerKey.title)
-        }
-        triggerKey = Self.defaultTriggerKey
+        if !isTriggerKeyDefault { triggerKey = Self.defaultTriggerKey }
         return nil
-    }
-
-    func resetAlternateFinishKey() -> String? {
-        if !isAlternateFinishKeyDefault { alternateFinishKey = Self.defaultAlternateFinishKey }
-        return nil
-    }
-
-    func restoreRecordingShortcutDefaults() {
-        // Restore Automatic first so an explicit Fn alternate cannot briefly collide.
-        _ = resetAlternateFinishKey()
-        _ = resetTriggerKey()
     }
 
     func restoreShortcutDefaults() {
-        restoreRecordingShortcutDefaults()
+        _ = resetTriggerKey()
         resetTranslationShortcut()
     }
 
@@ -336,7 +276,8 @@ final class AppSettings: ObservableObject {
             d.set(Self.defaultRecordingGestureMode.rawValue, forKey: "recordingGestureMode")
         }
         triggerKey = TriggerKey(rawValue: d.string(forKey: "triggerKey") ?? "") ?? Self.defaultTriggerKey
-        alternateFinishKey = AlternateFinishKey(rawValue: d.string(forKey: "alternateFinishKey") ?? "") ?? Self.defaultAlternateFinishKey
+        // The per-dictation AI polishing shortcut was retired; drop its stored preference.
+        d.removeObject(forKey: "alternateFinishKey")
         let storedTranslationShortcut = d.data(forKey: Self.translationShortcutKey)
             .flatMap { try? JSONDecoder().decode(TranslationShortcut.self, from: $0) }
         translationShortcut = storedTranslationShortcut.flatMap { $0.validationError == nil ? $0 : nil }

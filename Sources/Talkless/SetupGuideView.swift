@@ -9,19 +9,7 @@ enum SetupGuidePermission: Equatable {
 struct SetupGuideControls: Equatable {
     var dictationKeyTitle = L10n.tr("Fn / Globe")
     var holdToTalk = true
-    var alternateFinishKeyTitle: String?
-    var polishEnabled = false
     var translationShortcutTitle: String?
-
-    var polishingAction: String {
-        polishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
-    }
-
-    var polishingInstruction: String {
-        polishEnabled
-            ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
-            : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.")
-    }
 
     var dictationInstruction: String {
         holdToTalk
@@ -234,10 +222,6 @@ struct SetupGuideView: View {
                             detail: snapshot.controls.dictationInstruction)
                 shortcutRow("Esc", title: L10n.tr("Cancel"),
                             detail: L10n.tr("Cancel recording or processing without inserting text."))
-                if let key = snapshot.controls.alternateFinishKeyTitle {
-                    shortcutRow(key, title: snapshot.controls.polishingAction,
-                                detail: snapshot.controls.polishingInstruction)
-                }
                 if let key = snapshot.controls.translationShortcutTitle {
                     shortcutRow(key, title: L10n.tr("Translate selection"),
                                 detail: L10n.tr("Select text in another app, then use this shortcut. An AI service is required."))

@@ -2,17 +2,14 @@ import SwiftUI
 
 /// Sections for the Dictation form. AI setup and selected-text translation live on their own pages.
 @MainActor
-struct DictationProcessingSettingsView<PolishShortcut: View>: View {
+struct DictationProcessingSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject private var settings: AppSettings
     private let onConfigureAI: () -> Void
-    private let polishShortcut: PolishShortcut
 
-    init(settings: AppSettings = .shared, onConfigureAI: @escaping () -> Void,
-         @ViewBuilder polishShortcut: () -> PolishShortcut = { EmptyView() }) {
+    init(settings: AppSettings = .shared, onConfigureAI: @escaping () -> Void) {
         self.settings = settings
         self.onConfigureAI = onConfigureAI
-        self.polishShortcut = polishShortcut()
     }
 
     var body: some View {
@@ -25,8 +22,6 @@ struct DictationProcessingSettingsView<PolishShortcut: View>: View {
             }
 
             AIServiceStatusView(settings: settings, onConfigureAI: onConfigureAI)
-
-            polishShortcut
 
             VStack(alignment: .leading, spacing: 6) {
                 Picker(L10n.tr("Output language"), selection: $settings.outputLanguage) {

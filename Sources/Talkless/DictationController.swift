@@ -72,7 +72,6 @@ final class DictationController: ObservableObject {
     private var recordingPolishEnabled = false
     /// Per-recording snapshot of explicit "heard as" fixes, like the dictionary hints.
     private var recordingReplacements: [DictionaryReplacement] = []
-    private var recordingAlternateFinishKey: TriggerKey?
     private var languageSubscription: AnyCancellable?
     private var editSelection: String?
     private var targetApp: NSRunningApplication?
@@ -165,7 +164,6 @@ final class DictationController: ObservableObject {
         hotkeys.onPress = { [weak self] timestamp in self?.triggerPressed(at: timestamp) }
         hotkeys.onRelease = { [weak self] timestamp in self?.triggerReleased(at: timestamp) }
         hotkeys.onComboKey = { [weak self] timestamp in self?.comboKeyPressed(at: timestamp) }
-        hotkeys.onAlternateFinish = { [weak self] timestamp in self?.alternateFinishPressed(at: timestamp) }
         hotkeys.onEscape = { [weak self] in self?.escapePressed() ?? false }
         translateHotKey = GlobalHotKey { [weak self] in
             Task { await self?.translateSelection() }
@@ -174,9 +172,7 @@ final class DictationController: ObservableObject {
         languageSubscription = NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let self else { return }
-                if self.state == .recording { self.refreshRecordingHint() }
-                self.objectWillChange.send()
+                self?.objectWillChange.send()
             }
     }
 
@@ -281,12 +277,6 @@ final class DictationController: ObservableObject {
         } else {
             stopAndProcess()
         }
-    }
-
-    private func alternateFinishPressed(at timestamp: CGEventTimestamp) {
-        guard !shortcutCaptureActive, state == .recording, editSelection == nil else { return }
-        if let pressedAt, timestamp < pressedAt { return }
-        stopAndProcess(useOppositePolish: true)
     }
 
     private func comboKeyPressed(at timestamp: CGEventTimestamp) {
@@ -463,7 +453,8 @@ final class DictationController: ObservableObject {
         // Publish busy state and capture the finish choice before yielding. Event-tap
         // callbacks must never wait for engine/input-node/HAL startup or teardown.
         state = .recording
-        configureRecordingFinish()
+        // Snapshotted so a Settings change only affects the next recording.
+        recordingPolishEnabled = settings.polishEnabled
         // Overlap the AI service handshake with speech instead of paying it after recognition.
         if editSelection != nil || (recordingPolishEnabled && settings.llmConfigured) {
             LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
@@ -495,38 +486,13 @@ final class DictationController: ObservableObject {
         self.generation == generation && acceptsRecognitionHUDUpdates && (state == .recording || state == .processing)
     }
 
-    private func configureRecordingFinish() {
-        recordingPolishEnabled = settings.polishEnabled
-        let alternate = editSelection == nil ? settings.effectiveAlternateFinishKey : nil
-        hotkeys.armAlternateFinish(alternate)
-        recordingAlternateFinishKey = alternate
-        refreshRecordingHint()
-    }
-
-    /// Relabel only: never resnapshot preferences or rearm a shortcut during recording.
-    private func refreshRecordingHint() {
-        if editSelection != nil {
-            hud.model.recordingHint = nil
-        } else {
-            let mode = recordingPolishEnabled ? L10n.tr("This input: AI polishing") : L10n.tr("This input: no AI polishing")
-            hud.model.recordingHint = recordingAlternateFinishKey.map { key in
-                let action = recordingPolishEnabled
-                    ? L10n.format("Press %@ to skip polishing", key.title)
-                    : L10n.format("Press %@ to use polishing", key.title)
-                return L10n.format("%@ · %@", mode, action)
-            } ?? mode
-        }
-    }
-
-    private func stopAndProcess(useOppositePolish: Bool = false) {
+    private func stopAndProcess() {
         guard state == .recording, let session else { return }
-        let opposite = useOppositePolish && editSelection == nil
-        let shouldPolish = opposite ? !recordingPolishEnabled : recordingPolishEnabled
+        let shouldPolish = recordingPolishEnabled
         pressedAt = nil
-        hotkeys.armAlternateFinish(nil)
         let operation = diagnosticOperation
         let processingStarted = DispatchTime.now().uptimeNanoseconds
-        operation?.record("recording_stop", ["opposite_finish": String(opposite), "polish_enabled": String(shouldPolish)])
+        operation?.record("recording_stop", ["polish_enabled": String(shouldPolish)])
         let startupTask = self.startupTask
         // Stop requests become busy immediately; repeated presses/releases cannot
         // start another stop, even while native startup or teardown is pending.
@@ -617,9 +583,6 @@ final class DictationController: ObservableObject {
                         output = raw
                         polishError = L10n.tr("Polishing failed; using the original transcript.")
                     }
-                } else if shouldPolish, opposite {
-                    operation?.record("polish_error", ["stage": "polish", "reason": "not_configured", "fallback": "true"])
-                    polishError = L10n.tr("Configure an AI service in Settings to polish. Using the original transcript.")
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
 
@@ -691,8 +654,6 @@ final class DictationController: ObservableObject {
         startupTask = nil
         processingTask = nil
         pressedAt = nil
-        hotkeys.armAlternateFinish(nil)
-        hud.model.recordingHint = nil
         if phase != .completed { hud.model.setDictionaryTerms([]) }
         updateTriggerKey()
         hud.show(phase)
@@ -718,8 +679,6 @@ final class DictationController: ObservableObject {
         processingTask?.cancel()
         processingTask = nil
         state = .idle
-        hotkeys.armAlternateFinish(nil)
-        hud.model.recordingHint = nil
         hud.model.setDictionaryTerms([])
         updateTriggerKey()
         hud.hide()

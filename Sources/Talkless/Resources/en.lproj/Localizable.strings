@@ -18,14 +18,10 @@
 " · So far today" = " · So far today";
 "%@ %@" = "%@ %@";
 "%@ %@ per day" = "%@ %@ per day";
-"%@ (%@)" = "%@ (%@)";
 "%@ (build %@)" = "%@ (build %@)";
 "%@ characters · %lld dictation · %@" = "%@ characters · %lld dictation · %@";
 "%@ characters · %lld dictations · %@" = "%@ characters · %lld dictations · %@";
 "%@ download" = "%@ download";
-"%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys." = "%@ is already the AI polishing shortcut. Change it first, or use Reset recording shortcuts to reset both keys.";
-"%@ is already the AI polishing shortcut. Record a different key." = "%@ is already the AI polishing shortcut. Record a different key.";
-"%@ is already the dictation key. Record a different key." = "%@ is already the dictation key. Record a different key.";
 "%@ is not supported. Press Fn or a right-side Command, Option, or Control key." = "%@ is not supported. Press Fn or a right-side Command, Option, or Control key.";
 "%@ of %@" = "%@ of %@";
 "%@ overlay preview" = "%@ overlay preview";
@@ -100,7 +96,6 @@
 "Allow microphone access to record your voice." = "Allow microphone access to record your voice.";
 "Allow microphone and Accessibility access to dictate." = "Allow microphone and Accessibility access to dictate.";
 "Allowed" = "Allowed";
-"AI polishing shortcut" = "AI polishing shortcut";
 "An update is in progress. Continue in the update window." = "An update is in progress. Continue in the update window.";
 "Animate status indicators" = "Animate status indicators";
 "Anthropic Messages" = "Anthropic Messages";
@@ -118,7 +113,6 @@
 "Auto · %@" = "Auto · %@";
 "Auto · Detect language" = "Auto · Detect language";
 "Auto · Primary or secondary" = "Auto · Primary or secondary";
-"Automatic" = "Automatic";
 "Automatic translation" = "Automatic translation";
 "Automatic update checks are turned off. Use Check for Updates to check manually." = "Automatic update checks are turned off. Use Check for Updates to check manually.";
 "Automatically check for updates" = "Automatically check for updates";
@@ -181,7 +175,6 @@
 "Clear history" = "Clear history";
 "Clear history…" = "Clear history…";
 "Clear saved history?" = "Clear saved history?";
-"Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut.";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.";
 "Click, then press a key combination with Command, Control, or Option to change this shortcut." = "Click, then press a key combination with Command, Control, or Option to change this shortcut.";
 "Click, then press a key to change this shortcut." = "Click, then press a key to change this shortcut.";
@@ -193,7 +186,6 @@
 "Completed dictations. Edits and translations are not included." = "Completed dictations. Edits and translations are not included.";
 "Configuration complete" = "Configuration complete";
 "Configure a service before enabling polishing." = "Configure a service before enabling polishing.";
-"Configure an AI service in Settings to polish. Using the original transcript." = "Configure an AI service in Settings to polish. Using the original transcript.";
 "Configure an AI service in Settings to translate selected text" = "Configure an AI service in Settings to translate selected text";
 "Configure the shared provider and model, or test the connection." = "Configure the shared provider and model, or test the connection.";
 "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements." = "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements.";
@@ -256,11 +248,6 @@
 "Speech model not downloaded · Open Settings" = "Speech model not downloaded · Open Settings";
 "Hold %@" = "Hold %@";
 "Tap %@" = "Tap %@";
-"This input: AI polishing" = "This input: AI polishing";
-"This input: no AI polishing" = "This input: no AI polishing";
-"Press %@ to skip polishing" = "Press %@ to skip polishing";
-"Press %@ to use polishing" = "Press %@ to use polishing";
-"%@ · %@" = "%@ · %@";
 "Dictation key" = "Dictation key";
 "Dictation or a model change is already in progress" = "Dictation or a model change is already in progress";
 "Dictations" = "Dictations";
@@ -506,7 +493,6 @@
 "Recognizing" = "Recognizing";
 "Recommended" = "Recommended";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "Recommended · MLX 4-bit · Smaller download and memory footprint";
-"Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match." = "Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match.";
 "Record your voice" = "Record your voice";
 "Recorded audio time for completed dictations." = "Recorded audio time for completed dictations.";
 "Recorded time" = "Recorded time";
@@ -514,7 +500,6 @@
 "Recording mode" = "Recording mode";
 "Redo" = "Redo";
 "Release %@ to save. Esc cancels." = "Release %@ to save. Esc cancels.";
-"Release Delete to disable the AI polishing shortcut." = "Release Delete to disable the AI polishing shortcut.";
 "Release Delete to disable translation shortcut." = "Release Delete to disable translation shortcut.";
 "Release Esc to cancel." = "Release Esc to cancel.";
 "Release all keys to cancel." = "Release all keys to cancel.";
@@ -530,11 +515,9 @@
 "Reset microphone to System default" = "Reset microphone to System default";
 "Reset microphone to System default. Other settings are unchanged." = "Reset microphone to System default. Other settings are unchanged.";
 "Reset recording mode" = "Reset recording mode";
-"Reset recording shortcuts" = "Reset recording shortcuts";
 "Restore %@. Shortcuts and other settings are unchanged." = "Restore %@. Shortcuts and other settings are unchanged.";
 "Restore defaults" = "Restore defaults";
 "Restore the default for %@" = "Restore the default for %@";
-"Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged." = "Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged.";
 "Resume" = "Resume";
 "Retry" = "Retry";
 "Review (%lld)" = "Review (%lld)";
@@ -641,7 +624,6 @@
 "Thai" = "Thai";
 "That combination is reserved by macOS. Record a different shortcut." = "That combination is reserved by macOS. Record a different shortcut.";
 "That key" = "That key";
-"That key is not supported for the AI polishing shortcut." = "That key is not supported for the AI polishing shortcut.";
 "That key or combination is not supported. Press Fn or a right-side modifier by itself." = "That key or combination is not supported. Press Fn or a right-side modifier by itself.";
 "The API key contains invalid characters." = "The API key contains invalid characters.";
 "The API key could not be read from Keychain. The saved key has not been changed. %@" = "The API key could not be read from Keychain. The saved key has not been changed. %@";
@@ -784,12 +766,8 @@
 "the selected model" = "the selected model";
 "toggle" = "toggle";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.";
-"Use AI polishing" = "Use AI polishing";
-"Skip AI polishing" = "Skip AI polishing";
 "Default: Use AI polishing" = "Default: Use AI polishing";
 "Default: Skip AI polishing" = "Default: Skip AI polishing";
-"While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged." = "While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.";
-"While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged." = "While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.";
 "Your default is captured when recording starts." = "Your default is captured when recording starts.";
 "The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again." = "The audio input did not switch to the selected microphone. Choose it again in Settings › Dictation › Audio and try again.";
 "The microphone audio format is not ready. Check your microphone and try again." = "The microphone audio format is not ready. Check your microphone and try again.";
@@ -836,3 +814,4 @@
 "Heard: " = "Heard: ";
 "Instruction: " = "Instruction: ";
 "Original: " = "Original: ";
+"Release Delete to clear this shortcut." = "Release Delete to clear this shortcut.";

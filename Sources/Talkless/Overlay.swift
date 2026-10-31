@@ -51,7 +51,6 @@ final class HUDModel: ObservableObject {
     @Published var preview = ""
     /// Only a finalized ASR transcript, never successive provisional partials.
     @Published var revisionOriginal: String?
-    @Published var recordingHint: String?
     @Published var appearance: HUDAppearance
     @Published private(set) var dictionaryTerms: [String] = []
     private var dictionaryMatcher = DictionaryHighlightMatcher(terms: [])
@@ -307,7 +306,6 @@ final class HUDController {
         panel.orderOut(nil)
         model.phase = .hidden
         model.preview = ""
-        model.recordingHint = nil
         model.isEditMode = false
     }
 

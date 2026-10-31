@@ -139,10 +139,7 @@ struct HistoryEntry {
     var entries: [HistoryEntry] = []
     func add(_ entry: HistoryEntry) { entries.append(entry) }
 }
-@MainActor final class FakeHotkeys {
-    var armed = true
-    func armAlternateFinish(_ key: Int?) { armed = key != nil }
-}
+@MainActor final class FakeHotkeys {}
 @MainActor final class ProcessingHarness {
     enum State { case idle, recording, processing }
     var state: State = .recording
@@ -207,7 +204,7 @@ TESTS = r'''
 @main struct Tests {
     @MainActor static func check(_ name: String, enabled: Bool = true,
                                  configured: Bool = true, editing: Bool = false,
-                                 failure: Bool = false, opposite: Bool = false,
+                                 failure: Bool = false,
                                  changeDefault: Bool = false, phases: [HUDModel.Phase]) async {
         Diagnostics.shared.events = []
         let test = ProcessingHarness()
@@ -249,18 +246,17 @@ TESTS = r'''
             precondition(dictionary == (editing ? "" : "transcript"))
         }
         TextIO.inserted = []
-        test.stopAndProcess(useOppositePolish: opposite)
+        test.stopAndProcess()
         precondition(test.state == .processing && test.hud.phases == [.recognizing])
         precondition(test.hud.model.phase.accessibilityLabel == dictatingLabel,
                      "Engine capture/recognition phases share one continuous user-facing activity")
-        precondition(test.pressedAt == nil && !test.hotkeys.armed,
-                     "Stopping must clear the gesture and disarm alternate before awaiting recognition")
+        precondition(test.pressedAt == nil, "Stopping must clear the gesture before awaiting recognition")
         // Changing global Settings during recognition cannot change the captured finish decision either.
         if changeDefault { test.settings.polishEnabled = !enabled }
         guard let task = test.processingTask else { preconditionFailure("Missing processing task") }
         await task.value
         precondition(test.hud.phases == phases, "\(name): unexpected HUD sequence \(test.hud.phases)")
-        let usesLLM = editing || ((opposite ? !enabled : enabled) && configured)
+        let usesLLM = editing || (enabled && configured)
         let output = usesLLM && !failure ? "processed transcript" : "raw transcript"
         precondition(LLMClient.calls == (usesLLM ? 1 : 0))
         precondition(TextIO.inserted == [output] && test.lastTranscript == output,
@@ -504,26 +500,11 @@ TESTS = r'''
         await check("failed polish preserves raw transcript and error", failure: true,
                     phases: [.recognizing, .polishing, .inserting,
                              .error("Polishing failed; using the original transcript.")])
-        await check("opposite bypasses configured default AI", opposite: true,
+        await check("disabled polish skips AI even when configured", enabled: false,
                     phases: [.recognizing, .inserting, .completed])
-        await check("opposite requests AI when default disabled", enabled: false, opposite: true,
-                    phases: [.recognizing, .polishing, .inserting, .completed])
-        await check("opposite AI without configuration preserves raw with useful error", enabled: false,
-                    configured: false, opposite: true,
-                    phases: [.recognizing, .inserting,
-                             .error("Configure an AI service in Settings to polish. Using the original transcript.")])
-        await check("opposite AI failure preserves raw", enabled: false, failure: true, opposite: true,
-                    phases: [.recognizing, .polishing, .inserting,
-                             .error("Polishing failed; using the original transcript.")])
-        await check("editing cannot be bypassed defensively", editing: true, opposite: true,
-                    phases: [.recognizing, .editing, .inserting, .completed])
         for enabled in [true, false] {
-            for opposite in [true, false] {
-                let polish = opposite ? !enabled : enabled
-                await check("snapshot default=\(enabled) opposite=\(opposite)", enabled: enabled,
-                            opposite: opposite, changeDefault: true,
-                            phases: polish ? [.recognizing, .polishing, .inserting, .completed] : [.recognizing, .inserting, .completed])
-            }
+            await check("snapshot default=\(enabled)", enabled: enabled, changeDefault: true,
+                        phases: enabled ? [.recognizing, .polishing, .inserting, .completed] : [.recognizing, .inserting, .completed])
         }
     }
 }
@@ -650,7 +631,7 @@ typealias AudioRecorder = FakeRecorder
     func show(_ phase: HUDModel.Phase) { model.phase = phase }
     func hide() { model.phase = .hidden; model.preview = ""; model.isEditMode = false }
 }
-@MainActor final class FakeHotkeys { func armAlternateFinish(_ value: Int?) {} }
+@MainActor final class FakeHotkeys {}
 @MainActor final class StartupHarness {
     enum State { case idle, recording, processing }
     enum Gesture: String { case hold, toggle }
@@ -882,7 +863,7 @@ STARTUP_TESTS = r'''
         }
         print("PASS pending start release/Escape/combo/cancel, immediate next start, and stale success/error fencing")
 
-        for action in ["toggle", "menu", "alternate"] {
+        for action in ["toggle", "menu"] {
             for enabled in [false, true] {
                 let test = StartupHarness()
                 test.settings.recordingGestureMode = .toggle
@@ -903,27 +884,25 @@ STARTUP_TESTS = r'''
                 precondition(test.state == .recording && test.handsFree)
                 switch action {
                 case "toggle": test.triggerPressed(at: timestamp + 20)
-                case "menu": test.toggleFromMenu()
-                default: test.alternateFinishPressed(at: timestamp + 20)
+                default: test.toggleFromMenu()
                 }
                 let task = test.processingTask!
                 precondition(test.state == .processing && test.recorder.stopCalls == 0)
                 test.triggerPressed(at: timestamp + 30)
                 test.triggerReleased(at: timestamp + 40)
-                test.alternateFinishPressed(at: timestamp + 50)
                 test.toggleFromMenu()
                 TextIO.inserted = []
                 LLMClient.calls = 0
                 test.recorder.starts[0].resume()
                 await task.value
-                let polish = action == "alternate" ? !enabled : enabled
+                let polish = enabled
                 precondition(test.recorder.selectedDevice == "captured-input")
                 precondition(test.recorder.startCalls == 1 && test.recorder.stopCalls == 1 && session.finishes == 1)
                 precondition(LLMClient.calls == (polish ? 1 : 0) && TextIO.inserted.count == 1)
                 precondition(test.state == .idle && test.history.entries.count == 1)
             }
         }
-        print("PASS pending toggle/menu/alternate finish exactly once, input/default snapshots, and trailing-event suppression")
+        print("PASS pending toggle/menu finish exactly once, input/default snapshots, and trailing-event suppression")
 
         let queued = StartupHarness()
         queued.recorder.suspendStart = true
@@ -1087,7 +1066,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
                          ("startRecording", "isCurrentRecognition", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
-                          "alternateFinishPressed", "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
+                          "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),
                     str(ROOT / "Sources/Talkless/HUDAppearance.swift"),

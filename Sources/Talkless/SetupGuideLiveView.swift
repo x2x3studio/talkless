@@ -101,8 +101,6 @@ struct SetupGuideLiveView: View {
             controls: SetupGuideControls(
                 dictationKeyTitle: settings.triggerKey.title,
                 holdToTalk: settings.recordingGestureMode == .hold,
-                alternateFinishKeyTitle: settings.effectiveAlternateFinishKey?.title,
-                polishEnabled: settings.polishEnabled,
                 translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title
             )
         )

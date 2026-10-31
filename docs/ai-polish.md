@@ -23,14 +23,14 @@ OpenRouter's preset uses `https://openrouter.ai/api/v1` and your own key. `openr
 
 ## Feature settings and transmitted text
 
-- **Settings > Dictation > AI processing** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. Finishing with the dictation key follows the default captured when recording starts. The **AI polishing shortcut** (Right Option by default) ends the current recording and chooses **Use AI polishing** when the default is off, or **Skip AI polishing** when it is on. This affects only that input, never the saved default.
+- **Settings > Dictation > AI processing** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. Each dictation follows the setting captured when its recording starts; there is no per-input override.
 - Polishing sends a JSON-framed transcript plus editing instructions. Dictionary terms are candidate spellings for the model, not mandatory replacements; the prompt also lists each term's heard spellings. Those exact heard spellings are already replaced locally before the request, so the transcript sent for polishing contains the fixed text. With app-aware tone enabled, the prompt also identifies the frontmost app and its writing context. Additional instructions and a chosen output language are included when set.
-- **Settings > Dictation > Voice editing** enables selected-text editing, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms. The AI polishing shortcut is unavailable during voice editing.
+- **Settings > Dictation > Voice editing** enables selected-text editing, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms.
 - **Settings > Translation** requires a configured AI service but is independent of the polishing toggle. A translation request includes the selected text and language instructions. Source/target settings and Auto direction are separate from dictation output language and interface language. Matching explicit source/target language IDs skips the provider; Auto detection alone is not that bypass. Changing languages in the translation panel can send a new request. See [selected-text translation](user-guide.md#selected-text-translation).
 
 ## Overlay feedback
 
-The overlay keeps the recognized text visible while polishing runs, with a small sparkles icon on the left. The AI polishing shortcut's **Use AI polishing** / **Skip AI polishing** action is explained in Dictation settings and the setup guide, not a menu row or overlay footer.
+The overlay keeps the recognized text visible while polishing runs, with a small sparkles icon on the left.
 
 When the final output is ready, amber backgrounds show literal additions and replacements compared with the **finalized recognition transcript**. Blue dictionary underlines independently mark confirmed spellings present in the displayed text and can coexist with amber backgrounds. Neither annotation proves that the dictionary caused a correction. Amber does not indicate grammar or spelling errors; there are no grammar/spelling wavy underlines. Live recognition revisions and voice-editing results do not receive this AI-change annotation.
 

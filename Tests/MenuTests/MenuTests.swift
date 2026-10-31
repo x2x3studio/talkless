@@ -67,7 +67,7 @@ struct MenuTests {
             menu.items.map { $0.isSeparatorItem ? "—" : $0.title }
         }
         let suffix = ["—", "Settings…", "Check for Updates…", "—", "Quit Talkless"]
-        let fullState = MenuContent.State(alternateFinishKeyTitle: "Right Option", translationShortcutTitle: "⌃⌥T")
+        let fullState = MenuContent.State(translationShortcutTitle: "⌃⌥T")
         let fullTitles = ["Start Dictation", "Translate selection"] + suffix
         let idle = menu(fullState)
         check(titles(idle) == fullTitles, "Exact ordering: dictation and translation commands, settings and updates, quit")
@@ -88,8 +88,6 @@ struct MenuTests {
         let noShortcut = menu(.init())
         check(titles(noShortcut) == fullTitles && noShortcut.items[1].subtitle == nil && noShortcut.items[1].isEnabled,
               "Translation stays available from the menu without a global shortcut")
-        check(titles(menu(.init(alternateFinishKeyTitle: "Right Option"))) == fullTitles,
-              "Configured AI polishing shortcut is deliberately absent from the menu")
 
         var recordingState = fullState
         recordingState.dictation = .recording
@@ -187,8 +185,6 @@ struct MenuTests {
                 for mode in ["hold", "toggle", "recording", "problems"] {
                     let state = MenuContent.State(dictationKeyTitle: TriggerKey.rightOption.title,
                                                   holdToTalk: mode != "toggle",
-                                                  alternateFinishKeyTitle: TriggerKey.rightCommand.title,
-                                                  polishEnabled: mode == "hold",
                                                   translationShortcutTitle: "⌃⌥⌘R",
                                                   dictation: mode == "recording" ? .recording : .idle,
                                                   problems: mode == "problems" ? [.accessibility, .speechModel] : [])

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- Removed the per-dictation AI polishing shortcut. AI polishing now simply follows the Polish dictation with AI switch: on polishes every dictation, off polishes none. The dictation key is the only recording shortcut.
+
+## 2026.1031.54783
+
 ### Improved
 - Settings pages are grouped: Voice input (Dictation, Speech recognition, Dictionary, AI service, Overlay) first, then Tools (History, Translation) and General.
 - The History page groups results by day, with search, type filters, kind icons and a copy button on each entry.

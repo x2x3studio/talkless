@@ -70,8 +70,7 @@ struct ProviderSettingsTests {
         }
         assertions += try testConnectionTestResult()
         assertions += try testHUDAppearance()
-        assertions += testAlternateFinishKey()
-        assertions += testShortcutDefaults()
+        assertions += testShortcutSettings()
         let persistenceKey = "polishProviderSettings.v1"
 
         // Recording interaction is independent of key bindings and defaults to push-to-talk.
@@ -94,12 +93,11 @@ struct ProviderSettingsTests {
             check(gestureDefaults.string(forKey: "recordingGestureMode") == "hold", "fallback recording mode is persisted")
             check(settings(gestureDefaults).recordingGestureMode == .hold, "migrated mode survives relaunch")
         }
-        gestureDefaults.values = ["triggerKey": "rightControl", "alternateFinishKey": "rightOption"]
+        gestureDefaults.values = ["triggerKey": "rightControl"]
         let existingGestures = settings(gestureDefaults)
         check(existingGestures.recordingGestureMode == .hold, "existing installations without a mode use Hold")
         existingGestures.recordingGestureMode = .toggle
-        check(existingGestures.triggerKey == .rightControl && existingGestures.alternateFinishKey == .rightOption,
-              "changing interaction leaves custom key bindings untouched")
+        check(existingGestures.triggerKey == .rightControl, "changing interaction leaves the custom dictation key untouched")
         existingGestures.recordingGestureMode = AppSettings.defaultRecordingGestureMode
         check(settings(gestureDefaults).recordingGestureMode == .hold, "reset recording mode persists Hold")
 

@@ -280,8 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         MenuContent.populate(menu, state: .init(
             dictationKeyTitle: settings.triggerKey.title,
             holdToTalk: settings.recordingGestureMode == .hold,
-            alternateFinishKeyTitle: settings.effectiveAlternateFinishKey?.title,
-            polishEnabled: settings.polishEnabled,
             translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title,
             dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing,
             problems: currentProblems(),

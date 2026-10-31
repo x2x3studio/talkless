@@ -17,26 +17,12 @@ precondition(showSource[completedStart..<completedEnd].contains("hide(after: .mi
 let errorStart = showSource.range(of: "        case .error:")!.lowerBound
 precondition(showSource[errorStart..<completedStart].contains("hide(after: .seconds(3))"),
              "Errors keep their existing three-second timeout")
-// Compile the production display enums and hint formatter, but none of the controller's services.
+// Compile the production display enums, but none of the controller's services.
 let settingsSource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Settings.swift"), encoding: .utf8)
 let displayStart = settingsSource.range(of: "enum TriggerKey:")!.lowerBound
-let displayEnd = settingsSource.range(of: "enum AlternateFinishKey:")!.lowerBound
-let controllerSource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/DictationController.swift"), encoding: .utf8)
-let hintStart = controllerSource.range(of: "    private func refreshRecordingHint()")!.lowerBound
-let hintEnd = controllerSource.range(of: "    private func stopAndProcess", range: hintStart..<controllerSource.endIndex)!.lowerBound
+let displayEnd = settingsSource.range(of: "enum ASREngine:")!.lowerBound
 let displaySource = directory.appendingPathComponent("RecordingDisplay.swift")
-let hintMethod = controllerSource[hintStart..<hintEnd].replacingOccurrences(of: "private func", with: "func")
-try ("import Foundation\n" + settingsSource[displayStart..<displayEnd] + """
-
-@MainActor final class RecordingHintFixture {
-    var editSelection: String?
-    var recordingPolishEnabled = false
-    var recordingAlternateFinishKey: TriggerKey?
-    let hud = SyntheticHUD()
-    @MainActor final class SyntheticHUD { let model = HUDModel() }
-\(hintMethod)
-}
-""").write(to: displaySource, atomically: true, encoding: .utf8)
+try ("import Foundation\n" + settingsSource[displayStart..<displayEnd]).write(to: displaySource, atomically: true, encoding: .utf8)
 try #"""
 import AppKit
 import Combine
@@ -56,7 +42,6 @@ struct HUDTests {
         rendered.preview = model.preview
         rendered.revisionOriginal = model.revisionOriginal
         rendered.isEditMode = model.isEditMode
-        rendered.recordingHint = model.recordingHint
         rendered.setDictionaryTerms(model.dictionaryTerms)
         if reduceTransparency { rendered.appearance.backdrop = .solid }
         if reduceMotion { rendered.appearance.animationsEnabled = false }
@@ -413,60 +398,6 @@ struct HUDTests {
         print("PASS unified dictating label/preview, identical native pixels across release, both locales/gestures, edit mode, empty and overflowing text")
     }
 
-    @MainActor static func testRecordingCopy(_ localization: LocalizationSettings) throws {
-        let fixture = RecordingHintFixture()
-        let model = fixture.hud.model
-        model.appearance = HUDAppearance(backdrop: .solid, animationsEnabled: false)
-        for language in [InterfaceLanguage.simplifiedChinese, .english] {
-            localization.interfaceLanguage = language
-            for mode in RecordingGestureMode.allCases {
-                model.phase = .listening(handsFree: mode == .toggle)
-                for key in TriggerKey.allCases {
-                    for enabled in [false, true] {
-                        fixture.recordingPolishEnabled = enabled
-                        fixture.recordingAlternateFinishKey = key
-                        fixture.refreshRecordingHint()
-                        let expectedState = language == .english
-                            ? (enabled ? "This input: AI polishing" : "This input: no AI polishing")
-                            : (enabled ? "\u{672C}\u{6B21}\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}" : "\u{672C}\u{6B21}\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}")
-                        let expectedAction = language == .english
-                            ? "Press \(key.title) to \(enabled ? "skip" : "use") polishing"
-                            : "\u{6309}\(key.title)\(enabled ? "\u{8DF3}\u{8FC7}" : "\u{4F7F}\u{7528}")\u{6DA6}\u{8272}"
-                        precondition(model.recordingHint == "\(expectedState) · \(expectedAction)")
-                        let hint = model.recordingHint
-                        for preview in ["", "A short recording.", String(repeating: "Earlier words. ", count: 90)] {
-                            model.preview = preview
-                            let sizeWithHint = model.contentSize
-                            let pixelsWithHint = try snapshot(model, name: "internal-hint")
-                            model.recordingHint = nil
-                            precondition(model.contentSize == sizeWithHint, "Internal shortcut hints never change HUD size")
-                            let pixelsWithoutHint = try snapshot(model, name: "internal-no-hint")
-                            precondition(pixelsWithHint.representation(using: .png, properties: [:]) ==
-                                         pixelsWithoutHint.representation(using: .png, properties: [:]),
-                                         "Shortcut footer must not be drawn, even with an empty transcript")
-                            model.recordingHint = hint
-                            precondition(model.contentSize.width <= 380 && model.contentSize.height <= 174)
-                            precondition(model.displayText == preview)
-                        }
-                        if key == .rightCommand && mode == .hold {
-                            model.preview = language == .english ? "Send the notes after the meeting." : "\u{4F1A}\u{540E}\u{628A}\u{7B14}\u{8BB0}\u{53D1}\u{7ED9}\u{6211}。"
-                            try snapshot(model, name: "copy-\(language == .english ? "en" : "zh")-\(enabled ? "ai" : "no-ai")")
-                        }
-                        fixture.recordingAlternateFinishKey = nil
-                        fixture.refreshRecordingHint()
-                        precondition(model.recordingHint == expectedState, "No binding means state only")
-                        fixture.editSelection = "Synthetic selection"
-                        fixture.refreshRecordingHint()
-                        precondition(model.recordingHint == nil, "Voice edit never shows dictation hints")
-                        fixture.editSelection = nil
-                    }
-                }
-            }
-        }
-        localization.interfaceLanguage = .english
-        print("PASS internal shortcut copy for every locale/key/mode/state; no visible footer, unchanged native pixels and compact HUD bounds")
-    }
-
     @MainActor static func testRevisionDecoration() throws {
         let model = HUDModel(appearance: HUDAppearance(backdrop: .solid, animationsEnabled: false))
         model.phase = .completed
@@ -541,7 +472,6 @@ struct HUDTests {
             }
             let empty = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
             empty.phase = .listening(handsFree: true)
-            empty.recordingHint = "This input: AI polishing · Press Right Command to skip polishing"
             precondition(empty.displayText.isEmpty && empty.contentSize == CGSize(width: 44, height: 40))
             models.append(empty)
             try snapshot(empty, name: "transcript-\(languageName)-empty")
@@ -584,7 +514,6 @@ struct HUDTests {
         testPlacementPreferences()
         try testDictionaryHighlights()
         try testDictatingPresentation(localization)
-        try testRecordingCopy(localization)
         try testRevisionDecoration()
         try transcriptReview(localization)
         var caretReads = 0
@@ -628,7 +557,6 @@ struct HUDTests {
         precondition(hud.model.contentSize.height > shortSize.height)
         try snapshot(hud.model, name: "explicit-newlines")
         hud.model.preview = "Recognized words"
-        hud.model.recordingHint = "This input: AI polishing · Press Right Option to skip polishing"
         hud.show(.listening(handsFree: true))
         precondition(hud.model.contentSize == shortSize, "No visible recording footer or reserved footer space")
         precondition(hud.frame.size == hud.model.contentSize)
@@ -665,7 +593,6 @@ struct HUDTests {
         hud.show(.hidden)
         precondition(hud.model.phase == .hidden)
         precondition(hud.model.preview.isEmpty)
-        precondition(hud.model.recordingHint == nil)
         precondition(hud.model.displayText.isEmpty)
         hud.show(.error("Microphone unavailable"))
         precondition(hud.model.phase == .error("Microphone unavailable"))

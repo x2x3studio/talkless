@@ -21,8 +21,6 @@ enum MenuContent {
     struct State {
         var dictationKeyTitle = L10n.tr("Fn / Globe")
         var holdToTalk = true
-        var alternateFinishKeyTitle: String?
-        var polishEnabled = false
         /// Display only. The global shortcut is registered elsewhere.
         var translationShortcutTitle: String?
         var dictation: DictationPhase = .idle

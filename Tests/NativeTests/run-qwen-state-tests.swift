@@ -18,7 +18,7 @@ func section(from start: String, to end: String? = nil) -> String {
 let controller = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/DictationController.swift"), encoding: .utf8)
 let entryPoints = [
     String(controller.components(separatedBy: "private func startRecording() {")[1]
-        .components(separatedBy: "private func configureRecordingFinish()")[0]),
+        .components(separatedBy: "private func isCurrentRecognition(")[0]),
     String(controller.components(separatedBy: "func runAudioTest(url: URL)")[1]
         .components(separatedBy: "// MARK: - Selected-text translation")[0]),
 ]

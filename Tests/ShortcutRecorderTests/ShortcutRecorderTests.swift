@@ -9,17 +9,9 @@ private struct RecorderPreview: View {
             ShortcutRecorder(title: "Dictation key", value: "Fn / Globe",
                              defaultValue: "Fn / Globe", isDefault: true,
                              setCaptureActive: { _ in true }, onReset: { nil }) {
-                ShortcutRecorderRules.primaryError($0, alternate: .rightCommand)
+                ShortcutRecorderRules.primaryError($0)
             }
             Text("Click a shortcut. Press Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.")
-                .font(.caption).foregroundStyle(.secondary)
-            Divider()
-            ShortcutRecorder(title: "AI polishing shortcut", value: "Right Command ⌘",
-                             valueDetail: "Use AI polishing", defaultValue: "Automatic (Right Option ⌥)", isDefault: false,
-                             allowsClearing: true, setCaptureActive: { _ in true }, onReset: { nil }) {
-                ShortcutRecorderRules.alternateError($0, primary: .fn)
-            }
-            Text("Click its shortcut and press Delete or Backspace to disable the AI polishing shortcut.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(24)
@@ -52,17 +44,9 @@ struct ShortcutRecorderTests {
             check(state.flagsChanged(keyCode: UInt16(key.keyCode), flags: flags) == .waiting, "no save on press")
             check(state.pendingKey == key && state.message.contains("Release"), "pending key feedback")
             check(state.flagsChanged(keyCode: UInt16(key.keyCode), flags: []) == .record(key), "save on release")
-            check(ShortcutRecorderRules.alternateError(key, primary: key) != nil, "reject alternate conflict")
-            let alternate = AlternateFinishKey(rawValue: key.rawValue)!
-            check(ShortcutRecorderRules.primaryError(key, alternate: alternate)
-                  == "\(key.title) is already the AI polishing shortcut. Record a different key.",
-                  "Primary conflict identifies the plain stable shortcut label")
-            check(ShortcutRecorderRules.primaryError(key, alternate: .automatic) == nil, "automatic fallback stays valid")
+            check(ShortcutRecorderRules.primaryError(key) == nil, "every supported key is a valid dictation key")
         }
-        check(AlternateFinishKey.automatic.resolved(for: .rightOption) == .rightCommand, "automatic resolves to real key")
-        check(ShortcutRecorderRules.alternateError(.fn, primary: .rightCommand) == nil, "Fn alternate supported")
-        check(ShortcutRecorderRules.primaryError(nil, alternate: .disabled) != nil, "primary cannot clear")
-        check(ShortcutRecorderRules.alternateError(nil, primary: .fn) == nil, "alternate can clear")
+        check(ShortcutRecorderRules.primaryError(nil) != nil, "dictation key cannot clear")
 
         for (code, flags, name): (UInt16, NSEvent.ModifierFlags, String) in [
             (55, NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | 0x8), "Left Command"),
@@ -112,9 +96,8 @@ struct ShortcutRecorderTests {
         for code: UInt16 in [51, 117] {
             state = ShortcutCaptureState(allowsClearing: true)
             check(state.keyDown(keyCode: code, flags: []) == .waiting, "clear waits for release")
-            check(state.message == "Release Delete to disable the AI polishing shortcut.",
-                  "Clear instruction names the shortcut rather than an abstract finish action")
-            check(state.keyUp(keyCode: code, flags: []) == .record(nil), "clear alternate on release")
+            check(state.message == "Release Delete to clear this shortcut.", "Clear instruction is generic")
+            check(state.keyUp(keyCode: code, flags: []) == .record(nil), "a clearable shortcut clears on release")
             state = ShortcutCaptureState(allowsClearing: false)
             _ = state.keyDown(keyCode: code, flags: [])
             check(state.isError && state.keyUp(keyCode: code, flags: []) == .waiting, "cannot clear primary")
@@ -227,7 +210,9 @@ struct ShortcutRecorderTests {
         button.setCaptureActive = { transitions.append($0); return true }
         button.onStatus = { text, _ in status = text }
         button.onRecord = { key in
-            if let error = ShortcutRecorderRules.primaryError(key, alternate: .rightCommand) { return error }
+            if let error = ShortcutRecorderRules.primaryError(key) { return error }
+            // Synthetic rejection: the recorder must keep any validator error visible without saving.
+            if key == .rightCommand { return "Right Command is already in use. Record a different key." }
             saved.append(key)
             return nil
         }
