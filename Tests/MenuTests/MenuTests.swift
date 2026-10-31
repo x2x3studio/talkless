@@ -55,11 +55,14 @@ struct MenuTests {
             check(rows.first?.shortcutLabel.stringValue.isEmpty == true, "Dictation describes gesture and key once, without a duplicate right-hand key")
             let settingsItem = menu.items.first { $0.action == #selector(MenuTarget.openSettings) }!
             check(settingsItem.image != nil && settingsItem.image?.isTemplate == true, "Actual Settings command has a native template gear")
+            let commands = menu.items.filter { !$0.isSeparatorItem && $0.view == nil }
+            check(commands.count == 3 && commands.allSatisfy { $0.image?.isTemplate == true },
+                  "Settings, updates and quit all have template symbols so their titles share one text edge")
             if #available(macOS 27.0, *) {
-                check(settingsItem.preferredImageVisibility == .visible,
-                      "Settings opts into the visible gear on systems that hide menu images by default")
+                check(commands.allSatisfy { $0.preferredImageVisibility == .visible },
+                      "Commands opt into visible symbols on systems that hide menu images by default")
             }
-            check(menu.items.filter { $0.image != nil }.count == 1, "Only the Settings row has an icon")
+            check(entries.allSatisfy { $0.image == nil }, "Shortcut reference rows have no icons")
             check(Set(rows.map { $0.frame.width }).count == 1, "All shortcut rows have the same full width")
             for (index, entry) in entries.enumerated() {
                 check(!entry.isEnabled && entry.action == nil && entry.target == nil, "Shortcut rows are noninteractive")
@@ -69,7 +72,8 @@ struct MenuTests {
                 row.layout()
                 check(row.functionLabel.stringValue == entry.title && row.shortcutLabel.stringValue == expectedKeys[index], "Function on the left, shortcut on the right")
                 check(row.frame.width >= 300 && row.frame.width >= row.preferredWidth, "Rows fit labels with a minimum 300-point width")
-                check(row.functionLabel.frame.minX == 20 && row.shortcutLabel.frame.maxX == row.bounds.width - 20, "Align the columns with equal outer insets")
+                check(row.functionLabel.frame.minX == MenuContent.textInset && row.shortcutLabel.frame.maxX == row.bounds.width - 20,
+                      "Reference text starts on the command title edge; shortcuts keep the trailing inset")
                 check(row.functionLabel.frame.maxX < row.shortcutLabel.frame.minX && row.shortcutLabel.alignment == .right, "Columns have a clear gap and right-aligned shortcuts")
                 check(row.accessibilityLabel() == entry.title && row.accessibilityValue() as? String == expectedKeys[index], "Accessibility preserves function and shortcut")
                 check(row.hitTest(.zero) == nil, "Custom informational views cannot intercept clicks")

@@ -17,12 +17,16 @@ enum MenuContent {
         let quit: Selector
     }
 
+    /// Leading inset of command titles once their menu reserves an image column; shortcut
+    /// reference text uses it too so every row starts on the same text edge.
+    static let textInset: CGFloat = 34
+
     /// Readable shortcut reference, not a clickable menu command or key-equivalent registration.
     final class ShortcutRow: NSView {
         let functionLabel: NSTextField
         let shortcutLabel: NSTextField
         var preferredWidth: CGFloat {
-            functionLabel.intrinsicContentSize.width + shortcutLabel.intrinsicContentSize.width + 64
+            functionLabel.intrinsicContentSize.width + shortcutLabel.intrinsicContentSize.width + MenuContent.textInset + 44
         }
 
         init(function: String, shortcut: String, help: String) {
@@ -55,7 +59,8 @@ enum MenuContent {
             let keyWidth = shortcutLabel.intrinsicContentSize.width
             let height = functionLabel.intrinsicContentSize.height
             let y = (bounds.height - height) / 2
-            functionLabel.frame = NSRect(x: 20, y: y, width: bounds.width - keyWidth - 64, height: height)
+            functionLabel.frame = NSRect(x: MenuContent.textInset, y: y,
+                                         width: bounds.width - keyWidth - MenuContent.textInset - 44, height: height)
             shortcutLabel.frame = NSRect(x: bounds.width - keyWidth - 20, y: y, width: keyWidth, height: height)
         }
 
@@ -114,18 +119,22 @@ enum MenuContent {
             row.layoutSubtreeIfNeeded()
         }
 
-        menu.addItem(.separator())
-        let settingsItem = action(L10n.tr("Settings…"), actions.openSettings, key: ",")
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
-        settingsItem.image?.isTemplate = true
-        // Newer macOS versions hide menu images unless explicitly requested.
-        if #available(macOS 27.0, *) {
-            settingsItem.preferredImageVisibility = .visible
+        // Every command has a symbol: a single icon would indent only its own title.
+        func symbol(_ item: NSMenuItem, _ name: String) -> NSMenuItem {
+            item.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            item.image?.isTemplate = true
+            // Newer macOS versions hide menu images unless explicitly requested.
+            if #available(macOS 27.0, *) {
+                item.preferredImageVisibility = .visible
+            }
+            return item
         }
-        menu.addItem(settingsItem)
-        // Preserve UpdateController's target, enabled state, and status explanation.
-        menu.addItem(updateItem ?? label(L10n.tr("Check for Updates…"), toolTip: L10n.tr("Updates are not configured for this build.")))
         menu.addItem(.separator())
-        menu.addItem(action(L10n.tr("Quit Talkless"), actions.quit, key: "q"))
+        menu.addItem(symbol(action(L10n.tr("Settings…"), actions.openSettings, key: ","), "gearshape"))
+        // Preserve UpdateController's target, enabled state, and status explanation.
+        menu.addItem(symbol(updateItem ?? label(L10n.tr("Check for Updates…"), toolTip: L10n.tr("Updates are not configured for this build.")),
+                            "arrow.triangle.2.circlepath"))
+        menu.addItem(.separator())
+        menu.addItem(symbol(action(L10n.tr("Quit Talkless"), actions.quit, key: "q"), "power"))
     }
 }
