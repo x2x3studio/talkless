@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -64,8 +65,24 @@ struct DictionaryTests {
         check(extraction("Talkles", "Talkless").map(\.term) == ["Talkless"], "standalone spelling")
         check(extraction("please open the document", "Please open the document").isEmpty, "sentence capitalization is not a term")
         check(extraction("He walk to the office every day", "He walks to the office every day").isEmpty, "simple grammar suffix is not a term")
+        check(extraction("Please contact Richard for this meeting", "Please contact Richards for this meeting").map(\.term) == ["Richards"],
+              "existing proper-name suffix correction remains available")
+        check(extraction("Please use Window for this task", "Please use Windows for this task").map(\.term) == ["Windows"],
+              "existing product-name suffix correction remains available")
+        check(extraction("talkles", "talkless").map(\.term) == ["talkless"], "lowercase doubled final s is spelling evidence")
         check(extraction("Use open ai for this task", "Use OpenAI for this task").map(\.term) == ["OpenAI"], "bounded multiword spelling")
-        check(extraction("Please check user_id in this file", "Please check user_ID in this file").map(\.term) == ["user_ID"], "identifier casing preserved")
+        check(extraction("Please check user_id in this file", "Please check user_ID in this file").isEmpty, "identifier case-only change excluded")
+        for spelling in ["Talkless", "talkless", "TALKLESS", "tAlKlEsS"] {
+            check(extraction("talkless", spelling).isEmpty, "standalone case-only change excluded: \(spelling)")
+            check(extraction("Please open talkless for this meeting", "Please open \(spelling) for this meeting").isEmpty,
+                  "mid-sentence case-only change excluded: \(spelling)")
+        }
+        let caseContext = extraction("please OPEN Talkles FOR THIS meeting", "Please open Talkless for this meeting")
+        check(caseContext.map(\.term) == ["Talkless"], "case-only surrounding tokens do not hide a spelling correction")
+        check(caseContext.first?.sourceSnippet == "please OPEN Talkles FOR THIS meeting", "case folding preserves raw evidence")
+        check(extraction("Please check user_id in this file", "Please check USER-ID in this file").isEmpty,
+              "case plus identifier punctuation-only change excluded")
+        check(extraction("Stra\u{df}e", "STRASSE").isEmpty, "Unicode case folding excludes case-only length changes")
         check(extraction("Please visit Cafe tomorrow morning", "Please visit Caf\u{e9} tomorrow morning").map(\.term) == ["Caf\u{e9}"], "accent correction")
         check(extraction("Please visit Cafe\u{301} tomorrow morning", "Please visit Caf\u{e9} tomorrow morning").isEmpty, "canonical Unicode equivalence is not a correction")
         // Han strings are escaped so these standalone tests are independent of source encoding.
@@ -102,7 +119,19 @@ struct DictionaryTests {
         let scanned = DictionaryReviewScanner.scan([repeated, repeated, second, entry(kind: .edit)])
         check(scanned.count == 1, "repeated spelling grouped")
         check(scanned.first?.occurrenceCount == 2, "occurrences count distinct dictation IDs only")
-        check(DictionaryReviewScanner.scan([entry("Use open ai for this task", "Use OpenAI for this task"), entry("Use open ai for this task", "Use OPENAI for this task")]).count == 2, "case variants retain separate review decisions")
+        let caseEntries = [entry("Talkles", "TALKLESS"), entry("Talkles", "Talkless"), entry("talkles", "talkless")]
+        let caseRepeated = entry("Talkles is open and talkles works well", "Talkless is open and TALKLESS works well")
+        let caseScanned = DictionaryReviewScanner.scan(caseEntries + [caseRepeated, caseRepeated])
+        check(caseScanned.count == 1, "case variants share one review suggestion")
+        check(caseScanned.first?.occurrenceCount == 4, "case variants count distinct entries, not repeated mentions")
+        check(caseScanned.first?.term == "TALKLESS" && caseScanned.first?.evidenceEntryID == caseEntries[0].id,
+              "newest evidence retains its original display spelling")
+        check(caseScanned.first?.correction.outputSnippet == "TALKLESS", "newest snippet is not normalized")
+        check(DictionaryReviewScanner.scan(caseEntries, excluding: [DictionaryTerms.reviewKey("Talkless")]).isEmpty,
+              "normalized exclusion suppresses every case variant")
+        check(DictionaryReviewScanner.scan([entry("Use open ai for this task", "Use OpenAI for this task"), entry("Use open ai for this task", "Use OPENAI for this task")]).count == 1, "multiword case variants share a review decision")
+        check(DictionaryReviewScanner.scan([entry("talkless", "TALKLESS"), entry("Please check user_id in this file", "Please check user_ID in this file")]).isEmpty,
+              "case-only history never yields candidates")
         let cappedHistory = Array(repeating: entry("unchanged", "unchanged"), count: 500) + [entry()]
         check(DictionaryReviewScanner.scan(cappedHistory).isEmpty, "only recent 500 inspected")
         let many = (0..<140).map { entry("Please use Project\($0)x for the event", "Please use Project\($0)y for the event") }
@@ -125,7 +154,16 @@ struct DictionaryTests {
         let hugeDictionary = (0..<1_000).map { "Term\($0)" }.joined(separator: "\n")
         check(DictionaryTerms.terms(in: DictionaryTerms.adding("FinalTerm", to: hugeDictionary)!).count == 1_001, "existing dictionary never truncated")
         check(DictionaryTerms.reviewKey("Caf\u{e9}") == DictionaryTerms.reviewKey("Cafe\u{301}"), "dismissal key Unicode normalized")
-        check(DictionaryTerms.reviewKey("Go") != DictionaryTerms.reviewKey("go"), "dismissal keys preserve case-distinct terms")
+        check(DictionaryTerms.reviewKey("Go") == DictionaryTerms.reviewKey("go"), "dismissal keys ignore capitalization")
+        check(DictionaryTerms.reviewKey("CAF\u{c9}") == DictionaryTerms.reviewKey("Cafe\u{301}"), "review identity combines case folding and canonical Unicode")
+        check(DictionaryTerms.reviewKey("Cafe") != DictionaryTerms.reviewKey("Caf\u{e9}"), "accent differences remain meaningful")
+        check(DictionaryTerms.reviewKey("Stra\u{df}e") == DictionaryTerms.reviewKey("STRASSE"), "Unicode case folding handles expanded letters")
+        check(DictionaryTerms.reviewKey("\u{3c3}") == DictionaryTerms.reviewKey("\u{3c2}"), "Unicode case folding handles final sigma")
+        check(DictionaryTerms.reviewKey("IDENTIFIER") == DictionaryTerms.reviewKey("identifier"), "review folding uses fixed non-Turkish locale")
+        check(DictionaryTerms.reviewKey("I") != DictionaryTerms.reviewKey("\u{131}"), "dotless i remains distinct independent of system locale")
+        check(DictionaryTerms.legacyReviewKeys("\u{131}").isDisjoint(with: DictionaryTerms.legacyReviewKeys("I")),
+              "legacy variants cannot merge distinct Unicode identities")
+        check(DictionaryTerms.reviewKey("\u{98DE}\u{4E66}") != DictionaryTerms.reviewKey("\u{98DE}\u{8F93}"), "Han spellings remain distinct")
 
         let defaults = DictionaryMemoryDefaults()
         defaults.set(rawDictionary, forKey: "dictionary")
@@ -164,6 +202,172 @@ struct DictionaryTests {
         restarted.resetDismissals()
         await settled(restarted)
         check(restarted.pendingCandidates.count == 1, "only explicit reset restores dismissal")
+
+        let caseDefaults = DictionaryMemoryDefaults()
+        let caseSettings = settings(caseDefaults)
+        let caseStore = DictionaryReviewStore(settings: caseSettings, defaults: caseDefaults)
+        let caseHistory = CurrentValueSubject<[HistoryEntry], Never>(caseEntries)
+        caseStore.observeHistory(caseHistory.eraseToAnyPublisher())
+        caseStore.scanHistory()
+        await settled(caseStore)
+        let chosenCase = caseStore.pendingCandidates[0]
+        for spelling in ["Talkless", "talkless", "TALKLESS", "tAlKlEsS"] {
+            caseSettings.dictionary = spelling
+            check(!caseStore.accept(chosenCase), "accept cannot add a case-variant duplicate: \(spelling)")
+            await settled(caseStore)
+            check(caseStore.pendingCandidates.isEmpty, "confirmed term suppresses all review cases: \(spelling)")
+            check(caseSettings.dictionaryTerms == [spelling], "recognition hints retain confirmed spelling: \(spelling)")
+        }
+        caseSettings.dictionary = "ExistingTerm"
+        await settled(caseStore)
+        check(caseStore.accept(caseStore.pendingCandidates[0]), "case-aggregated candidate accepts")
+        check(caseSettings.dictionary == "ExistingTerm\nTALKLESS", "accept saves chosen original uppercase spelling without normalization")
+        await settled(caseStore)
+        caseStore.scanHistory()
+        await settled(caseStore)
+        check(caseStore.pendingCandidates.isEmpty, "accepted case variants stay suppressed after rescan")
+        caseSettings.dictionary = ""
+        await settled(caseStore)
+        caseStore.dismiss(caseStore.pendingCandidates[0])
+        await settled(caseStore)
+        caseHistory.send([entry("talkles", "talkless")])
+        caseStore.scanHistory()
+        await settled(caseStore)
+        check(caseStore.pendingCandidates.isEmpty && caseStore.dismissedCount == 1, "dismissal covers a differently cased future rescan")
+        let caseRestarted = DictionaryReviewStore(settings: settings(caseDefaults), defaults: caseDefaults)
+        caseRestarted.observeHistory(caseHistory.eraseToAnyPublisher())
+        caseRestarted.scanHistory()
+        await settled(caseRestarted)
+        check(caseRestarted.pendingCandidates.isEmpty, "case-insensitive dismissal survives restart")
+        caseRestarted.resetDismissals()
+        await settled(caseRestarted)
+        check(caseRestarted.pendingCandidates.first?.term == "talkless", "reset restores newest original case")
+        caseHistory.send([entry("talkless", "TALKLESS")])
+        caseRestarted.scanHistory()
+        await settled(caseRestarted)
+        check(caseRestarted.pendingCandidates.isEmpty, "case-only rescan stays empty after reset")
+
+        func legacyKey(_ term: String) -> String {
+            let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
+            return SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
+        }
+        let legacyDefaults = DictionaryMemoryDefaults()
+        let legacyDismissed: Set<String> = [legacyKey("TaLkLeSs"), legacyKey("Talkless"), legacyKey("UnseenTerm")]
+        let legacyData = try JSONEncoder().encode(legacyDismissed)
+        legacyDefaults.set(legacyData, forKey: DictionaryReviewStore.dismissalStorageKey)
+        let legacySettings = settings(legacyDefaults)
+        let legacyStore = DictionaryReviewStore(settings: legacySettings, defaults: legacyDefaults)
+        let legacyHistory = CurrentValueSubject<[HistoryEntry], Never>([entry("talkles", "talkless"), entry("Talkles", "TaLkLeSs")] + many)
+        legacyStore.observeHistory(legacyHistory.eraseToAnyPublisher())
+        check(legacyDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey) == legacyData,
+              "legacy decisions are not mined before authorized scan")
+        legacyStore.scanHistory()
+        await settled(legacyStore)
+        check(legacyStore.pendingCandidates.count == 100 && !legacyStore.pendingCandidates.contains(where: { $0.id == DictionaryTerms.reviewKey("Talkless") }),
+              "older observed mixed-case dismissal suppresses newer variants without starving candidate slots")
+        let migrated = try JSONDecoder().decode(Set<String>.self, from: legacyDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey)!)
+        check(migrated == [DictionaryTerms.reviewKey("Talkless"), legacyKey("UnseenTerm")], "observed legacy case decisions merge and unknown digests survive")
+        check(legacyStore.dismissedCount == 2, "migration counts merged review identities")
+        legacyHistory.send([entry("Talkles", "TALKLESS")])
+        let legacyRestarted = DictionaryReviewStore(settings: settings(legacyDefaults), defaults: legacyDefaults)
+        legacyRestarted.observeHistory(legacyHistory.eraseToAnyPublisher())
+        legacyRestarted.scanHistory()
+        await settled(legacyRestarted)
+        check(legacyRestarted.pendingCandidates.isEmpty, "migrated decision survives original evidence removal and restart")
+        legacyRestarted.resetDismissals()
+        await settled(legacyRestarted)
+        check(legacyRestarted.pendingCandidates.first?.term == "TALKLESS", "reset clears migrated and unknown legacy decisions")
+        let sameEntryLegacy = DictionaryReviewScanner.scanWithDismissals([
+            entry("Talkles is open and talkles works well", "Talkless is open and TaLkLeSs works well")
+        ], excluding: [], dismissed: [legacyKey("TaLkLeSs")])
+        check(sameEntryLegacy.candidates.isEmpty && sameEntryLegacy.dismissed == [DictionaryTerms.reviewKey("Talkless")],
+              "legacy migration checks every distinct case spelling within one entry")
+        let commonLegacy = DictionaryReviewScanner.scanWithDismissals([entry("talkles", "talkless")], excluding: [], dismissed: [legacyKey("Talkless")])
+        check(commonLegacy.candidates.isEmpty && commonLegacy.dismissed == [DictionaryTerms.reviewKey("Talkless")],
+              "legacy common case variant migrates even without original evidence")
+
+        let caseOnlyLegacy = DictionaryReviewScanner.scanWithDismissals([
+            entry("Use open ai for this task", "Use OPENAI for this task"),
+            entry("Use openai for this task", "Use OpenAI for this task")
+        ], excluding: [], dismissed: [legacyKey("OpenAI")])
+        check(caseOnlyLegacy.candidates.isEmpty && caseOnlyLegacy.dismissed == [DictionaryTerms.reviewKey("OpenAI")],
+              "legacy case-only evidence recovers mixed-case digest before new candidate aggregation")
+        let legacyEvidenceOnly = DictionaryReviewScanner.scanWithDismissals([
+            entry("Use openai for this task", "Use OpenAI for this task")
+        ], excluding: [], dismissed: [legacyKey("Unrelated")])
+        check(legacyEvidenceOnly.candidates.isEmpty && legacyEvidenceOnly.dismissed == [legacyKey("Unrelated")],
+              "migration-only case evidence never becomes a new suggestion or decision")
+
+        let resetDefaults = DictionaryMemoryDefaults()
+        let resetStore = DictionaryReviewStore(settings: settings(resetDefaults), defaults: resetDefaults)
+        let resetHistory = CurrentValueSubject<[HistoryEntry], Never>([
+            entry(), entry("Please use OtherTrem for this meeting", "Please use OtherTerm for this meeting")
+        ])
+        resetStore.observeHistory(resetHistory.eraseToAnyPublisher())
+        resetStore.scanHistory()
+        await settled(resetStore)
+        resetStore.dismiss(resetStore.pendingCandidates.first(where: { $0.term == "Talkless" })!)
+        await settled(resetStore)
+        check(resetStore.pendingCandidates.map(\.term) == ["OtherTerm"], "undismissed evidence remains before history clear")
+        resetHistory.send([])
+        check(resetStore.isScanning, "empty history schedules an authorized pruning scan")
+        resetStore.resetDismissals()
+        await settled(resetStore)
+        check(resetStore.dismissedCount == 0, "empty-history scan cannot restore reset dismissals")
+        check(resetStore.candidates.isEmpty && resetStore.pendingCandidates.isEmpty && resetStore.lastScanEntryCount == 0,
+              "reset replaces empty pruning scan without retaining undismissed deleted evidence")
+        let resetPersisted = try JSONDecoder().decode(Set<String>.self, from: resetDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey)!)
+        check(resetPersisted.isEmpty, "reset persistence survives cancelled migration")
+        resetHistory.send([entry()])
+        resetStore.scanHistory()
+        await settled(resetStore)
+        check(resetStore.pendingCandidates.count == 1, "reset suggestion can reappear on a later explicit scan")
+
+        let unicodeDefaults = DictionaryMemoryDefaults()
+        let unicodeSettings = settings(unicodeDefaults)
+        let unicodeStore = DictionaryReviewStore(settings: unicodeSettings, defaults: unicodeDefaults)
+        let unicodeHistory = CurrentValueSubject<[HistoryEntry], Never>([
+            entry("Please visit Cafe tomorrow morning", "Please visit Cafe\u{301} tomorrow morning"),
+            entry("Please visit CAFE tomorrow morning", "Please visit CAF\u{c9} tomorrow morning")
+        ])
+        unicodeStore.observeHistory(unicodeHistory.eraseToAnyPublisher())
+        unicodeStore.scanHistory()
+        await settled(unicodeStore)
+        check(unicodeStore.pendingCandidates.count == 1 && unicodeStore.pendingCandidates.first?.occurrenceCount == 2,
+              "Unicode canonical and case variants aggregate")
+        check(unicodeStore.accept(unicodeStore.pendingCandidates[0]), "Unicode suggestion accepts")
+        check(Array(unicodeSettings.dictionary.utf8) == Array("Cafe\u{301}".utf8), "accept preserves original decomposed Unicode bytes")
+        await settled(unicodeStore)
+        unicodeSettings.dictionary = "CAF\u{c9}"
+        await settled(unicodeStore)
+        check(unicodeStore.pendingCandidates.isEmpty, "confirmed composed uppercase spelling suppresses decomposed suggestion")
+        unicodeSettings.dictionary = ""
+        await settled(unicodeStore)
+        unicodeStore.dismiss(unicodeStore.pendingCandidates[0])
+        await settled(unicodeStore)
+        unicodeHistory.send([entry("Please visit CAFE tomorrow morning", "Please visit CAF\u{c9} tomorrow morning")])
+        unicodeStore.scanHistory()
+        await settled(unicodeStore)
+        check(unicodeStore.pendingCandidates.isEmpty, "Unicode dismissal suppresses differently composed and cased rescan")
+
+        let hanDefaults = DictionaryMemoryDefaults()
+        let hanSettings = settings(hanDefaults)
+        let hanStore = DictionaryReviewStore(settings: hanSettings, defaults: hanDefaults)
+        let hanHistory = CurrentValueSubject<[HistoryEntry], Never>([entry(hanRaw, hanOutput)])
+        hanStore.observeHistory(hanHistory.eraseToAnyPublisher())
+        hanStore.scanHistory()
+        await settled(hanStore)
+        check(hanStore.accept(hanStore.pendingCandidates[0]), "Han candidate accepts unchanged")
+        check(hanSettings.dictionary == "\u{98DE}\u{4E66}", "Han dictionary spelling preserved")
+        await settled(hanStore)
+        check(hanStore.pendingCandidates.isEmpty, "confirmed Han spelling excluded")
+        hanSettings.dictionary = ""
+        await settled(hanStore)
+        hanStore.dismiss(hanStore.pendingCandidates[0])
+        await settled(hanStore)
+        hanStore.scanHistory()
+        await settled(hanStore)
+        check(hanStore.pendingCandidates.isEmpty, "Han dismissal survives rescan")
 
         let newEntry = entry("Please use NewTrem for this meeting", "Please use NewTerm for this meeting")
         history.send([newEntry] + history.value)

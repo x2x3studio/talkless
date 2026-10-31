@@ -149,7 +149,6 @@
 "Changes apply immediately." = "Changes apply immediately.";
 "Changes apply to the next recording." = "Changes apply to the next recording.";
 "Changes the interface only, not speech recognition, output, or translation languages." = "Changes the interface only, not speech recognition, output, or translation languages.";
-"Changing a language translates the original selection again using your AI service." = "Changing a language translates the original selection again using your AI service.";
 "Characters" = "Characters";
 "Characters in final dictation output, not words or tokens." = "Characters in final dictation output, not words or tokens.";
 "Check Keychain access for Talkless." = "Check Keychain access for Talkless.";
@@ -184,6 +183,7 @@
 "Clear saved history?" = "Clear saved history?";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut.";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only.";
+"Click, then press a key combination with Command, Control, or Option to change this shortcut." = "Click, then press a key combination with Command, Control, or Option to change this shortcut.";
 "Click, then press a key to change this shortcut." = "Click, then press a key to change this shortcut.";
 "Close" = "Close";
 "Close the guide. Unfinished items can be completed in Settings." = "Close the guide. Unfinished items can be completed in Settings.";
@@ -471,6 +471,7 @@
 "Preparing recognition" = "Preparing recognition";
 "Presets" = "Presets";
 "Press Fn or a right-side modifier. Esc cancels." = "Press Fn or a right-side modifier. Esc cancels.";
+"Press a key combination…" = "Press a key combination…";
 "Press a key…" = "Press a key…";
 "Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears." = "Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears.";
 "Preview and customize recording feedback." = "Preview and customize recording feedback.";

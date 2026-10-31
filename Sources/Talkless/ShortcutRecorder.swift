@@ -312,11 +312,19 @@ final class ShortcutRecorderButton: NSButton {
 
     func refreshTitle() {
         if let capture {
-            title = capture.pendingTitle.map { "\($0) …" } ?? L10n.tr("Press a key…")
+            let prompt: String
+            switch capture {
+            case .modifier: prompt = L10n.tr("Press a key…")
+            case .translation: prompt = L10n.tr("Press a key combination…")
+            }
+            title = capture.pendingTitle.map { "\($0) …" } ?? prompt
         } else {
             title = currentValue
         }
-        toolTip = capture == nil ? L10n.tr("Click, then press a key to change this shortcut.")
+        toolTip = capture == nil
+            ? (onTranslationRecord == nil
+                ? L10n.tr("Click, then press a key to change this shortcut.")
+                : L10n.tr("Click, then press a key combination with Command, Control, or Option to change this shortcut."))
             : L10n.tr("Esc cancels.") + (allowsClearing ? L10n.tr(" Delete disables this shortcut.") : "")
         setAccessibilityValue(title)
     }

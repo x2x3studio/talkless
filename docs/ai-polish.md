@@ -36,7 +36,7 @@ When the final output is ready, amber backgrounds show literal additions and rep
 
 Whitespace-only changes and whole-token deletions produce no colored result span. A word shortened by removing letters is highlighted as a replacement. Revision comparison is local and bounded to **512 visible comparison tokens and 64 KiB of UTF-8 text per input**; if either input exceeds a limit, revision decoration is skipped without changing the output. These tokens are unrelated to the provider's token accounting. Highlighting makes no extra AI requests.
 
-Final text remains visible with a checkmark for about **two seconds after insertion returns**, without delaying insertion or blocking the next recording. On a polishing failure, the raw transcript is inserted and the fallback message appears for about **three seconds** instead. History retains the raw and final text for later review. See [overlay controls](user-guide.md#overlay).
+After insertion returns, final text briefly shows a checkmark with dismissal scheduled after **50 ms**, without delaying insertion or blocking the next recording. Scheduling is best effort, not an exact real-time duration. On a polishing failure, the raw transcript is inserted and the fallback message appears for about **three seconds** instead. History retains the raw and final text for later review. See [overlay controls](user-guide.md#overlay).
 
 ## Test Connection and its receipt
 

@@ -49,8 +49,29 @@ enum DictionaryTerms {
         return result
     }
 
-    /// Canonically equivalent Unicode shares a decision; case-distinct spellings stay independent.
+    private static let reviewLocale = Locale(identifier: "en_US_POSIX")
+
+    /// Review ignores case, but never rewrites the spelling saved in My terms or sent as a hint.
+    static func reviewIdentity(_ term: String) -> String {
+        term.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: .caseInsensitive, locale: reviewLocale)
+            .precomposedStringWithCanonicalMapping
+    }
+
     static func reviewKey(_ term: String) -> String {
+        legacyReviewKey(reviewIdentity(term))
+    }
+
+    /// Old dismissals contain only digests, so migrate spellings as they are encountered.
+    /// Common variants also preserve decisions whose original evidence is no longer in history.
+    static func legacyReviewKeys(_ term: String) -> Set<String> {
+        let identity = reviewIdentity(term)
+        return Set([term, term.lowercased(with: reviewLocale), term.uppercased(with: reviewLocale),
+                    term.capitalized(with: reviewLocale)]
+            .filter { reviewIdentity($0) == identity }.map(legacyReviewKey))
+    }
+
+    private static func legacyReviewKey(_ term: String) -> String {
         let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines)
             .precomposedStringWithCanonicalMapping
         return SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -79,18 +100,22 @@ enum DictionaryCorrectionExtractor {
         var output: Range<Int>
     }
 
-    static func extract(from entry: HistoryEntry) -> [DictionaryCorrection] {
+    static func extract(from entry: HistoryEntry, legacyDismissals: Bool = false) -> [DictionaryCorrection] {
         guard entry.kind == .dictation else { return [] }
-        return extract(raw: entry.raw, output: entry.output)
+        return extract(raw: entry.raw, output: entry.output, legacyDismissals: legacyDismissals)
     }
 
-    static func extract(raw: String, output: String) -> [DictionaryCorrection] {
+    /// Legacy alignment is used only to recover existing dismissal digests, never new suggestions.
+    static func extract(raw: String, output: String, legacyDismissals: Bool = false) -> [DictionaryCorrection] {
         // Prefix limits avoid walking or aligning unbounded history strings.
         guard raw.utf8.count <= maximumCharacters * 4, output.utf8.count <= maximumCharacters * 4,
               raw.count <= maximumCharacters, output.count <= maximumCharacters else { return [] }
         let a = tokens(raw), b = tokens(output)
         guard !a.isEmpty, !b.isEmpty, a.count <= maximumTokens, b.count <= maximumTokens else { return [] }
-        let changes = differences(a.map(\.text), b.map(\.text))
+        func identity(_ text: String) -> String {
+            legacyDismissals ? text : DictionaryTerms.reviewIdentity(text)
+        }
+        let changes = differences(a.map { identity($0.text) }, b.map { identity($0.text) })
         guard !changes.isEmpty, changes.count <= 3 else { return [] }
         let changed = changes.reduce(0) { $0 + max($1.source.count, $1.output.count) }
         let total = max(a.count, b.count)
@@ -125,25 +150,35 @@ enum DictionaryCorrectionExtractor {
             let sourceRange = a[source.lowerBound].range.lowerBound..<a[source.upperBound - 1].range.upperBound
             let outputRange = b[target.lowerBound].range.lowerBound..<b[target.upperBound - 1].range.upperBound
             let before = String(raw[sourceRange]), after = String(output[outputRange])
-            guard before != after, before.count <= 48, after.count <= 48,
+            guard identity(before) != identity(after),
+                  before.count <= 48, after.count <= 48,
                   !before.contains(where: \.isNewline), !after.contains(where: \.isNewline),
                   safePhrase(before), safePhrase(after) else { continue }
             if !outputHan {
                 // Hyphen/apostrophe formatting alone is not evidence of a learned spelling.
-                guard before.filter({ !"_-'’".contains($0) }) != after.filter({ !"_-'’".contains($0) }) else { continue }
-                let old = spelling(before), new = spelling(after)
-                let sentenceStart = source.lowerBound == 0 || raw[..<sourceRange.lowerBound].last(where: { !$0.isWhitespace }).map { ".!?。！？".contains($0) } == true
-                if sentenceStart, before.lowercased() == after.lowercased(),
-                   after.first?.isUppercase == true, after.dropFirst().allSatisfy({ !$0.isLetter || $0.isLowercase }) { continue }
+                guard identity(before).filter({ !"_-'’".contains($0) })
+                    != identity(after).filter({ !"_-'’".contains($0) }) else { continue }
+                let old = spelling(before, legacyDismissals: legacyDismissals)
+                let new = spelling(after, legacyDismissals: legacyDismissals)
+                if legacyDismissals {
+                    let sentenceStart = source.lowerBound == 0 || raw[..<sourceRange.lowerBound].last(where: { !$0.isWhitespace }).map { ".!?。！？".contains($0) } == true
+                    if sentenceStart, before.lowercased() == after.lowercased(),
+                       after.first?.isUppercase == true, after.dropFirst().allSatisfy({ !$0.isLetter || $0.isLowercase }) { continue }
+                }
                 let plainBefore = String(old), plainAfter = String(new)
                 if before == before.lowercased(), after == after.lowercased(),
-                   ["s", "es", "ed", "ing"].contains(where: { plainAfter == plainBefore + $0 || plainBefore == plainAfter + $0 }) { continue }
+                   ["s", "es", "ed", "ing"].contains(where: { suffix in
+                       // A doubled final s (talkles → talkless) is spelling, not a simple plural.
+                       let shorter = plainBefore.count < plainAfter.count ? plainBefore : plainAfter
+                       if !legacyDismissals, suffix == "s", shorter.hasSuffix("s") { return false }
+                       return plainAfter == plainBefore + suffix || plainBefore == plainAfter + suffix
+                   }) { continue }
                 guard old.count >= 3, new.count >= 3,
                       old.allSatisfy({ $0.isLetter || $0.isNumber }), new.allSatisfy({ $0.isLetter || $0.isNumber }),
                       distance(old, new) <= min(3, max(1, max(old.count, new.count) / 3)) else { continue }
             }
-            let key = DictionaryTerms.reviewKey(after)
-            guard seen.insert(key).inserted else { continue }
+            // Keep observed case variants for legacy dismissal migration; the scanner groups them.
+            guard seen.insert(after).inserted else { continue }
             results.append(DictionaryCorrection(source: before, term: after,
                                                 sourceSnippet: snippet(raw, around: sourceRange),
                                                 outputSnippet: snippet(output, around: outputRange)))
@@ -222,8 +257,10 @@ enum DictionaryCorrectionExtractor {
             && text.contains(where: \.isLetter)
     }
 
-    private static func spelling(_ text: String) -> [Character] {
-        Array(text.precomposedStringWithCanonicalMapping.lowercased().filter { !$0.isWhitespace && !"_-'’".contains($0) })
+    private static func spelling(_ text: String, legacyDismissals: Bool) -> [Character] {
+        let identity = legacyDismissals ? text.precomposedStringWithCanonicalMapping.lowercased()
+            : DictionaryTerms.reviewIdentity(text)
+        return Array(identity.filter { !$0.isWhitespace && !"_-'’".contains($0) })
     }
 
     private static func distance(_ a: [Character], _ b: [Character]) -> Int {
@@ -262,29 +299,59 @@ enum DictionaryReviewScanner {
     static let historyLimit = 500
     static let candidateLimit = 100
 
+    struct Result: Sendable {
+        let candidates: [DictionaryCandidate]
+        let dismissed: Set<String>
+    }
+
     static func scan(_ entries: [HistoryEntry], excluding excluded: Set<String> = []) -> [DictionaryCandidate] {
-        var candidates: [String: DictionaryCandidate] = [:]
+        scanWithDismissals(entries, excluding: excluded, dismissed: []).candidates
+    }
+
+    static func scanWithDismissals(_ entries: [HistoryEntry], excluding excluded: Set<String>,
+                                   dismissed: Set<String>) -> Result {
+        var evidence: [(HistoryEntry, DictionaryCorrection, String)] = []
+        var migratedDismissals = dismissed
         var seenEntries = Set<UUID>()
-        // History is newest-first. Keep the newest evidence, but count distinct dictations.
+        // Resolve legacy decisions before capping candidates: an older case variant may dismiss
+        // newer evidence too. The immutable input lets every observed variant share that decision.
         for entry in entries.prefix(historyLimit) {
-            if Task.isCancelled { return [] }
+            if Task.isCancelled { return Result(candidates: [], dismissed: dismissed) }
             guard seenEntries.insert(entry.id).inserted else { continue }
-            for correction in DictionaryCorrectionExtractor.extract(from: entry) {
-                let key = DictionaryTerms.reviewKey(correction.term)
-                guard !excluded.contains(key) else { continue }
-                if candidates[key] != nil {
-                    candidates[key]?.entryIDs.insert(entry.id)
-                } else if candidates.count < candidateLimit {
-                    candidates[key] = DictionaryCandidate(term: correction.term, correction: correction,
-                                                          date: entry.date, app: entry.app, evidenceEntryID: entry.id, entryIDs: [entry.id])
+            let corrections = DictionaryCorrectionExtractor.extract(from: entry)
+            if !dismissed.isEmpty {
+                let legacyCorrections = DictionaryCorrectionExtractor.extract(from: entry, legacyDismissals: true)
+                for term in Set((corrections + legacyCorrections).map(\.term)) {
+                    let legacy = DictionaryTerms.legacyReviewKeys(term).intersection(dismissed)
+                    if !legacy.isEmpty {
+                        migratedDismissals.subtract(legacy)
+                        migratedDismissals.insert(DictionaryTerms.reviewKey(term))
+                    }
                 }
             }
+            for correction in corrections {
+                evidence.append((entry, correction, DictionaryTerms.reviewKey(correction.term)))
+            }
         }
-        return candidates.values.sorted {
+        let excluded = excluded.union(migratedDismissals)
+        var candidates: [String: DictionaryCandidate] = [:]
+        // History is newest-first. Keep its original display spelling and count distinct dictations.
+        for (entry, correction, key) in evidence {
+            if Task.isCancelled { return Result(candidates: [], dismissed: dismissed) }
+            guard !excluded.contains(key) else { continue }
+            if candidates[key] != nil {
+                candidates[key]?.entryIDs.insert(entry.id)
+            } else if candidates.count < candidateLimit {
+                candidates[key] = DictionaryCandidate(term: correction.term, correction: correction,
+                                                      date: entry.date, app: entry.app, evidenceEntryID: entry.id, entryIDs: [entry.id])
+            }
+        }
+        let sorted = candidates.values.sorted {
             if $0.occurrenceCount != $1.occurrenceCount { return $0.occurrenceCount > $1.occurrenceCount }
             if $0.date != $1.date { return $0.date > $1.date }
             return $0.term < $1.term
         }
+        return Result(candidates: sorted, dismissed: migratedDismissals)
     }
 }
 
@@ -383,10 +450,14 @@ final class DictionaryReviewStore: ObservableObject {
         persistDismissals()
     }
 
-    private func persistDismissals() {
+    private func persistDismissals(rescan: Bool = true) {
         defaults.set(try? JSONEncoder().encode(dismissed), forKey: Self.dismissalStorageKey)
         dismissedCount = dismissed.count
-        if hasScanned, !authorizedEntries.isEmpty { scheduleScan(authorizedEntries) }
+        if rescan {
+            // Replace pending migration even with no history, so stale evidence is also pruned.
+            if hasScanned { scheduleScan(authorizedEntries) }
+            else { cancelScan() }
+        }
     }
 
     private func cancelScan() {
@@ -399,13 +470,20 @@ final class DictionaryReviewStore: ObservableObject {
     private func scheduleScan(_ entries: [HistoryEntry], dictionary: String? = nil) {
         cancelScan()
         let token = generation
-        let excluded = dismissed.union(DictionaryTerms.terms(in: dictionary ?? settings.dictionary).map(DictionaryTerms.reviewKey))
+        let excluded = Set(DictionaryTerms.terms(in: dictionary ?? settings.dictionary).map(DictionaryTerms.reviewKey))
+        let dismissed = self.dismissed
         isScanning = true
         scanTask = Task { [weak self] in
-            let work = Task.detached(priority: .utility) { DictionaryReviewScanner.scan(entries, excluding: excluded) }
+            let work = Task.detached(priority: .utility) {
+                DictionaryReviewScanner.scanWithDismissals(entries, excluding: excluded, dismissed: dismissed)
+            }
             let result = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
             guard let self, !Task.isCancelled, token == self.generation else { return }
-            self.candidates = result
+            if self.dismissed != result.dismissed {
+                self.dismissed = result.dismissed
+                self.persistDismissals(rescan: false)
+            }
+            self.candidates = result.candidates
             self.lastScanEntryCount = entries.count
             self.isScanning = false
             self.scanTask = nil

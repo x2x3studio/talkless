@@ -149,7 +149,6 @@
 "Changes apply immediately." = "更改立即生效。";
 "Changes apply to the next recording." = "更改将在下次录音时生效。";
 "Changes the interface only, not speech recognition, output, or translation languages." = "仅更改界面语言，不影响语音识别、输出或翻译语言。";
-"Changing a language translates the original selection again using your AI service." = "更改语言会使用你的 AI 服务重新翻译原始选中文字。";
 "Characters" = "字符数";
 "Characters in final dictation output, not words or tokens." = "最终语音输入文本的字符数，不是词数或 token 数。";
 "Check Keychain access for Talkless." = "请检查 Talkless 的钥匙串访问权限。";
@@ -184,6 +183,7 @@
 "Clear saved history?" = "清空已保存的历史记录？";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Press Delete while recording the shortcut to disable the AI polishing shortcut." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。录制快捷键时按 Delete 可停用 AI 润色快捷键。";
 "Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only." = "点击后按 Fn 或右侧修饰键。松开保存，按 Esc 取消。仅支持单个按键。";
+"Click, then press a key combination with Command, Control, or Option to change this shortcut." = "点击后按下包含 Command、Control 或 Option 的组合键以更改此快捷键。";
 "Click, then press a key to change this shortcut." = "点击后按下按键以更改此快捷键。";
 "Close" = "关闭";
 "Close the guide. Unfinished items can be completed in Settings." = "关闭引导。尚未完成的项目可稍后在设置中完成。";
@@ -315,7 +315,7 @@
 "Finish or dismiss the current update before changing channels." = "请先完成或关闭当前更新，再更改更新通道。";
 "Finnish" = "芬兰语";
 "Fn / Globe" = "Fn / 地球仪键";
-"Fn combinations are not supported. Use Command, Control, or Option." = "不支持 Fn 组合键。请使用 Command、Control 或 Option。";
+"Fn combinations are not supported. Use Command, Control, or Option." = "不支持 Fn 组合键。请使用包含 Command、Control 或 Option 的组合键。";
 "Follow System" = "跟随系统";
 "Follow text cursor" = "跟随文本光标";
 "Follows your text cursor when available; otherwise stays at the bottom of the screen. Never takes focus. Clicks pass through." = "可获取文本光标位置时跟随光标，否则显示在屏幕底部。不抢占焦点，点击可穿透。";
@@ -471,8 +471,9 @@
 "Preparing recognition" = "正在准备识别";
 "Presets" = "预设";
 "Press Fn or a right-side modifier. Esc cancels." = "请按 Fn 或右侧修饰键。按 Esc 取消。";
+"Press a key combination…" = "请按下组合键…";
 "Press a key…" = "请按一个键…";
-"Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears." = "请按包含 Command、Control 或 Option 的快捷键。按 Esc 取消，Delete 清除。";
+"Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears." = "请按下包含 Command、Control 或 Option 的组合键。按 Esc 取消，Delete 清除。";
 "Preview and customize recording feedback." = "预览和自定义录音时的显示效果。";
 "Previous terms page" = "上一页词语";
 "Previously dismissed spellings may reappear from your scanned history. No terms will be added automatically." = "此前忽略的词语可能会在扫描历史记录后重新出现。系统不会自动添加任何词语。";
@@ -506,7 +507,7 @@
 "Release Esc to cancel." = "松开 Esc 取消。";
 "Release all keys to cancel." = "松开所有按键以取消。";
 "Release held keys, then press Fn or a right-side modifier." = "先松开按住的按键，再按 Fn 或右侧修饰键。";
-"Release held keys, then press a shortcut." = "先松开按住的按键，再按快捷键。";
+"Release held keys, then press a shortcut." = "先松开按住的按键，再按下组合键。";
 "Replace Original" = "替换原文";
 "Reset" = "重置";
 "Reset %@" = "重置%@";

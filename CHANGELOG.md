@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Improved
+- Dictionary review merges suggestions without regard to case, skips capitalization-only changes, and avoids recommending existing terms again while preserving saved spellings.
+- Removed the explanatory language-change hint from the translation panel.
+- Translation shortcut capture now asks for a key combination, while dictation capture still asks for a single key.
+- The completion checkmark now stays for 50 milliseconds after insertion instead of two seconds.
+
+## 2026.1031.34156
+
 ### Fixed
 - Microphone startup and teardown no longer block the interface. Healthy recordings reuse their audio engine instead of repeatedly rebinding the same microphone.
 - Unresponsive native audio operations time out without accumulating replacement workers or inserting partial text.

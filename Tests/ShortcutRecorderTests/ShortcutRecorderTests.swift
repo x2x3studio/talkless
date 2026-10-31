@@ -236,7 +236,10 @@ struct ShortcutRecorderTests {
                              windowNumber: window.windowNumber, context: nil, characters: "",
                              charactersIgnoringModifiers: "", isARepeat: false, keyCode: code)!
         }
+        button.refreshTitle()
+        check(button.toolTip == "Click, then press a key to change this shortcut.", "Single-modifier idle help stays single-key")
         button.beginCapture(initialFlags: [])
+        check(button.title == "Press a key…", "Dictation capture asks for one key")
         check(transitions == [true] && window.firstResponder === button, "click begins suspended first-responder capture")
         button.flagsChanged(with: event(.flagsChanged, 54, rightCommand))
         check(button.title.contains("Right Command") && saved.isEmpty, "native pending feedback without save")
@@ -307,6 +310,51 @@ struct ShortcutRecorderTests {
         button.beginCapture(initialFlags: [])
         NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
         check(button.capture == nil && transitions.suffix(2) == [true, false], "Native translation blur resumes monitors")
+        for language in [InterfaceLanguage.english, .simplifiedChinese] {
+            localization.interfaceLanguage = language
+            let chinese = language == .simplifiedChinese
+            for (translation, clearing) in [(false, false), (false, true), (true, true)] {
+                button.onTranslationRecord = translation ? { _ in nil } : nil
+                button.allowsClearing = clearing
+                button.currentValue = translation ? TranslationShortcut.default.title : TriggerKey.fn.title
+                button.refreshTitle()
+                let prompt = translation
+                    ? (chinese ? "\u{8BF7}\u{6309}\u{4E0B}\u{7EC4}\u{5408}\u{952E}…" : "Press a key combination…")
+                    : (chinese ? "\u{8BF7}\u{6309}\u{4E00}\u{4E2A}\u{952E}…" : "Press a key…")
+                let help = translation
+                    ? (chinese ? "\u{70B9}\u{51FB}\u{540E}\u{6309}\u{4E0B}\u{5305}\u{542B} Command、Control \u{6216} Option \u{7684}\u{7EC4}\u{5408}\u{952E}\u{4EE5}\u{66F4}\u{6539}\u{6B64}\u{5FEB}\u{6377}\u{952E}。"
+                        : "Click, then press a key combination with Command, Control, or Option to change this shortcut.")
+                    : (chinese ? "\u{70B9}\u{51FB}\u{540E}\u{6309}\u{4E0B}\u{6309}\u{952E}\u{4EE5}\u{66F4}\u{6539}\u{6B64}\u{5FEB}\u{6377}\u{952E}。" : "Click, then press a key to change this shortcut.")
+                check(button.title == button.currentValue && button.toolTip == help, "Idle help matches the recorder kind in both languages")
+                button.beginCapture(initialFlags: [])
+                check(button.title == prompt, "Initial capture title matches the recorder kind in both languages")
+                if translation {
+                    check(status == (chinese ? "\u{8BF7}\u{6309}\u{4E0B}\u{5305}\u{542B} Command、Control \u{6216} Option \u{7684}\u{7EC4}\u{5408}\u{952E}。\u{6309} Esc \u{53D6}\u{6D88}，Delete \u{6E05}\u{9664}。"
+                        : "Press a shortcut with Command, Control, or Option. Esc cancels; Delete clears."),
+                        "Combination capture help names its supported modifiers")
+                }
+                button.endCapture()
+                button.beginCapture(initialFlags: .command)
+                check(button.title == prompt, "Held-at-start capture uses the correct localized prompt")
+                button.flagsChanged(with: event(.flagsChanged, 55))
+                check(button.title == prompt, "Initial release keeps the correct prompt")
+                button.keyDown(with: event(.keyDown, 17))
+                button.keyUp(with: event(.keyUp, 17))
+                check(button.capture?.isError == true && button.title == prompt,
+                      "Invalid unmodified letter cannot revert combination prompt to a single-key prompt")
+                check(button.accessibilityValue() as? String == prompt, "Capture accessibility value matches the actual button title")
+                if translation {
+                    button.keyDown(with: event(.keyDown, 17, .command))
+                    check(button.title == "⌘T …", "Pending combination replaces the recording prompt")
+                } else {
+                    button.flagsChanged(with: event(.flagsChanged, 63, .function))
+                    check(button.title == "\(TriggerKey.fn.title) …", "Pending single modifier replaces its recording prompt")
+                }
+                button.endCapture()
+                check(button.title == button.currentValue && button.toolTip == help, "Ending capture restores the value and mode-specific help")
+            }
+        }
+        localization.interfaceLanguage = .english
         if CommandLine.arguments.count > 1 {
             let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
             try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

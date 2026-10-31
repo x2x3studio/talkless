@@ -167,7 +167,7 @@ Live highlighting requires an engine that supplies partial text (local Qwen or A
 
 The overlay keeps your latest transcript visible through recognition and AI processing instead of replacing it with a status message. Long dictation shows the latest lines. A small icon on the left indicates the phase: recording and final recognition share a waveform and the accessible label **Dictating**; polishing uses sparkles and voice editing uses a pencil. A text status appears only when there is no transcript yet. There are no start/stop sounds or shortcut-hint footer.
 
-The final text appears during insertion, then remains with a checkmark for **about two seconds**. This review time does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
+The final text appears during insertion, then briefly shows a checkmark with dismissal scheduled after **50 ms**. This is best-effort scheduling, not an exact real-time duration. The confirmation does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
 
 ### Final AI changes
 

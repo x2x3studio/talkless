@@ -5,6 +5,18 @@ let directory = FileManager.default.temporaryDirectory.appendingPathComponent("t
 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: directory) }
 let source = directory.appendingPathComponent("HUDTests.swift")
+// Verify configured durations exactly; runtime lifecycle tests allow scheduler slack.
+let overlaySource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Overlay.swift"), encoding: .utf8)
+let showStart = overlaySource.range(of: "    func show(_ phase: HUDModel.Phase)")!.lowerBound
+let showEnd = overlaySource.range(of: "    func hide(after", range: showStart..<overlaySource.endIndex)!.lowerBound
+let showSource = String(overlaySource[showStart..<showEnd])
+let completedStart = showSource.range(of: "        case .completed:")!.lowerBound
+let completedEnd = showSource.range(of: "        default:", range: completedStart..<showSource.endIndex)!.lowerBound
+precondition(showSource[completedStart..<completedEnd].contains("hide(after: .milliseconds(50))"),
+             "Completed confirmation schedules dismissal after 50 ms, not the insertion/clipboard delay")
+let errorStart = showSource.range(of: "        case .error:")!.lowerBound
+precondition(showSource[errorStart..<completedStart].contains("hide(after: .seconds(3))"),
+             "Errors keep their existing three-second timeout")
 // Compile the production display enums and hint formatter, but none of the controller's services.
 let settingsSource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Settings.swift"), encoding: .utf8)
 let displayStart = settingsSource.range(of: "enum TriggerKey:")!.lowerBound
@@ -553,7 +565,7 @@ struct HUDTests {
                         }
                     }
                 }
-                Text(chinese ? "\u{84DD}\u{8272}\u{4E0B}\u{5212}\u{7EBF}：\u{8BCD}\u{5178}\u{5339}\u{914D} · \u{6696}\u{8272}\u{9AD8}\u{4EAE}：AI \u{5B9E}\u{9645}\u{4FEE}\u{6539} · \u{5B8C}\u{6210}\u{540E}\u{505C}\u{7559} 2 \u{79D2}，\u{4E0D}\u{5EF6}\u{8FDF}\u{8F93}\u{5165} · \u{4EC5}\u{4F9B}\u{5BA1}\u{9605}" : "Blue underline: dictionary match · Amber: actual AI change · 2-second result, no input delay · Review only")
+                Text(chinese ? "\u{84DD}\u{8272}\u{4E0B}\u{5212}\u{7EBF}：\u{8BCD}\u{5178}\u{5339}\u{914D} · \u{6696}\u{8272}\u{9AD8}\u{4EAE}：AI \u{5B9E}\u{9645}\u{4FEE}\u{6539} · \u{5B8C}\u{6210}\u{540E}\u{8BA1}\u{5212} 50 ms \u{540E}\u{5173}\u{95ED}（\u{5C3D}\u{529B}\u{8C03}\u{5EA6}） · \u{9759}\u{6001}\u{9884}\u{89C8}" : "Blue: dictionary match · Amber: actual AI change · Hide scheduled after 50 ms (best effort) · Static preview")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             .padding(30)
@@ -672,26 +684,46 @@ struct HUDTests {
         RunLoop.main.run(until: Date().addingTimeInterval(0.08))
         precondition(hud.model.phase == .polishing, "New stage cancels a stale hide task")
         hud.hide()
-        hud.model.preview = "Final result"
-        hud.model.revisionOriginal = "Raw result"
-        hud.show(.completed)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-        precondition(hud.model.phase == .completed, "Completion review is visible without blocking insertion")
-        hud.model.preview = "New recording"
-        hud.model.revisionOriginal = nil
-        hud.show(.listening(handsFree: true))
-        RunLoop.main.run(until: Date().addingTimeInterval(2.1))
-        precondition(hud.model.phase == .listening(handsFree: true) && hud.model.preview == "New recording",
-                     "Old completion dismissal cannot hide a new session")
-        hud.show(.completed)
-        // Task scheduling under parallel builds can exceed a 100ms timing margin.
-        // Keep the production two-second delay; allow bounded scheduler slack here.
-        let dismissalDeadline = Date().addingTimeInterval(3)
-        while hud.model.phase != .hidden && Date() < dismissalDeadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        var completionLifecycleFinished = false
+        Task { @MainActor in
+            hud.model.preview = "Final result"
+            hud.model.revisionOriginal = "Raw result"
+            hud.show(.completed)
+            precondition(hud.model.phase == .completed && hud.model.preview == "Final result",
+                         "Completion is set immediately without a blocking dwell")
+            // Let the dismissal task start, then replace the result without assuming
+            // humans can inspect a 50 ms confirmation or requiring a 100 ms dwell.
+            await Task.yield()
+            hud.model.preview = "New recording"
+            hud.model.revisionOriginal = nil
+            hud.show(.listening(handsFree: true))
+            try! await Task.sleep(for: .milliseconds(150))
+            precondition(hud.model.phase == .listening(handsFree: true) && hud.model.preview == "New recording",
+                         "Old completion dismissal cannot hide a new session")
+            hud.model.preview = "Final result"
+            hud.model.revisionOriginal = "Raw result"
+            hud.show(.completed)
+            // The source assertion pins 50 ms. Exercise the actual asynchronous hide
+            // with bounded scheduler slack, not a race against an exact wall-clock instant.
+            let clock = ContinuousClock()
+            let dismissalDeadline = clock.now.advanced(by: .seconds(1))
+            while hud.model.phase != .hidden && clock.now < dismissalDeadline {
+                try! await Task.sleep(for: .milliseconds(10))
+            }
+            precondition(hud.model.phase == .hidden && hud.model.preview.isEmpty && hud.model.revisionOriginal == nil,
+                         "Completion automatically clears well before the old two-second dwell")
+            hud.show(.error("Synthetic error"))
+            try! await Task.sleep(for: .milliseconds(150))
+            precondition(hud.model.phase == .error("Synthetic error"),
+                         "Short completion timeout does not shorten the error display")
+            hud.hide()
+            completionLifecycleFinished = true
         }
-        precondition(hud.model.phase == .hidden && hud.model.preview.isEmpty && hud.model.revisionOriginal == nil,
-                     "Completion automatically clears after the brief review")
+        let lifecycleDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !completionLifecycleFinished && ContinuousClock.now < lifecycleDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        precondition(completionLifecycleFinished, "Asynchronous completion lifecycle must finish within its time cap")
 
         let preview = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
         for stage in HUDPreviewStage.allCases {

@@ -280,9 +280,9 @@ final class HUDController {
         case .error:
             hide(after: .seconds(3))
         case .completed:
-            // Review time is nonblocking: insertion is already finished and the
-            // next recording replaces this result and cancels its dismissal.
-            hide(after: .seconds(2))
+            // Brief, nonblocking confirmation after insertion. Scheduling is best effort;
+            // a new recording replaces the result and cancels its dismissal.
+            hide(after: .milliseconds(50))
         default:
             break
         }
@@ -616,10 +616,6 @@ struct TranslationView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .controlSize(.small)
-            Text(L10n.tr("Changing a language translates the original selection again using your AI service."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             Text(source)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
