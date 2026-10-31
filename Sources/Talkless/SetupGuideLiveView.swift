@@ -14,9 +14,20 @@ struct SetupGuideLiveView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var localization = LocalizationSettings.shared
     @StateObject private var state = SetupGuideState()
+    @StateObject private var launchAtLogin: LaunchAtLoginController
     @State private var accessibilityRequested = false
     @State private var microphoneRequestPending = false
     private let refreshTimer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    init(controller: DictationController, onComplete: @escaping () -> Void,
+         onSkip: @escaping () -> Void, openSettings: @escaping (String) -> Void,
+         launchAtLoginService: any LaunchAtLoginService = MainAppLaunchAtLoginService()) {
+        self.controller = controller
+        self.onComplete = onComplete
+        self.onSkip = onSkip
+        self.openSettings = openSettings
+        _launchAtLogin = StateObject(wrappedValue: LaunchAtLoginController(service: launchAtLoginService))
+    }
 
     var body: some View {
         SetupGuideView(state: state, actions: SetupGuideActions(
@@ -56,8 +67,12 @@ struct SetupGuideLiveView: View {
                 refresh()
             },
             finish: onComplete,
-            skipSetup: onSkip
-        ))
+            skipSetup: onSkip,
+            setLaunchAtLogin: { enabled in
+                Task { await launchAtLogin.setEnabled(enabled) }
+            },
+            openLoginItems: launchAtLogin.openLoginItems
+        ), launchAtLogin: LaunchAtLoginPresentation(controller: launchAtLogin))
         .onAppear(perform: refresh)
         .onReceive(refreshTimer) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
@@ -70,6 +85,7 @@ struct SetupGuideLiveView: View {
     }
 
     private func refresh() {
+        launchAtLogin.refresh()
         let microphone: SetupGuidePermission
         switch DictationController.microphoneStatus {
         case .authorized: microphone = .granted

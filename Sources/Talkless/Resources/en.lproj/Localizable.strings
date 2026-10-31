@@ -378,6 +378,10 @@
 "Last year" = "Last year";
 "Latvian" = "Latvian";
 "Launch at login" = "Launch at login";
+"Launch at login · optional" = "Launch at login · optional";
+"Continue to keep your current setting. Change it anytime in Settings › System." = "Continue to keep your current setting. Change it anytime in Settings › System.";
+"Approval required" = "Approval required";
+"Unavailable" = "Unavailable";
 "Launch at login is unavailable in this development build. Install and open Talkless.app from Applications." = "Launch at login is unavailable in this development build. Install and open Talkless.app from Applications.";
 "Launch at login is unavailable. Check Login Items in System Settings." = "Launch at login is unavailable. Check Login Items in System Settings.";
 "Left Command ⌘" = "Left Command ⌘";

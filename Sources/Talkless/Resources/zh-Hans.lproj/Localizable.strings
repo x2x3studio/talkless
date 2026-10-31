@@ -378,6 +378,10 @@
 "Last year" = "最近一年";
 "Latvian" = "拉脱维亚语";
 "Launch at login" = "登录时启动";
+"Launch at login · optional" = "登录时启动 · 可选";
+"Continue to keep your current setting. Change it anytime in Settings › System." = "继续会保留当前设置。可随时在「设置 › 系统」中更改。";
+"Approval required" = "等待批准";
+"Unavailable" = "不可用";
 "Launch at login is unavailable in this development build. Install and open Talkless.app from Applications." = "此开发版本不支持登录时启动。请将 Talkless.app 安装到“应用程序”文件夹并从那里打开。";
 "Launch at login is unavailable. Check Login Items in System Settings." = "登录时启动不可用。请检查“系统设置”中的“登录项”。";
 "Left Command ⌘" = "左 Command ⌘";

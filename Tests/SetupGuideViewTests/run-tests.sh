@@ -10,6 +10,8 @@ printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Ap
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 xcrun --sdk macosx swiftc -sdk "$SDK" -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \
+  "$ROOT/Sources/Talkless/LaunchAtLogin.swift" \
+  "$ROOT/Sources/Talkless/LaunchAtLoginSettingsView.swift" \
   "$ROOT/Sources/Talkless/SetupGuideView.swift" \
   "$ROOT/Sources/Talkless/SetupGuideLiveView.swift" \
   "$ROOT/Tests/SetupGuideViewTests/SetupGuideViewTests.swift" \

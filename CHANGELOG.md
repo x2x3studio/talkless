@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- Setup Guide now offers an optional Launch at login step using the same macOS-controlled setting as System preferences. Nothing is enabled automatically.
+
+## 2026.1031.36630
+
 ### Improved
 - Dictionary review merges suggestions without regard to case, skips capitalization-only changes, and avoids recommending existing terms again while preserving saved spellings.
 - Removed the explanatory language-change hint from the translation panel.

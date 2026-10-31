@@ -67,6 +67,8 @@ struct SetupGuideActions {
     var enablePolish: () -> Void
     var finish: () -> Void
     var skipSetup: () -> Void
+    var setLaunchAtLogin: (Bool) -> Void
+    var openLoginItems: () -> Void
 
     func allow(_ permission: SetupGuidePermission, microphone: Bool) {
         guard permission != .granted, permission != .requesting else { return }
@@ -86,7 +88,7 @@ struct SetupGuideActions {
 }
 
 enum SetupGuideStep: Int, CaseIterable {
-    case welcome, controls, microphone, accessibility, speech, ai, done
+    case welcome, controls, microphone, accessibility, speech, ai, login, done
 
     var next: Self { Self(rawValue: rawValue + 1) ?? self }
     var previous: Self { Self(rawValue: rawValue - 1) ?? self }
@@ -99,6 +101,7 @@ enum SetupGuideStep: Int, CaseIterable {
         case .accessibility: L10n.tr("Accessibility")
         case .speech: L10n.tr("Speech recognition")
         case .ai: L10n.tr("AI polishing · optional")
+        case .login: L10n.tr("Launch at login · optional")
         case .done: L10n.tr("Setup summary")
         }
     }
@@ -111,6 +114,7 @@ enum SetupGuideStep: Int, CaseIterable {
         case .accessibility: "keyboard"
         case .speech: "arrow.down.circle"
         case .ai: "text.badge.checkmark"
+        case .login: "person.crop.circle.badge.clock"
         case .done: "checklist"
         }
     }
@@ -120,14 +124,17 @@ enum SetupGuideStep: Int, CaseIterable {
 struct SetupGuideView: View {
     @ObservedObject var state: SetupGuideState
     let actions: SetupGuideActions
+    let launchAtLogin: LaunchAtLoginPresentation
     @ObservedObject private var localization: LocalizationSettings
     @State private var step: SetupGuideStep
     @FocusState private var continueFocused: Bool
 
     init(state: SetupGuideState, actions: SetupGuideActions,
+         launchAtLogin: LaunchAtLoginPresentation = .init(),
          localization: LocalizationSettings = .shared, initialStep: SetupGuideStep = .welcome) {
         self.state = state
         self.actions = actions
+        self.launchAtLogin = launchAtLogin
         self.localization = localization
         _step = State(initialValue: initialStep)
     }
@@ -275,6 +282,17 @@ struct SetupGuideView: View {
                 Button(L10n.tr("Check again"), action: actions.refresh)
             }
             explanation("Continue without changing anything, or explicitly enable polishing above. No audio or text is sent by this guide.", small: true)
+        case .login:
+            VStack(alignment: .leading, spacing: 12) {
+                LaunchAtLoginControls(
+                    presentation: launchAtLogin,
+                    setEnabled: actions.setLaunchAtLogin,
+                    openLoginItems: actions.openLoginItems
+                )
+            }
+            .padding(16)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+            explanation("Continue to keep your current setting. Change it anytime in Settings › System.", small: true)
         case .done:
             explanation(snapshot.dictationReady
                 ? "The essentials for dictation are in place. You can adjust them anytime in Settings."
@@ -288,6 +306,13 @@ struct SetupGuideView: View {
                     Text(L10n.tr("AI polishing · optional"))
                     Spacer()
                     Text(snapshot.polishEnabled && snapshot.aiConfigured ? L10n.tr("Enabled") : L10n.tr("Not enabled"))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.callout)
+                HStack {
+                    Text(L10n.tr("Launch at login · optional"))
+                    Spacer()
+                    Text(launchAtLogin.summary)
                         .foregroundStyle(.secondary)
                 }
                 .font(.callout)

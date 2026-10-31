@@ -14,7 +14,7 @@ Requires **Apple Silicon and macOS 26 or later**. You do not need Xcode to use a
 4. Open **Settings > Speech recognition**, download the local Qwen model, and wait for it to finish verifying and preparing.
 5. Click a text field in another app, hold **Fn**, speak, and release. Wait for recognition to finish and the text to appear.
 
-Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide does not test providers or send audio or text.
+Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide does not test providers or send audio or text. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
 
 Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. Apple recognition, cloud recognition, and custom model folders are not verified by the guide; review those in Speech recognition settings. Existing installations are not forced through setup after an update.
 
