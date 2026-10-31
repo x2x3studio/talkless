@@ -284,8 +284,7 @@ struct AIServiceSettingsView: View {
                     Divider()
                     receiptText(L10n.tr(result.isSuccess ? "Response" : "Error"), value: result.output)
                     Button {
-                        NSPasteboard.general.clearContents()
-                        diagnosticsCopied = NSPasteboard.general.setString(result.diagnostics, forType: .string)
+                        diagnosticsCopied = TextIO.copyToClipboard(result.diagnostics)
                     } label: {
                         Label(L10n.tr(diagnosticsCopied ? "Copied" : "Copy Diagnostics"), systemImage: "doc.on.doc")
                     }
