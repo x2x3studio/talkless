@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             try await self.controller.prepareForModelChange()
         }
         controller.onModelSetupRequested = { [weak self] in
-            self?.openSettings(sectionNotification: "TalklessShowModels")
+            self?.openSettings(section: .models)
         }
         if CommandLine.arguments.contains("--test-audio") {
             launchAudioTest()
@@ -310,11 +310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         switch MenuContent.Problem(rawValue: sender.tag) {
         case .accessibility:
             // Opening the pane is enough here; permission prompts stay in the guide and Settings.
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            SystemSettingsPane.accessibility.open()
         case .microphone:
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+            SystemSettingsPane.microphone.open()
         case .speechModel:
-            openSettings(sectionNotification: "TalklessShowModels")
+            openSettings(section: .models)
         case nil:
             break
         }
@@ -343,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     self?.setupGuide.skip()
                     self?.setupWindow?.close()
                 },
-                openSettings: { [weak self] section in self?.openSettings(sectionNotification: section) }
+                openSettings: { [weak self] section in self?.openSettings(section: section) }
             ))
             let window = NSWindow(contentViewController: hosting)
             window.title = L10n.tr("Talkless Setup")
@@ -367,10 +367,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         setupWindow = nil
     }
 
-    private func openSettings(sectionNotification: String) {
+    private func openSettings(section: SettingsSection) {
         openSettings()
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: Notification.Name(sectionNotification), object: nil)
+            NotificationCenter.default.post(name: .showSettingsSection, object: section)
         }
     }
 

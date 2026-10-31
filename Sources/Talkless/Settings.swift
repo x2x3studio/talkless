@@ -461,13 +461,7 @@ final class AppSettings: ObservableObject {
         defaults.set(value, forKey: key)
     }
 
-    var dictionaryTerms: [String] {
-        var seen = Set<String>()
-        return dictionary
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
-    }
+    var dictionaryTerms: [String] { DictionaryTerms.terms(in: dictionary) }
 
     var llmConfigured: Bool {
         // Validation builds a request locally; it never fetches models or sends data.

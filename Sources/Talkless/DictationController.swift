@@ -712,13 +712,10 @@ final class DictationController: ObservableObject {
         hud.hide()
     }
 
-    enum PermissionPane { case accessibility, microphone }
-
     /// Opens the exact System Settings pane after a blocked user action. This never triggers
     /// a permission prompt; prompts stay in the setup guide and Settings.
-    private func openPermissionSettings(_ pane: PermissionPane) {
-        let anchor = pane == .accessibility ? "Privacy_Accessibility" : "Privacy_Microphone"
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!)
+    private func openPermissionSettings(_ pane: SystemSettingsPane) {
+        pane.open()
     }
 
     /// Pasting needs Accessibility (to post ⌘V) and the app dictation started in.

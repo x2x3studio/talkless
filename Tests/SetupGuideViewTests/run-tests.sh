@@ -14,6 +14,8 @@ xcrun --sdk macosx swiftc -sdk "$SDK" -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/LaunchAtLoginSettingsView.swift" \
   "$ROOT/Sources/Talkless/SetupGuideView.swift" \
   "$ROOT/Sources/Talkless/SetupGuideLiveView.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
+  "$ROOT/Sources/Talkless/SystemSettingsPane.swift" \
   "$ROOT/Tests/SetupGuideViewTests/SetupGuideViewTests.swift" \
   -o "$APP/Contents/MacOS/setup-view-tests"
 "$APP/Contents/MacOS/setup-view-tests" "$@"

@@ -9,7 +9,7 @@ struct SetupGuideLiveView: View {
     @ObservedObject var controller: DictationController
     let onComplete: () -> Void
     let onSkip: () -> Void
-    let openSettings: (String) -> Void
+    let openSettings: (SettingsSection) -> Void
     @ObservedObject private var manager = ModelManager.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var localization = LocalizationSettings.shared
@@ -20,7 +20,7 @@ struct SetupGuideLiveView: View {
     private let refreshTimer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     init(controller: DictationController, onComplete: @escaping () -> Void,
-         onSkip: @escaping () -> Void, openSettings: @escaping (String) -> Void,
+         onSkip: @escaping () -> Void, openSettings: @escaping (SettingsSection) -> Void,
          launchAtLoginService: any LaunchAtLoginService = MainAppLaunchAtLoginService()) {
         self.controller = controller
         self.onComplete = onComplete
@@ -39,7 +39,7 @@ struct SetupGuideLiveView: View {
                 switch DictationController.microphoneStatus {
                 case .authorized: refresh(); return
                 case .notDetermined: break
-                default: openPrivacySettings("Microphone"); refresh(); return
+                default: SystemSettingsPane.microphone.open(); refresh(); return
                 }
                 microphoneRequestPending = true
                 refresh()
@@ -50,17 +50,17 @@ struct SetupGuideLiveView: View {
                     }
                 }
             },
-            openMicrophoneSettings: { openPrivacySettings("Microphone") },
+            openMicrophoneSettings: { SystemSettingsPane.microphone.open() },
             requestAccessibility: {
                 guard !DictationController.accessibilityGranted else { refresh(); return }
                 accessibilityRequested = true
                 DictationController.requestAccessibility()
-                openPrivacySettings("Accessibility")
+                SystemSettingsPane.accessibility.open()
                 refresh()
             },
-            openAccessibilitySettings: { openPrivacySettings("Accessibility") },
-            openSpeechSettings: { openSettings("TalklessShowModels") },
-            openAISettings: { openSettings("TalklessShowAIService") },
+            openAccessibilitySettings: { SystemSettingsPane.accessibility.open() },
+            openSpeechSettings: { openSettings(.models) },
+            openAISettings: { openSettings(.aiService) },
             enablePolish: {
                 guard settings.llmConfigured else { refresh(); return }
                 settings.polishEnabled = true
@@ -77,11 +77,6 @@ struct SetupGuideLiveView: View {
         .onReceive(refreshTimer) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)) { _ in refresh() }
-    }
-
-    private func openPrivacySettings(_ permission: String) {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_\(permission)") else { return }
-        NSWorkspace.shared.open(url)
     }
 
     private func refresh() {

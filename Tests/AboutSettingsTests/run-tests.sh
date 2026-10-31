@@ -15,7 +15,6 @@ from pathlib import Path
 import sys
 root = Path(sys.argv[1])
 source = (root / 'Sources/Talkless/SettingsView.swift').read_text()
-metadata = source[source.index('private enum SettingsSection:'):source.index('struct SettingsView:')]
 about = source[source.index('// MARK: - About'):source.index('// MARK: - Speech Recognition')]
 system = source[source.index('private struct SystemSettingsTab:'):source.index('private struct DiagnosticsSection:')]
 assert 'UpdateSettingsView(' not in system and 'updateController' not in system
@@ -25,9 +24,7 @@ for retained in ['Section(L10n.tr("Language"))', 'Section(L10n.tr("Permissions")
 assert 'SystemSettingsTab(controller: controller)' in source
 assert 'AboutSettingsTab(controller: controller, updateController: updateController)' in source
 assert 'onPermissions: { selection = .system }' in source
-for notification, section in [('TalklessShowModels', 'models'), ('TalklessShowAIService', 'aiService')]:
-    assert f'Notification.Name("{notification}")' in source
-    assert f'selection = .{section}' in source
+assert 'publisher(for: .showSettingsSection)' in source and 'notification.object as? SettingsSection' in source
 assert source.count('UpdateSettingsView(') == 1
 assert 'UpdateController(' not in about
 assert 'https://typeless.x2x3.com' in about
@@ -44,12 +41,12 @@ for preserved in ['updater.selectChannel($0)', 'updater.setAutomaticallyChecksFo
                   '.disabled(controller.state != .idle || !updater.canCheckForUpdates)',
                   '.disabled(!updater.canChangeChannel)', '.disabled(!updater.canChangeAutomaticChecks)']:
     assert preserved in updates, preserved
-Path(sys.argv[2]).write_text('import AppKit\nimport SwiftUI\n' + metadata.replace('private enum', 'enum', 1)
-                            + about.replace('private struct', 'struct', 1))
+Path(sys.argv[2]).write_text('import AppKit\nimport SwiftUI\n' + about.replace('private struct', 'struct', 1))
 print('PASS settings hierarchy, retained System controls, updater reuse, branding, links, and existing navigation')
 PY
 xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$WORK/AboutSettings.swift" \
   "$ROOT/Sources/Talkless/UpdateSettingsView.swift" \
   "$ROOT/Tests/AboutSettingsTests/AboutSettingsTests.swift" \

@@ -12,54 +12,6 @@ enum SettingsAppearance {
     })
 }
 
-private enum SettingsSection: String, CaseIterable, Identifiable {
-    case dictation, translation, models, aiService, dictionary, overlay, history, system, about
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .dictation: L10n.tr("Dictation")
-        case .translation: L10n.tr("Translation")
-        case .models: L10n.tr("Speech recognition")
-        case .aiService: L10n.tr("AI service")
-        case .dictionary: L10n.tr("Dictionary")
-        case .overlay: L10n.tr("Overlay")
-        case .history: L10n.tr("History")
-        case .system: L10n.tr("System")
-        case .about: L10n.tr("About")
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .dictation: "mic"
-        case .translation: "character.bubble"
-        case .models: "waveform"
-        case .aiService: "network"
-        case .dictionary: "character.book.closed"
-        case .overlay: "rectangle.on.rectangle"
-        case .history: "clock"
-        case .system: "gearshape"
-        case .about: "info.circle"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .dictation: L10n.tr("Choose how you record and how your words are processed.")
-        case .translation: L10n.tr("Translate selected text, independently of dictation.")
-        case .models: L10n.tr("Choose how audio becomes text.")
-        case .aiService: L10n.tr("One AI connection for polishing, translation, and voice editing.")
-        case .dictionary: L10n.tr("Review and manage preferred spellings.")
-        case .overlay: L10n.tr("Preview and customize recording feedback.")
-        case .history: L10n.tr("Your recent dictations, edits, and translations.")
-        case .system: L10n.tr("Permissions, language, startup, and troubleshooting.")
-        case .about: L10n.tr("Version, updates, and project information.")
-        }
-    }
-}
-
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var settings = AppSettings.shared
@@ -148,11 +100,8 @@ struct SettingsView: View {
         .environment(\.locale, localization.locale)
         .tint(SettingsAppearance.accent)
         .frame(minWidth: 800, idealWidth: 900, minHeight: 580, idealHeight: 660)
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowModels"))) { _ in
-            selection = .models
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TalklessShowAIService"))) { _ in
-            selection = .aiService
+        .onReceive(NotificationCenter.default.publisher(for: .showSettingsSection)) { notification in
+            if let section = notification.object as? SettingsSection { selection = section }
         }
     }
 }
@@ -333,14 +282,14 @@ private struct SystemSettingsTab: View {
                     granted: accessibility && controller.hotkeyActive
                 ) {
                     if !DictationController.accessibilityGranted { DictationController.requestAccessibility() }
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    SystemSettingsPane.accessibility.open()
                 }
                 PermissionRow(title: L10n.tr("Microphone"), detail: L10n.tr("Record your voice"), granted: microphone == .authorized) {
                     // Read again at click time, not the timer's potentially stale snapshot.
                     if DictationController.microphoneStatus == .notDetermined {
                         AVCaptureDevice.requestAccess(for: .audio) { _ in }
                     } else if DictationController.microphoneStatus != .authorized {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                        SystemSettingsPane.microphone.open()
                     }
                 }
             }

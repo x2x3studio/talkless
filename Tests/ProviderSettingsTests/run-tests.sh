@@ -16,6 +16,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/TranslationShortcut.swift" \
   "$ROOT/Sources/Talkless/TranslationLanguages.swift" \
   "$ROOT/Sources/Talkless/Settings.swift" \
+  "$ROOT/Sources/Talkless/DictionaryTerms.swift" \
   "$ROOT/Tests/ProviderSettingsTests/HUDAppearanceTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/AlternateFinishTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/ConnectionTestResultTests.swift" \
