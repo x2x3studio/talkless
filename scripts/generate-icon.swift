@@ -42,81 +42,75 @@ private func tilePath() -> CGPath {
     return p
 }
 
-// A spoken contour relaxes into a written baseline. The taller second oscillation
-// and long, quiet exit distinguish it from a stock waveform or heartbeat symbol.
-private func voicePath() -> CGPath {
-    let p = CGMutablePath()
-    p.move(to: CGPoint(x: 232, y: 518))
-    p.addLine(to: CGPoint(x: 251, y: 518))
-    p.addCurve(to: CGPoint(x: 286, y: 456), control1: CGPoint(x: 272, y: 518), control2: CGPoint(x: 268, y: 456))
-    p.addCurve(to: CGPoint(x: 332, y: 589), control1: CGPoint(x: 313, y: 456), control2: CGPoint(x: 303, y: 589))
-    p.addCurve(to: CGPoint(x: 397, y: 345), control1: CGPoint(x: 371, y: 589), control2: CGPoint(x: 359, y: 345))
-    p.addCurve(to: CGPoint(x: 463, y: 665), control1: CGPoint(x: 442, y: 345), control2: CGPoint(x: 423, y: 665))
-    p.addCurve(to: CGPoint(x: 526, y: 478), control1: CGPoint(x: 501, y: 665), control2: CGPoint(x: 491, y: 478))
-    p.addCurve(to: CGPoint(x: 576, y: 518), control1: CGPoint(x: 552, y: 478), control2: CGPoint(x: 548, y: 518))
-    p.addLine(to: CGPoint(x: 657, y: 518))
-    return p
-}
+// BEGIN PIP ARTWORK — generator/menu parity is enforced by native tests.
+// Pip silhouette in 1024-unit coordinates.
+// Eyes and smile are negative space, never white paint or pupils.
+enum PipArtwork {
+    static func bodyPath() -> CGPath {
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: 292, y: 715))
+        p.addCurve(to: CGPoint(x: 260, y: 410), control1: CGPoint(x: 218, y: 645), control2: CGPoint(x: 214, y: 503))
+        p.addLine(to: CGPoint(x: 292, y: 271))
+        p.addCurve(to: CGPoint(x: 345, y: 267), control1: CGPoint(x: 299, y: 239), control2: CGPoint(x: 323, y: 237))
+        p.addLine(to: CGPoint(x: 405, y: 348))
+        p.addCurve(to: CGPoint(x: 583, y: 344), control1: CGPoint(x: 463, y: 327), control2: CGPoint(x: 521, y: 326))
+        p.addLine(to: CGPoint(x: 679, y: 260))
+        p.addCurve(to: CGPoint(x: 730, y: 282), control1: CGPoint(x: 705, y: 237), control2: CGPoint(x: 729, y: 250))
+        p.addLine(to: CGPoint(x: 730, y: 430))
+        p.addCurve(to: CGPoint(x: 754, y: 690), control1: CGPoint(x: 789, y: 497), control2: CGPoint(x: 800, y: 616))
+        p.addCurve(to: CGPoint(x: 580, y: 771), control1: CGPoint(x: 716, y: 752), control2: CGPoint(x: 648, y: 778))
+        p.addCurve(to: CGPoint(x: 438, y: 782), control1: CGPoint(x: 533, y: 766), control2: CGPoint(x: 485, y: 790))
+        p.addCurve(to: CGPoint(x: 339, y: 740), control1: CGPoint(x: 397, y: 775), control2: CGPoint(x: 368, y: 744))
+        p.addCurve(to: CGPoint(x: 292, y: 715), control1: CGPoint(x: 322, y: 738), control2: CGPoint(x: 305, y: 728))
+        p.closeSubpath()
+        return p
+    }
 
-private func caretPath() -> CGPath {
-    let p = CGMutablePath()
-    p.move(to: CGPoint(x: 754, y: 391))
-    p.addLine(to: CGPoint(x: 754, y: 635))
-    p.move(to: CGPoint(x: 727, y: 391))
-    p.addLine(to: CGPoint(x: 781, y: 391))
-    p.move(to: CGPoint(x: 727, y: 635))
-    p.addLine(to: CGPoint(x: 781, y: 635))
-    return p
+    private static func eyePath(x: CGFloat, y: CGFloat) -> CGPath {
+        let p = CGMutablePath()
+        let w: CGFloat = 122, h: CGFloat = 166, r: CGFloat = 61, k: CGFloat = 0.55228475
+        p.move(to: CGPoint(x: x + r, y: y))
+        p.addLine(to: CGPoint(x: x + w - r, y: y))
+        p.addCurve(to: CGPoint(x: x + w, y: y + r), control1: CGPoint(x: x + w - r + r * k, y: y), control2: CGPoint(x: x + w, y: y + r - r * k))
+        p.addLine(to: CGPoint(x: x + w, y: y + h - r))
+        p.addCurve(to: CGPoint(x: x + w - r, y: y + h), control1: CGPoint(x: x + w, y: y + h - r + r * k), control2: CGPoint(x: x + w - r + r * k, y: y + h))
+        p.addLine(to: CGPoint(x: x + r, y: y + h))
+        p.addCurve(to: CGPoint(x: x, y: y + h - r), control1: CGPoint(x: x + r - r * k, y: y + h), control2: CGPoint(x: x, y: y + h - r + r * k))
+        p.addLine(to: CGPoint(x: x, y: y + r))
+        p.addCurve(to: CGPoint(x: x + r, y: y), control1: CGPoint(x: x, y: y + r - r * k), control2: CGPoint(x: x + r - r * k, y: y))
+        p.closeSubpath()
+        return p
+    }
+
+    static func path(small: Bool) -> CGPath {
+        let p = CGMutablePath()
+        p.addPath(bodyPath())
+        p.addPath(eyePath(x: 357, y: 449))
+        p.addPath(eyePath(x: 528, y: 433))
+        let smile = CGMutablePath()
+        smile.move(to: CGPoint(x: 471, y: 633))
+        smile.addCurve(to: CGPoint(x: 539, y: 631), control1: CGPoint(x: 489, y: 657), control2: CGPoint(x: 517, y: 655))
+        // A slightly wider smile keeps its negative space legible at small sizes.
+        p.addPath(smile.copy(strokingWithWidth: small ? 28 : 20, lineCap: .round, lineJoin: .round, miterLimit: 10))
+        return p
+    }
 }
+// END PIP ARTWORK
 
 private func drawArtwork(in c: CGContext, opticalSize: Int) {
     let tile = tilePath()
 
+    // A quiet native tile. Only its exterior casts a shadow; Pip stays flat and mono.
     c.saveGState()
-    c.setShadow(offset: CGSize(width: 0, height: -13), blur: 25, color: color(0x26316C, alpha: 0.23))
-    c.setFillColor(color(0x5667DB))
+    c.setShadow(offset: CGSize(width: 0, height: -12), blur: 22, color: color(0x232833, alpha: 0.16))
+    c.setFillColor(color(0xF5F6F8))
     c.addPath(tile)
     c.fillPath()
     c.restoreGState()
 
-    c.saveGState()
-    c.addPath(tile)
-    c.clip()
-    let base = CGGradient(colorsSpace: colorSpace, colors: [
-        color(0x6676E2), color(0x5667DB), color(0x4554C3)
-    ] as CFArray, locations: [0, 0.46, 1])!
-    c.drawLinearGradient(base, start: CGPoint(x: 330, y: 92), end: CGPoint(x: 677, y: 958), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-
-    let light = CGGradient(colorsSpace: colorSpace, colors: [
-        color(0xDFE8FF, alpha: 0.12), color(0xDFE8FF, alpha: 0)
-    ] as CFArray, locations: [0, 1])!
-    c.drawRadialGradient(light, startCenter: CGPoint(x: 275, y: 144), startRadius: 0,
-                         endCenter: CGPoint(x: 275, y: 144), endRadius: 695, options: [])
-
-    // A narrow illuminated lip gives the tile a material edge, not a heavy frame.
-    c.addPath(tile)
-    c.setLineWidth(3)
-    c.replacePathWithStrokedPath()
-    c.clip()
-    let lip = CGGradient(colorsSpace: colorSpace, colors: [
-        color(0xF4F2FF, alpha: 0.42), color(0xF4F2FF, alpha: 0.04)
-    ] as CFArray, locations: [0, 1])!
-    c.drawLinearGradient(lip, start: CGPoint(x: 512, y: 92), end: CGPoint(x: 512, y: 932), options: [])
-    c.restoreGState()
-
-    c.saveGState()
-    c.setLineCap(.round)
-    c.setLineJoin(.round)
-    c.setStrokeColor(color(0xFFF8EA))
-    // Optical correction preserves the single-stroke silhouette at 16 and 32 px.
-    c.setLineWidth(opticalSize <= 32 ? 56 : 48)
-    c.setShadow(offset: CGSize(width: 0, height: -4), blur: 6, color: color(0x25317D, alpha: 0.24))
-    c.addPath(voicePath())
-    c.strokePath()
-    c.setLineWidth(opticalSize <= 32 ? 43 : 36)
-    c.addPath(caretPath())
-    c.strokePath()
-    c.restoreGState()
+    c.setFillColor(color(0x232833))
+    c.addPath(PipArtwork.path(small: opticalSize <= 32))
+    c.fillPath(using: .evenOdd)
 }
 
 private func render(size: Int) -> CGImage {

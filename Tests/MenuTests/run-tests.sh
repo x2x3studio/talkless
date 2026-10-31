@@ -4,7 +4,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/talkless-menu-tests.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 APP="$WORK/TalklessMenuPreview.app"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Match the shipped app layout; packaged lookup must not use checkout resources.
+cp -R "$ROOT/Sources/Talkless/Resources" "$APP/Contents/Resources/Talkless_Talkless.bundle"
 printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>menu-tests</string><key>CFBundleIdentifier</key><string>local.talkless.menu-preview</string><key>CFBundleName</key><string>Talkless Menu Preview</string><key>CFBundlePackageType</key><string>APPL</string><key>LSUIElement</key><true/></dict></plist>' > "$APP/Contents/Info.plist"
 xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \

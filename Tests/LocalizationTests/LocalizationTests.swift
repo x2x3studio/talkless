@@ -28,6 +28,7 @@ struct LocalizationTests {
         try checkSourceKeys(in: source, keys: Set(en.keys))
         try selectionTests()
         try fallbackTests()
+        try bundleDetectionTests()
         try controllerTests(chinese: zh)
         print("Localization tests passed (\(en.count) keys, parity, formats, source coverage, language selection, persistence, fallback and notifications).")
     }
@@ -94,7 +95,24 @@ struct LocalizationTests {
         try expect(catalog.string("Known key", localization: "zh-Hans") == "English fallback", "Missing localized resource must use English")
         try expect(catalog.string("Unknown key", localization: "zh-Hans") == "Unknown key", "Missing key must return readable English source")
         try expect(LocalizationCatalog(bundle: nil).string("No bundle", localization: "zh-Hans") == "No bundle", "Missing bundle fallback")
+        try expect(LocalizationCatalog(bundle: nil).string("interface.language.english", localization: "en") == "English", "Missing bundle preserves English autonym")
+        try expect(LocalizationCatalog(bundle: nil).string("interface.language.simplifiedChinese", localization: "en") == "\u{7B80}\u{4F53}\u{4E2D}\u{6587}", "Missing bundle preserves Chinese autonym")
         try expect(LocalizationCatalog().string("Follow System", localization: "zh-Hans") != "Follow System", "Standalone lookup must find source resources independently of cwd")
+    }
+
+    private static func bundleDetectionTests() throws {
+        let root = URL(fileURLWithPath: "/")
+        for executable: URL? in [nil, root, URL(fileURLWithPath: "/Talkless"), URL(fileURLWithPath: "/tmp/bin/Talkless")] {
+            try expect(LocalizationCatalog.applicationURL(bundleURL: root, executableURL: executable) == nil,
+                       "CLI/root ancestor traversal must terminate without detecting an app")
+        }
+        let app = URL(fileURLWithPath: "/tmp/Moved App.app")
+        try expect(LocalizationCatalog.applicationURL(bundleURL: app, executableURL: nil) == app, "Recognize app wrapper directly")
+        try expect(LocalizationCatalog.applicationURL(bundleURL: root, executableURL: app.appendingPathComponent("Contents/MacOS/Talkless")) == app,
+                   "Malformed app must not be mistaken for development CLI")
+        var fallbackCalls = 0
+        _ = LocalizationCatalog.resolveApplicationBundle(mainBundle: .main) { fallbackCalls += 1; return nil }
+        try expect(fallbackCalls == 1, "Standalone resolver invokes development fallback lazily")
     }
 
     @MainActor

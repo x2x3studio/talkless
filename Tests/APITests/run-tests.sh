@@ -20,7 +20,8 @@ TALKLESS_TEST_EXPECTED_VERSION=0.1.0 "$WORK/api-tests"
 # Exercise Bundle.main in an actual app layout as well as the development fallback.
 # Deliberately distinguish short version from build number and the documented example.
 APP="$WORK/APITests.app/Contents"
-mkdir -p "$APP/MacOS"
+mkdir -p "$APP/MacOS" "$APP/Resources"
+cp -R "$ROOT/Sources/Talkless/Resources" "$APP/Resources/Talkless_Talkless.bundle"
 cp "$WORK/api-tests" "$APP/MacOS/api-tests"
 printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
   '<plist version="1.0"><dict>' \

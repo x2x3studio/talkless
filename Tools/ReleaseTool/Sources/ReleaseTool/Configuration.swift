@@ -70,15 +70,3 @@ func configureBundle(path: URL, context: ToolContext) throws {
     let updated = try configuredBundle(info, environment: context.environment)
     try PropertyListSerialization.data(fromPropertyList: updated, format: .xml, options: 0).write(to: path, options: .atomic)
 }
-
-func patchResources(in directory: URL) throws {
-    for build in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        where build.lastPathComponent.hasSuffix(".build") {
-        let file = build.appendingPathComponent("DerivedSources/resource_bundle_accessor.swift")
-        guard FileManager.default.fileExists(atPath: file.path) else { continue }
-        let source = try String(contentsOf: file, encoding: .utf8)
-        let updated = source.replacingOccurrences(of: "Bundle.main.bundleURL.appendingPathComponent",
-            with: "(Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent")
-        if source != updated { try updated.write(to: file, atomically: true, encoding: .utf8) }
-    }
-}

@@ -263,6 +263,8 @@ func release(context: ToolContext, version: String, build: String) throws {
     try session.notarize(submission)
     try session.staple(app)
     try verifySigningSignature(app, context: context, environment: environment)
+    try verifyExecutablePrivacy(app.appendingPathComponent("Contents/MacOS/Talkless"), forbiddenPaths: [context.root.path, environment["HOME"] ?? ""])
+    try verifyRelocatedBundle(app: app, deniedPaths: [context.root.appendingPathComponent(".build").path], context: context)
     let imageSource = try signingDirectory(parent: secretDirectory, prefix: "dmg-root-")
     _ = try context.runner.run(["ditto", app.path, imageSource.appendingPathComponent("Talkless.app").path],
                                environment: environment, sensitive: false)

@@ -103,7 +103,7 @@ Dictation is silent: no start/stop sounds or routine success/empty-result messag
 
 **Settings > Overlay** provides a live sample preview with recording, recognizing, and polishing stages and short or long text. Choose a translucent or solid backdrop, adjust translucent background-only opacity from 20% to 100%, and toggle indicator animations. Solid is always opaque. Changes persist and apply immediately without recording audio or contacting a provider. Text and icons are not faded; macOS Reduce Transparency and Reduce Motion take priority. Reset appearance restores the defaults. The real overlay remains click-through and never takes focus.
 
-The menu bar uses the app's own waveform-and-caret mark in every state, without the colored app tile. A filled dot indicates recording and an outlined dot indicates processing. Template rendering adapts to light, dark, and selected menu bar appearances; accessible labels describe the current state.
+The app uses the Pip silhouette on a light tile. The menu bar uses the same silhouette without the tile in every state. A filled dot indicates recording and an outlined dot indicates processing. Template rendering adapts to light, dark, and selected menu bar appearances; accessible labels describe the current state.
 
 ## AI polishing
 

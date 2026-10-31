@@ -61,17 +61,4 @@ final class ConfigurationTests: XCTestCase {
             XCTAssertFalse(isLocalizationResource(path), path)
         }
     }
-
-    func testResourcePatchingIsIdempotent() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let file = root.appendingPathComponent("Module.build/DerivedSources/resource_bundle_accessor.swift")
-        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "Bundle.main.bundleURL.appendingPathComponent(\"test\")".write(to: file, atomically: true, encoding: .utf8)
-        try patchResources(in: root)
-        let once = try String(contentsOf: file, encoding: .utf8)
-        try patchResources(in: root)
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), once)
-        XCTAssertTrue(once.contains("Bundle.main.resourceURL"))
-    }
 }

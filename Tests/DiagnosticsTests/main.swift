@@ -72,6 +72,12 @@ diagnostic.finishSession()
 require(!fm.fileExists(atPath: logs.appendingPathComponent(".session-active.json").path), "Clean exit did not clear marker")
 require(try events(logs).filter { $0["event"] as? String == "app_stop" }.count == 1, "Clean exit event missing")
 
+diagnostic.record(event: "startup_resource_error", metadata: ["stage": "startup", "reason": "localization_missing", "path": "PRIVATE_PATH"])
+let startupResourceError = try events(logs).last!
+require(startupResourceError["event"] as? String == "startup_resource_error", "Resource startup failure event missing")
+require(startupResourceError["metadata"] as? [String: String] == ["stage": "startup", "reason": "localization_missing"],
+        "Resource startup failure must retain its cause without exposing paths")
+
 // Preserve the complete controller/audio-worker contract, but reject all content and identities.
 let schemaLogs = root.appendingPathComponent("schema")
 let schema = Diagnostics(directory: schemaLogs, crashReportsDirectory: absentReports)

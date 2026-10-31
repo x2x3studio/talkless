@@ -55,33 +55,82 @@ struct LocalizationCatalog: Sendable {
     func string(_ englishKey: String, localization: String) -> String {
         if let translated = lookup(englishKey, localization: localization) { return translated }
         if localization != "en", let english = lookup(englishKey, localization: "en") { return english }
-        return englishKey
+        // These two catalog identifiers are not English source keys. Keep the
+        // language picker readable even when the entire resource bundle is absent.
+        switch englishKey {
+        case "interface.language.english": return "English"
+        case "interface.language.simplifiedChinese": return "\u{7B80}\u{4F53}\u{4E2D}\u{6587}"
+        default: return englishKey
+        }
     }
 
     private func lookup(_ key: String, localization: String) -> String? {
         // SwiftPM normalizes localization folder names to lowercase when packaging.
-        guard let path = bundle?.path(forResource: localization, ofType: "lproj")
-                ?? bundle?.path(forResource: localization.lowercased(), ofType: "lproj"),
-              let localizedBundle = Bundle(path: path) else { return nil }
+        guard let bundle,
+              let path = bundle.path(forResource: localization, ofType: "lproj")
+                ?? bundle.path(forResource: localization.lowercased(), ofType: "lproj") else { return nil }
+        let folder = URL(fileURLWithPath: path)
+        // Checking only the outer bundle is insufficient: a nested lproj or string
+        // table symlink could otherwise escape to development/user resources.
+        guard Self.isContained(folder, in: bundle.bundleURL),
+              Self.isContained(folder.appendingPathComponent("Localizable.strings"), in: bundle.bundleURL),
+              Self.isContained(folder.appendingPathComponent("Localizable.stringsdict"), in: bundle.bundleURL),
+              let localizedBundle = Bundle(url: folder) else { return nil }
         let missing = "\u{1F}Talkless.missing:\(key)"
         let value = localizedBundle.localizedString(forKey: key, value: missing, table: "Localizable")
         return value == missing ? nil : value
     }
 
-    static let applicationBundle: Bundle? = {
+    static let resourceBundleName = "Talkless_Talkless.bundle"
+
+    static let applicationBundle: Bundle? = resolveApplicationBundle(mainBundle: .main) {
         #if SWIFT_PACKAGE
+        // SwiftPM's generated accessor traps when neither of its paths exists.
+        // Only command-line development builds may evaluate it, never a shipped app.
         return Bundle.module
         #else
-        // Standalone swiftc tests do not generate Bundle.module. Prefer a packaged
-        // bundle, then find source resources relative to this file (not the cwd).
-        let candidates = [
-            Bundle.main.resourceURL?.appendingPathComponent("Talkless_Talkless.bundle"),
-            Bundle.main.bundleURL.appendingPathComponent("Talkless_Talkless.bundle"),
-            URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Resources"),
-        ]
-        return candidates.compactMap { $0.flatMap { Bundle(url: $0) } }.first
+        // Standalone swiftc tests have no generated accessor. This development-only
+        // fallback must not hide a missing resource bundle in a packaged application.
+        return Bundle(url: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Resources"))
         #endif
-    }()
+    }
+
+    /// Keep the fallback lazy: even referring to Bundle.module initializes a fatal
+    /// static accessor. Missing packaged resources must instead return English keys.
+    static func resolveApplicationBundle(mainBundle: Bundle, developmentFallback: () -> Bundle?) -> Bundle? {
+        guard let appURL = applicationURL(for: mainBundle) else { return developmentFallback() }
+        let candidates = [
+            mainBundle.resourceURL?.appendingPathComponent(resourceBundleName),
+            appURL.appendingPathComponent(resourceBundleName), // Older SwiftPM root layout / relative alias.
+        ]
+        return candidates.compactMap { candidate -> Bundle? in
+            guard let candidate, isContained(candidate, in: appURL) else { return nil }
+            return Bundle(url: candidate)
+        }.first
+    }
+
+    static func applicationURL(for bundle: Bundle) -> URL? {
+        applicationURL(bundleURL: bundle.bundleURL, executableURL: bundle.executableURL)
+    }
+
+    static func applicationURL(bundleURL: URL, executableURL: URL?) -> URL? {
+        if bundleURL.pathExtension.lowercased() == "app" { return bundleURL }
+        // A malformed app can make Foundation treat its executable as a plain CLI.
+        // Still forbid development fallback if it lives inside an .app wrapper.
+        var path = executableURL?.standardizedFileURL.path ?? ""
+        while !path.isEmpty && path != "/" {
+            if (path as NSString).pathExtension.lowercased() == "app" { return URL(fileURLWithPath: path) }
+            let parent = (path as NSString).deletingLastPathComponent
+            guard parent != path else { break }
+            path = parent
+        }
+        return nil
+    }
+
+    static func isContained(_ url: URL, in directory: URL) -> Bool {
+        let root = directory.resolvingSymlinksInPath().standardizedFileURL.path + "/"
+        return url.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(root)
+    }
 }
 
 /// Explicit lookup is necessary: SwiftUI's environment locale does not select Bundle.module strings.

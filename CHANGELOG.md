@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Fixed
+- Fixed startup failure on Macs without the developer build directory by resolving all packaged resources inside the app.
+- Release builds no longer embed personal build-machine paths and verify resource loading independently of the source checkout.
+
+### Improved
+- A new Pip silhouette unifies the app icon and menu bar, with clear recording and processing indicators in light and dark appearances.
+
+## 2026.1030.68911
+
+### Fixed
 - Recording no longer treats every audio configuration notification as a disconnected microphone. Real interruptions still stop incomplete recordings.
 
 ### Added

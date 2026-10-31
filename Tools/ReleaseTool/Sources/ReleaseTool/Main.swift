@@ -5,6 +5,14 @@ import Darwin
 @main
 struct ReleaseTool {
     static func main() {
+        // SWIFT_EXEC invokes this binary with raw swiftc arguments, including probes.
+        if ProcessInfo.processInfo.environment["TALKLESS_RESOURCE_COMPILER"] == "1" {
+            do { try runResourceCompiler(arguments: Array(CommandLine.arguments.dropFirst()), environment: ProcessInfo.processInfo.environment) }
+            catch {
+                FileHandle.standardError.write(Data(("Resource compiler: \(error.localizedDescription)\n").utf8))
+                exit(1)
+            }
+        }
         let cancellation = CancellationState()
         signal(SIGINT, SIG_IGN)
         signal(SIGTERM, SIG_IGN)
@@ -59,9 +67,21 @@ struct ReleaseTool {
             case "configure-bundle":
                 guard args.count == 1 else { throw ToolError(usage) }
                 try configureBundle(path: URL(fileURLWithPath: args[0]), context: context)
-            case "patch-resources":
+            case "package-resources":
+                guard args.count == 2 else { throw ToolError(usage) }
+                try packageResources(from: URL(fileURLWithPath: args[0]), app: URL(fileURLWithPath: args[1]))
+            case "verify-resources":
                 guard args.count == 1 else { throw ToolError(usage) }
-                try patchResources(in: URL(fileURLWithPath: args[0]))
+                try verifyResourcePackaging(app: URL(fileURLWithPath: args[0]))
+            case "prepare-app-executable":
+                guard args.count == 1 else { throw ToolError(usage) }
+                try prepareAppExecutable(URL(fileURLWithPath: args[0]), context: context)
+            case "verify-relocated-bundle":
+                guard args.count >= 2 else { throw ToolError(usage) }
+                try verifyRelocatedBundle(app: URL(fileURLWithPath: args[0]), deniedPaths: Array(args.dropFirst()), context: context)
+            case "verify-executable-privacy":
+                guard !args.isEmpty else { throw ToolError(usage) }
+                try verifyExecutablePrivacy(URL(fileURLWithPath: args[0]), forbiddenPaths: Array(args.dropFirst()))
             case "release":
                 guard args.count == 2 else { throw ToolError(usage) }
                 try release(context: context, version: args[0], build: args[1])
@@ -85,7 +105,11 @@ struct ReleaseTool {
       check-repository
       version [--ref REF] [--build-number NUMBER]
       configure-bundle PLIST
-      patch-resources BUILD_DIRECTORY
+      package-resources BUILD_DIRECTORY APP
+      verify-resources APP
+      prepare-app-executable EXECUTABLE
+      verify-relocated-bundle APP DENIED_BUILD_DIRECTORY [...]
+      verify-executable-privacy EXECUTABLE [FORBIDDEN_PATH ...]
       release VERSION BUILD_NUMBER
       local-install [--no-updater]
       publish ARTIFACT_DIRECTORY [--publish]

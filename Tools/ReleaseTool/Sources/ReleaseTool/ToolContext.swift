@@ -10,10 +10,14 @@ struct ToolError: LocalizedError {
 
 protocol CommandRunning {
     func run(_ arguments: [String], environment: [String: String], sensitive: Bool) throws -> String
+    func run(_ arguments: [String], environment: [String: String], sensitive: Bool, timeout: TimeInterval) throws -> String
     func cleanup(_ arguments: [String], environment: [String: String])
 }
 
 extension CommandRunning {
+    func run(_ arguments: [String], environment: [String: String], sensitive: Bool, timeout: TimeInterval) throws -> String {
+        try run(arguments, environment: environment, sensitive: sensitive)
+    }
     func cleanup(_ arguments: [String], environment: [String: String]) {
         _ = try? run(arguments, environment: environment, sensitive: true)
     }
@@ -50,6 +54,26 @@ final class CapturedOutput: @unchecked Sendable {
     func get() -> Data { lock.withLock { bytes } }
 }
 
+/// Synchronize timer cancellation with process exit so a late timeout never
+/// targets a recycled PID. Only the verifier opts into a deadline.
+final class ProcessDeadline: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var expired = false
+
+    init(_ process: Process) { self.process = process }
+    func expire() {
+        lock.withLock {
+            guard let process, process.isRunning else { return }
+            expired = true
+            kill(process.processIdentifier, SIGKILL)
+        }
+    }
+    func finish() -> Bool {
+        lock.withLock { process = nil; return expired }
+    }
+}
+
 struct ProcessRunner: CommandRunning {
     let directory: URL
     let cancellation: CancellationState
@@ -57,10 +81,13 @@ struct ProcessRunner: CommandRunning {
     func run(_ arguments: [String], environment: [String: String], sensitive: Bool) throws -> String {
         try execute(arguments, environment: environment, sensitive: sensitive, cancellable: true)
     }
+    func run(_ arguments: [String], environment: [String: String], sensitive: Bool, timeout: TimeInterval) throws -> String {
+        try execute(arguments, environment: environment, sensitive: sensitive, cancellable: true, timeout: timeout)
+    }
     func cleanup(_ arguments: [String], environment: [String: String]) {
         _ = try? execute(arguments, environment: environment, sensitive: true, cancellable: false)
     }
-    private func execute(_ arguments: [String], environment: [String: String], sensitive: Bool, cancellable: Bool) throws -> String {
+    private func execute(_ arguments: [String], environment: [String: String], sensitive: Bool, cancellable: Bool, timeout: TimeInterval? = nil) throws -> String {
         guard let command = arguments.first else { throw ToolError("Empty command") }
         let executable: URL
         if command.contains("/") {
@@ -85,13 +112,23 @@ struct ProcessRunner: CommandRunning {
         let out = CapturedOutput(), err = CapturedOutput()
         let group = DispatchGroup()
         if cancellable { try cancellation.launch(process) } else { try process.run() }
+        let deadline = ProcessDeadline(process)
+        let timer = timeout.map { seconds in
+            let work = DispatchWorkItem { deadline.expire() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: work)
+            return work
+        }
+        defer { timer?.cancel() }
         group.enter()
         DispatchQueue.global().async { out.set(output.fileHandleForReading.readDataToEndOfFile()); group.leave() }
         group.enter()
         DispatchQueue.global().async { err.set(errors.fileHandleForReading.readDataToEndOfFile()); group.leave() }
         process.waitUntilExit()
+        let timedOut = deadline.finish()
+        timer?.cancel()
         group.wait()
         if cancellable { cancellation.clear(process); try cancellation.check() }
+        guard !timedOut else { throw ToolError("\(executable.lastPathComponent) timed out; resource verification stopped.") }
         guard process.terminationStatus == 0 else {
             if !sensitive { FileHandle.standardError.write(err.get()) }
             throw ToolError("\(executable.lastPathComponent) failed (exit \(process.terminationStatus)); \(sensitive ? "credential output suppressed" : "operation stopped").")

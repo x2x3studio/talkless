@@ -8,6 +8,7 @@ Local structured event logs retain up to three 5 MB files. Each event has a mill
 
 ## What the logs show
 
+- Application startup before localization initializes, including a missing localization-bundle event without recording its path.
 - Recording mode, hotkey timing, permission blocks and unavailable models.
 - Audio startup time, first-buffer latency, buffer/sample counts and recording duration.
 - Configuration notifications, before/after sample rates and channel counts, engine state, and whether the selected route or format changed. Device names and stable device identifiers are not logged.

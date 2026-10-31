@@ -29,7 +29,7 @@ final class Diagnostics: @unchecked Sendable {
     // Fixed names ensure rotation never removes unrelated files from the directory.
     private static let logNames = ["diagnostics.ndjson", "diagnostics.1.ndjson", "diagnostics.2.ndjson"]
     private static let events: Set<String> = [
-        "app_start", "app_stop", "session.previous_unclean_exit",
+        "app_start", "app_stop", "session.previous_unclean_exit", "startup_resource_error",
         "hotkey_press", "hotkey_release", "recording_start", "recording_started", "recording_stop", "recording_error",
         "model_load_start", "model_load_complete", "model_error", "recognition_finish", "recognition_complete",
         "paste_attempt", "paste_skipped", "paste_returned", "dictation_cancel",
@@ -64,7 +64,7 @@ final class Diagnostics: @unchecked Sendable {
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
             "unavailable", "invalid_format", "empty_audio", "empty_result", "cancelled", "timeout", "network", "model", "unknown",
             "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout",
-            "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed",
+            "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed", "localization_missing",
         ],
         "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
         "recording_mode": ["hold", "toggle"],

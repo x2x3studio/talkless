@@ -152,6 +152,16 @@ For updater-enabled public releases, both feed URLs and the download base must m
 
 Feed manifests update last, after the download is publicly available. GitHub has no multi-asset atomic transaction: stable/beta feeds may briefly differ, and failure can leave only one advanced. Serialize publication and inspect both feeds on error. A rerun intentionally refuses to overwrite an existing immutable version release; finish only missing feed uploads manually after verifying hashes and build ordering. Interrupted publication may leave a draft or a published release with stale feeds; never rebuild different bytes under the same tag.
 
+## Packaged resources and build-path privacy
+
+SwiftPM's native resource accessor assumes a command-line product. Release builds use a compiler adapter that supplies app-aware accessor source at compilation time, rather than editing generated files that a later build plan can overwrite. Resource bundles stay in the standard Contents/Resources directory; no runtime fallback refers to the developer checkout.
+
+The app resolves its localization bundle explicitly inside the running application. Missing localization falls back to English keys instead of trapping. The --verify-bundle command runs before normal application initialization: it checks packaged resources and bilingual strings, then exercises the dependency's actual resource loader without requesting permissions, reading preferences or downloading a model.
+
+Builds map source/debug paths to neutral prefixes and remove linker debug-map paths before signing. A binary scan rejects personal home-directory paths. Relocated bundle checks run with build directories inaccessible and networking denied, so a working developer checkout cannot hide a broken release. These checks supplement signing and notarization; a valid signature alone does not prove an app can load its resources.
+
+Git history and release assets are separate. Filtering commit contents does not alter already-uploaded ZIP/DMG files, signed update feeds, external clones or caches. Never modify an existing signed release in place to sanitize paths; publish a newly verified version with new hashes and signatures.
+
 ## Checks without credentials
 
 ```sh

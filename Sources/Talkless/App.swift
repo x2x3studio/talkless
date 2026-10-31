@@ -9,6 +9,21 @@ enum TalklessMain {
 
     @MainActor
     static func main() {
+        // A hermetic packaging probe, not an application launch. Keep this before
+        // NSApplication, diagnostics, settings, permissions, and model initialization.
+        if CommandLine.arguments.contains("--verify-bundle") {
+            Task {
+                let status = await BundleValidation.run()
+                exit(status)
+            }
+            dispatchMain()
+        }
+        Diagnostics.shared.startSession()
+        if LocalizationCatalog.applicationBundle == nil {
+            Diagnostics.shared.record(event: "startup_resource_error", metadata: [
+                "stage": "startup", "reason": "localization_missing",
+            ])
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         retainedDelegate = delegate
@@ -49,7 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = LocalizationSettings.shared
         ApplicationEditMenu.install()
-        Diagnostics.shared.startSession()
         if CommandLine.arguments.contains("--test-microphone") {
             Task {
                 do {

@@ -10,18 +10,40 @@ if [[ "$(uname -m)" != arm64 ]]; then
     printf '%s\n' 'Local Qwen requires Apple Silicon. Build on an arm64 Mac.' >&2
     exit 1
 fi
-# Swift 6.4's native backend is used because the default backend currently fails
-# to compile MLX Metal shaders. The explicit Metal step below supplies them.
-swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" \
-    --product Talkless -j "$JOBS" --disable-automatic-resolution
+# Build the owned compiler adapter before setting SWIFT_EXEC (never wrap itself).
+if [[ -z "${TALKLESS_RELEASE_TOOL:-}" ]]; then
+    swift build --package-path "$ROOT/Tools/ReleaseTool" --build-system native -c release
+    TOOL_BIN="$(swift build --package-path "$ROOT/Tools/ReleaseTool" --build-system native -c release --show-bin-path)"
+    export TALKLESS_RELEASE_TOOL="$TOOL_BIN/ReleaseTool"
+fi
+# A unique compiler identity also invalidates old unadapted SwiftPM objects.
+# No personal paths in the compiler's location or generated replacement sources.
+COMPILER_STAGE="$(mktemp -d /tmp/talkless-compiler.XXXXXX)"
+trap 'rm -rf "$COMPILER_STAGE"' EXIT
+mkdir -p "$COMPILER_STAGE/bin" "$COMPILER_STAGE/inputs"
+cp "$TALKLESS_RELEASE_TOOL" "$COMPILER_STAGE/bin/swiftc"
+REAL_SWIFTC="$(xcrun --find swiftc)"
+BUILD_FLAGS=()
+for prefix in "$ROOT" "$HOME" "$COMPILER_STAGE" "$(cd "$COMPILER_STAGE" && pwd -P)"; do
+    BUILD_FLAGS+=(-Xswiftc -debug-prefix-map -Xswiftc "$prefix=/source")
+    BUILD_FLAGS+=(-Xswiftc -file-prefix-map -Xswiftc "$prefix=/source")
+    BUILD_FLAGS+=(-Xcc "-fdebug-prefix-map=$prefix=/source" -Xcc "-ffile-prefix-map=$prefix=/source")
+    BUILD_FLAGS+=(-Xcxx "-fdebug-prefix-map=$prefix=/source" -Xcxx "-ffile-prefix-map=$prefix=/source")
+done
+BUILD_FLAGS+=(-Xlinker -oso_prefix -Xlinker "$ROOT/")
+# Native SwiftPM avoids the current MLX shader issue in the default backend.
+# The adapter substitutes app-aware inputs at the actual compiler invocation;
+# SwiftPM DerivedSources and dependency checkouts are never patched.
+SWIFT_EXEC="$COMPILER_STAGE/bin/swiftc" TALKLESS_RESOURCE_COMPILER=1 \
+    TALKLESS_REAL_SWIFTC="$REAL_SWIFTC" TALKLESS_RESOURCE_INPUTS="$COMPILER_STAGE/inputs" \
+    swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" \
+    --product Talkless -j "$JOBS" --disable-automatic-resolution "${BUILD_FLAGS[@]}"
 BIN="$(swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" --show-bin-path)"
-# Native SwiftPM assumes a command-line executable. Make its generated accessors
-# look in the signed app's Resources directory as well. Upstream sources stay intact.
-bash "$ROOT/scripts/release-tool.sh" patch-resources "$BIN"
-swift build --package-path "$ROOT" --build-system native -c "$CONFIGURATION" \
-    --product Talkless -j "$JOBS" --disable-automatic-resolution
 bash "$ROOT/scripts/build-metal.sh" "$ROOT"
 
+# Start clean so removed bundles, signatures, or old root aliases cannot survive.
+[[ ! -L "$APP" ]] || { printf '%s\n' 'App output must not be a symlink.' >&2; exit 1; }
+rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Talkless" "$APP/Contents/MacOS/Talkless"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
@@ -41,11 +63,9 @@ fi
 # MLX first searches next to the executable; keep a real file, not a development symlink.
 cp "$ROOT/.build/metal/mlx.metallib" "$APP/Contents/MacOS/mlx.metallib"
 cp "$ROOT/.build/metal/mlx.metallib" "$BIN/mlx.metallib"
-# Preserve app localization and SwiftPM resources used by transitive dependencies.
-for bundle in "$BIN"/*.bundle; do
-    [[ -d "$bundle" ]] || continue
-    ditto "$bundle" "$APP/Contents/Resources/$(basename "$bundle")"
-done
+# Preserve every transitive SwiftPM resource bundle and record its manifest.
+bash "$ROOT/scripts/release-tool.sh" package-resources "$BIN" "$APP"
+bash "$ROOT/scripts/release-tool.sh" prepare-app-executable "$APP/Contents/MacOS/Talkless"
 # Permission prompts are localized by macOS from the main app, not the SwiftPM bundle.
 for language in en zh-Hans; do
     # SwiftPM canonicalizes localization directory names to lowercase.
@@ -89,4 +109,5 @@ else
         --entitlements "$ROOT/Resources/Talkless.entitlements" "$APP"
 fi
 codesign --verify --deep --strict "$APP"
+bash "$ROOT/scripts/release-tool.sh" verify-relocated-bundle "$APP" "$ROOT/.build" "$COMPILER_STAGE"
 printf '\nBuilt %s\nLaunch: open "%s"\n' "$APP" "$APP"
