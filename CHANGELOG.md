@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- Search history by result, raw text or app, and copy any entry with one click.
+- The menu bar menu offers Copy Last Result after a dictation.
+
+### Improved
+- Translation starts connecting to the AI service while the selected text is read.
+
+### Security
+- The cloud speech-recognition API key is now stored in Keychain. A key saved in plaintext by an earlier version is moved on first launch and the plaintext copy is deleted.
+
+## 2026.1031.53079
+
+### Added
 - Dictionary terms can list spellings they are often heard as. Talkless replaces those exact spellings after recognition, before AI polishing, so fixes also work with polishing off and appear in the live preview.
 - Review suggestions offer Always fix, which adds the term and turns the heard spelling into an automatic fix.
 - Import and export the dictionary as plain text, one term per line with optional heard spellings after “=”.
