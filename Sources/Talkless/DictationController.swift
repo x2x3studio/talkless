@@ -369,6 +369,8 @@ final class DictationController: ObservableObject {
             operation.record("permission_blocked", ["permission": "microphone",
                 "reason": Self.microphoneStatus == .denied ? "denied" : "restricted", "stage": "startup"])
             hud.show(.error(L10n.tr("Allow Talkless in System Settings › Privacy & Security › Microphone")))
+            // A managed (restricted) Mac cannot change this, so only open the pane when the user can.
+            if Self.microphoneStatus == .denied { openPermissionSettings(.microphone) }
             return
         default:
             break
@@ -614,6 +616,7 @@ final class DictationController: ObservableObject {
                 if let blocker = self.insertionBlocker(for: targetApp) {
                     operation?.record("paste_skipped", ["reason": blocker.reason])
                     TextIO.copyToClipboard(output)
+                    if blocker.reason == "permission" { self.openPermissionSettings(.accessibility) }
                     self.history.add(HistoryEntry(
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                     ))
@@ -707,6 +710,15 @@ final class DictationController: ObservableObject {
         hud.model.setDictionaryTerms([])
         updateTriggerKey()
         hud.hide()
+    }
+
+    enum PermissionPane { case accessibility, microphone }
+
+    /// Opens the exact System Settings pane after a blocked user action. This never triggers
+    /// a permission prompt; prompts stay in the setup guide and Settings.
+    private func openPermissionSettings(_ pane: PermissionPane) {
+        let anchor = pane == .accessibility ? "Privacy_Accessibility" : "Privacy_Microphone"
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!)
     }
 
     /// Pasting needs Accessibility (to post ⌘V) and the app dictation started in.
@@ -850,6 +862,7 @@ final class DictationController: ObservableObject {
                 hud.show(.error(Self.accessibilityGranted
                     ? L10n.tr("Could not read any selected text")
                     : L10n.tr("Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility.")))
+                if !Self.accessibilityGranted { openPermissionSettings(.accessibility) }
             }
             return
         }

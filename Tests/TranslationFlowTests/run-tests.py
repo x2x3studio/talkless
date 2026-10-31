@@ -107,6 +107,9 @@ struct HistoryEntry {
 }
 @MainActor final class FlowHarness {
     static var accessibilityGranted = true
+    enum PermissionPane { case accessibility, microphone }
+    var openedPanes: [PermissionPane] = []
+    func openPermissionSettings(_ pane: PermissionPane) { openedPanes.append(pane) }
     enum State { case idle, recording, processing }
     var state: State = .idle
     let settings = FakeSettings()
@@ -161,6 +164,7 @@ TESTS = r'''
         await flow.translateSelection()
         precondition(flow.hud.errors.last?.contains("Accessibility permission") == true,
                      "Without Accessibility, a missing selection names the permission")
+        precondition(flow.openedPanes == [.accessibility], "and opens the Accessibility pane")
         FlowHarness.accessibilityGranted = true
         TextIO.selection = "The original selected sentence."
         await flow.translateSelection()

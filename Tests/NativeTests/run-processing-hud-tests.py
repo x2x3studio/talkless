@@ -176,6 +176,9 @@ struct HistoryEntry {
     var targetApp: Int? = 1
     var appChanged = false
     var accessibilityMissing = false
+    enum PermissionPane { case accessibility, microphone }
+    var openedPanes: [PermissionPane] = []
+    func openPermissionSettings(_ pane: PermissionPane) { openedPanes.append(pane) }
     func insertionBlocker(for app: Int?) -> (reason: String, message: String)? {
         precondition(app == 1)
         if accessibilityMissing { return ("permission", "Accessibility needed. Copied; press ⌘V to paste.") }
@@ -430,6 +433,8 @@ TESTS = r'''
             }
             precondition(switched.state == .idle)
             let reason = missingAccessibility ? "permission" : "target_changed"
+            precondition(switched.openedPanes == (missingAccessibility ? [.accessibility] : []),
+                         "Missing Accessibility opens its System Settings pane; a changed app does not")
             precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == reason })
         }
         TextIO.copied = []
@@ -633,7 +638,7 @@ typealias AudioRecorder = FakeRecorder
     enum State { case idle, recording, processing }
     enum Gesture: String { case hold, toggle }
     enum Authorization { case authorized, notDetermined, denied, restricted }
-    static var microphoneStatus: Authorization { .authorized }
+    static var microphoneStatus: Authorization = .authorized
     var state = State.idle
     var shortcutCaptureActive = false
     var generation = 0
@@ -648,6 +653,9 @@ typealias AudioRecorder = FakeRecorder
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
     func insertionBlocker(for app: FakeApp?) -> (reason: String, message: String)? { nil }
+    enum PermissionPane { case accessibility, microphone }
+    var openedPanes: [PermissionPane] = []
+    func openPermissionSettings(_ pane: PermissionPane) { openedPanes.append(pane) }
     var previewText = ""
     var context: AppContext?
     var editSelection: String?
@@ -775,6 +783,17 @@ STARTUP_TESTS = r'''
             test.cancel()
         }
         print("PASS production recording snapshots for Qwen/Apple/cloud, dynamic dictionary edits, partial revisions, processing exclusion, cancel/startup failures, stale generations, and voice edit")
+
+        for status in [StartupHarness.Authorization.denied, .restricted] {
+            StartupHarness.microphoneStatus = status
+            let blocked = StartupHarness()
+            blocked.startRecording()
+            precondition(blocked.state == .idle && blocked.recorder.startCalls == 0)
+            precondition(blocked.openedPanes == (status == .denied ? [.microphone] : []),
+                         "Denied microphone opens its pane; a managed restriction does not")
+        }
+        StartupHarness.microphoneStatus = .authorized
+        print("PASS denied microphone opens System Settings; restricted does not")
 
         FakeSession.onCreate = {}
         LLMClient.onComplete = {}
