@@ -248,6 +248,11 @@
 "Dictation" = "Dictation";
 "Dictation (hold %@)" = "Dictation (hold %@)";
 "Dictation (tap %@)" = "Dictation (tap %@)";
+"Start Dictation" = "Start Dictation";
+"Finish Dictation" = "Finish Dictation";
+"Press Esc to cancel" = "Press Esc to cancel";
+"Hold %@" = "Hold %@";
+"Tap %@" = "Tap %@";
 "This input: AI polishing" = "This input: AI polishing";
 "This input: no AI polishing" = "This input: no AI polishing";
 "Press %@ to skip polishing" = "Press %@ to skip polishing";

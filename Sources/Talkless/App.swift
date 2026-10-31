@@ -286,13 +286,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             holdToTalk: settings.recordingGestureMode == .hold,
             alternateFinishKeyTitle: settings.effectiveAlternateFinishKey?.title,
             polishEnabled: settings.polishEnabled,
-            translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title
+            translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title,
+            dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing
         ), target: self, actions: .init(
+            dictate: #selector(toggleDictation),
+            translate: #selector(translateSelection),
             openSettings: #selector(openSettingsAction),
             quit: #selector(quit)
         ), updateItem: updateController?.makeMenuItem())
     }
 
+    @objc private func toggleDictation() { controller.toggleFromMenu() }
+    @objc private func translateSelection() { Task { await controller.translateSelection() } }
     @objc private func openSettingsAction() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 

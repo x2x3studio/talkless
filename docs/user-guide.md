@@ -22,7 +22,7 @@ If macOS opens the emoji panel when you press Fn, set the Globe-key action to **
 
 ## Find your settings
 
-Click Talkless's menu bar icon and choose the gear-marked **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. The dictation reference shows your actual key and gesture—for example, **Dictation (hold Fn / Globe)** or **Dictation (tap Fn / Globe)**. It and the translation shortcut row are references, not clickable commands. AI polishing controls are in Dictation settings, not a separate menu row.
+Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. AI polishing controls are in Dictation settings, not a separate menu row.
 
 | Settings page | What you can change |
 | --- | --- |
