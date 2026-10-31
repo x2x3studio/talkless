@@ -14,8 +14,11 @@ enum MenuBarIcon {
         }
     }
 
+    /// The badge column is wide enough for a legible glyph next to Pip.
+    static let size = NSSize(width: 28, height: 18)
+
     static func image(for state: State) -> NSImage {
-        let image = NSImage(size: NSSize(width: 25, height: 18), flipped: true) { _ in
+        let image = NSImage(size: size, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
             context.saveGState()
             // A 15-point silhouette in the 19-point mark slot leaves a clear
@@ -27,17 +30,24 @@ enum MenuBarIcon {
             context.addPath(PipArtwork.path(small: true))
             context.fillPath(using: .evenOdd)
             context.restoreGState()
-            let badge = CGRect(x: 21, y: 2, width: 3, height: 3)
             switch state {
             case .idle:
                 break
             case .recording:
+                // Listening: a solid dot at Pip's ear.
                 context.setFillColor(NSColor.black.cgColor)
-                context.fillEllipse(in: badge)
+                context.fillEllipse(in: CGRect(x: 21.5, y: 1.5, width: 5, height: 5))
             case .processing:
-                context.setStrokeColor(NSColor.black.cgColor)
-                context.setLineWidth(0.8)
-                context.strokeEllipse(in: badge.insetBy(dx: 0.4, dy: 0.4))
+                // Thinking: Pip wonders what you said.
+                let mark = NSAttributedString(string: "?", attributes: [
+                    .font: NSFont.systemFont(ofSize: 10.5, weight: .heavy),
+                    .foregroundColor: NSColor.black,
+                ])
+                // Center the glyph's ink, not its line box, in the 6-point badge column;
+                // antialiasing needs about half a point of clearance on each side.
+                let ink = mark.boundingRect(with: NSSize(width: 20, height: 20),
+                                            options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
+                mark.draw(at: NSPoint(x: 24.2 - ink.width / 2 - ink.minX, y: 1))
             }
             return true
         }
