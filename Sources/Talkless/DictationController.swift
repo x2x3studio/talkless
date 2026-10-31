@@ -74,6 +74,8 @@ final class DictationController: ObservableObject {
     private var recordingReplacements: [DictionaryReplacement] = []
     private var languageSubscription: AnyCancellable?
     private var editSelection: String?
+    /// The ⌘C selection fallback for apps without an Accessibility selection; stop awaits it.
+    private var selectionTask: Task<Void, Never>?
     private var targetApp: NSRunningApplication?
     @Published private(set) var lastTranscript = ""
     /// True while polishing or voice editing waits on the AI service (menu bar shows "@").
@@ -465,6 +467,19 @@ final class DictationController: ObservableObject {
         hud.model.preview = ""
         hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])
         hud.show(.listening(handsFree: handsFree))
+        // Apps that do not expose their selection through Accessibility get the same ⌘C
+        // fallback as translation, in the background; a selection turns this into voice editing.
+        if editSelection == nil, settings.voiceEditEnabled, settings.llmConfigured, !acquiringTranslationSelection {
+            acquiringTranslationSelection = true // One clipboard user at a time.
+            selectionTask = Task { [weak self] in
+                let selection = await TextIO.selectedTextViaCopy()
+                guard let self else { return }
+                self.acquiringTranslationSelection = false
+                guard let selection, self.generation == generation,
+                      self.state == .recording || self.state == .processing else { return }
+                self.adoptEditSelection(selection)
+            }
+        }
         startupTask = Task { [weak self] in
             guard let self, self.generation == generation, !Task.isCancelled else { return }
             do {
@@ -481,6 +496,16 @@ final class DictationController: ObservableObject {
                 self.hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
             }
         }
+    }
+
+    /// A selection found after recording started (via ⌘C) switches this recording to voice editing.
+    private func adoptEditSelection(_ selection: String) {
+        editSelection = selection
+        diagnosticOperation?.mode = "edit"
+        hud.model.isEditMode = true
+        hud.model.setDictionaryTerms([])
+        if state == .recording { hud.show(.listening(handsFree: handsFree)) }
+        LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
     }
 
     /// Recognizer callbacks arrive asynchronously; only the active recording may touch the HUD.
@@ -502,7 +527,7 @@ final class DictationController: ObservableObject {
         hud.show(.recognizing)
 
         let generation = self.generation
-        let editSelection = self.editSelection
+        let selectionTask = self.selectionTask
         let context = self.context
         let targetApp = self.targetApp
         let modelDirectory = recordingModelDirectory
@@ -511,6 +536,10 @@ final class DictationController: ObservableObject {
 
         processingTask = Task { [weak self] in
             guard let self, generation == self.generation, !Task.isCancelled else { return }
+            // Edit or dictation is decided only after a pending ⌘C selection read finishes.
+            await selectionTask?.value
+            guard generation == self.generation, !Task.isCancelled else { return }
+            let editSelection = self.editSelection
             var stage = "stop"
             var stageStarted = DispatchTime.now().uptimeNanoseconds
             do {
@@ -652,6 +681,7 @@ final class DictationController: ObservableObject {
     private func finish(_ phase: HUDModel.Phase) {
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false
+        selectionTask = nil
         recordingModelDirectory = nil
         diagnosticOperation = nil
         state = .idle
@@ -667,6 +697,7 @@ final class DictationController: ObservableObject {
     func cancel(reason: String = "user") {
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false
+        selectionTask = nil
         let fields = ["reason": reason, "state": String(describing: state)]
         if let diagnosticOperation {
             diagnosticOperation.record("dictation_cancel", fields)

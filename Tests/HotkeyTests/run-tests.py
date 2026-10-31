@@ -141,6 +141,7 @@ final class Diagnostics: @unchecked Sendable {
     var stops = 0
     var stoppedPolish: Bool?
     var aiInProgress = false
+    var selectionTask: Task<Void, Never>?
     var editSelection: String?
     var settings = Settings()
     var hotkeys: HotkeyMonitor { monitor }

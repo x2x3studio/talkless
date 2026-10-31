@@ -126,6 +126,9 @@ enum PolishValidation {
     }
     static var copied: [String] = []
     static func copyToClipboard(_ text: String) { copied.append(text) }
+    static var copiedSelection: String?
+    static var copyReads = 0
+    static func selectedTextViaCopy() async -> String? { copyReads += 1; await Task.yield(); return copiedSelection }
 }
 struct HistoryEntry {
     enum Kind { case dictation, edit }
@@ -171,6 +174,7 @@ struct HistoryEntry {
     let history = FakeHistory()
     var cancelled = false
     var targetApp: Int? = 1
+    var selectionTask: Task<Void, Never>?
     var aiInProgress = false
     var recordingReplacements: [DictionaryReplacement] = []
     var appChanged = false
@@ -453,6 +457,15 @@ TESTS = r'''
             precondition(Diagnostics.shared.events.contains { $0.0 == "recognition_complete" && $0.1["replacement_count"] == "1" })
         }
         print("PASS explicit dictionary fixes run after recognition, before polish, and are visible against recognized words")
+        let late = ProcessingHarness()
+        late.recordingPolishEnabled = false
+        late.selectionTask = Task { @MainActor in late.editSelection = "selected text" }
+        LLMClient.calls = 0
+        late.stopAndProcess()
+        await late.processingTask?.value
+        precondition(late.history.entries.first?.kind == .edit && LLMClient.calls == 1,
+                     "A selection copied after recording started still makes this a voice edit")
+        print("PASS stop waits for a pending selection read before choosing edit or dictation")
         print("PASS switching apps or missing Accessibility copies instead of pasting, keeps history, and explains ⌘V")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
@@ -653,6 +666,8 @@ typealias AudioRecorder = FakeRecorder
     let recorder = FakeRecorder()
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
+    var selectionTask: Task<Void, Never>?
+    var acquiringTranslationSelection = false
     var aiInProgress = false
     var recordingReplacements: [DictionaryReplacement] = []
     func insertionBlocker(for app: FakeApp?) -> (reason: String, message: String)? { nil }
@@ -710,6 +725,28 @@ STARTUP_TESTS = r'''
             fixing.cancel()
         }
         print("PASS live preview applies the recording's dictionary fixes")
+        TextIO.axSelection = nil // An app that does not expose its selection through Accessibility.
+        for voiceEdit in [false, true] {
+            TextIO.copiedSelection = "Copied paragraph"
+            TextIO.copyReads = 0
+            let copied = StartupHarness()
+            copied.settings.voiceEditEnabled = voiceEdit
+            copied.startRecording()
+            await copied.selectionTask?.value
+            precondition(TextIO.copyReads == (voiceEdit ? 1 : 0), "The ⌘C fallback runs only when voice editing is on")
+            precondition(copied.hud.model.isEditMode == voiceEdit, "A copied selection switches the overlay to voice editing")
+            precondition(!copied.acquiringTranslationSelection, "The clipboard is released after the fallback")
+            copied.cancel()
+        }
+        TextIO.copiedSelection = nil
+        let nothingSelected = StartupHarness()
+        nothingSelected.settings.voiceEditEnabled = true
+        nothingSelected.startRecording()
+        await nothingSelected.selectionTask?.value
+        precondition(!nothingSelected.hud.model.isEditMode, "No copied text keeps ordinary dictation")
+        nothingSelected.cancel()
+        TextIO.axSelection = "Selected sentence"
+        print("PASS voice editing falls back to ⌘C like translation and switches only when text was copied")
         for engine in FakeSettings.Engine.allCases {
             let test = StartupHarness()
             test.settings.asrEngine = engine
@@ -1061,7 +1098,10 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     shared_processing += '''
     typealias Settings = FakeSettings
     typealias Context = AppContext
-    extension TextIO { static func selectedTextViaAX() -> String? { "Selected sentence" } }
+    extension TextIO {
+        static var axSelection: String? = "Selected sentence"
+        static func selectedTextViaAX() -> String? { axSelection }
+    }
     @MainActor final class FakeTranslationPanel {
         var isVisible = false
         func close() { isVisible = false }
@@ -1069,7 +1109,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     '''
     startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
-                         ("startRecording", "isCurrentRecognition", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
+                         ("startRecording", "isCurrentRecognition", "adoptEditSelection", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
                           "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),

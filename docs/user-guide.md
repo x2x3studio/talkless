@@ -103,7 +103,7 @@ If polishing fails, the raw transcript is inserted instead, with a brief error m
 3. Use your dictation key and say how to change it, such as “Make this shorter” or “Translate into English.” The overlay shows a blue pencil instead of the waveform from the start, so you can tell voice editing has taken over; press Esc if you only meant to dictate. Finish normally.
 4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
 
-Voice editing requires a configured AI service and a selection readable through Accessibility. Some apps do not expose selections this way. If Talkless cannot read the selection, it records ordinary dictation instead; unlike translation, voice editing does not use a Copy fallback. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
+Voice editing requires a configured AI service. Talkless reads the selection through Accessibility; in apps that do not expose it, it briefly copies the selection with Command-C in the background, like translation, and then restores your clipboard. If that finds text, the recording switches to voice editing and the overlay shows the pencil. When nothing is selected, the recording stays ordinary dictation; editors that copy the whole line when nothing is selected (such as VS Code) are recognized and not treated as a selection. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
 
 ## Selected-text translation
 

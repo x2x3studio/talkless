@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- Voice editing now works in apps that do not expose selected text to Accessibility. Like translation, Talkless briefly copies the selection in the background and restores your clipboard; when it finds text, the recording switches to voice editing and the overlay shows the pencil. VS Code's whole-line copy with nothing selected is not treated as a selection.
+
+## 2026.1031.63476
+
+### Fixed
 - With the menu bar menu open, Command-Comma opens Settings and Command-Q quits, as the menu shows.
 
 ### Improved

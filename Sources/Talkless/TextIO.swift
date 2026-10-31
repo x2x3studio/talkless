@@ -24,23 +24,37 @@ enum TextIO {
     /// Try Accessibility first, then simulate ⌘C if needed and restore the clipboard afterward.
     static func selectedText() async -> String? {
         if let text = selectedTextViaAX() { return text }
+        return await selectedTextViaCopy()
+    }
 
+    /// For apps that do not expose their selection through Accessibility: simulate ⌘C, read the
+    /// copy, and restore the user's clipboard. Returns nil when nothing was copied.
+    static func selectedTextViaCopy() async -> String? {
         let pasteboard = NSPasteboard.general
         let saved = takeUserSnapshot(pasteboard)
         let before = pasteboard.changeCount
         postKey(vKeyC, flags: .maskCommand)
 
         var result: String?
+        var wholeLine = false
         for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(25))
             if pasteboard.changeCount != before {
                 result = pasteboard.string(forType: .string)
+                wholeLine = copiedLineWithoutSelection(pasteboard)
                 break
             }
         }
         if pasteboard.changeCount != before { restore(saved, to: pasteboard) }
-        guard let result, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard !wholeLine, let result, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return result
+    }
+
+    /// VS Code and its forks copy the whole current line when nothing is selected, and mark it.
+    private static func copiedLineWithoutSelection(_ pasteboard: NSPasteboard) -> Bool {
+        guard let data = pasteboard.data(forType: NSPasteboard.PasteboardType("vscode-editor-data")),
+              let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return info["isFromEmptySelection"] as? Bool == true
     }
 
     /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the
