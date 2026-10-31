@@ -12,6 +12,49 @@ enum SettingsAppearance {
     })
 }
 
+/// Grouped page list. Separate from SettingsView so it can be previewed without app services.
+struct SettingsSidebar: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
+    @Binding var selection: SettingsSection?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Talkless")
+                    .font(.system(size: 17, weight: .semibold))
+                Text(L10n.tr("Settings"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+
+            List(selection: $selection) {
+                ForEach(SettingsSection.groups, id: \.title) { group in
+                    Section(L10n.tr(group.title)) {
+                        ForEach(group.sections) { section in
+                            Label {
+                                Text(section.title)
+                            } icon: {
+                                Image(systemName: section.symbol)
+                                    .frame(width: 18)
+                            }
+                            .padding(.vertical, 3)
+                            .tag(section)
+                        }
+                    }
+                }
+            }
+            // Rebuild native rows when their localized titles change; selection stays above the list.
+            .id(localization.locale.identifier)
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+        }
+        .frame(width: 196)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var settings = AppSettings.shared
@@ -23,34 +66,7 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Talkless")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text(L10n.tr("Settings"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-
-                List(SettingsSection.allCases, selection: $selection) { section in
-                    Label {
-                        Text(section.title)
-                    } icon: {
-                        Image(systemName: section.symbol)
-                            .frame(width: 18)
-                    }
-                    .padding(.vertical, 5)
-                    .tag(section)
-                }
-                // Rebuild native rows when their localized titles change; selection stays above the list.
-                .id(localization.locale.identifier)
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-            }
-            .frame(width: 196)
-            .background(Color(nsColor: .controlBackgroundColor))
+            SettingsSidebar(selection: $selection)
 
             Divider()
 
@@ -89,7 +105,7 @@ struct SettingsView: View {
                     case .dictionary:
                         DictionaryTab().padding(28)
                     case .history:
-                        HistoryTab().padding(28)
+                        HistoryView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,8 +163,6 @@ private struct DictationSettingsTab: View {
                     }
                 }
             }
-            AudioInputSettingsView(settings: settings)
-
             Section(L10n.tr("Recording")) {
                 HStack {
                     Picker(selection: $settings.recordingGestureMode) {
@@ -199,6 +213,19 @@ private struct DictationSettingsTab: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                HStack {
+                    Spacer()
+                    Button(L10n.tr("Reset recording shortcuts")) {
+                        ShortcutRecorder.cancelCapture()
+                        settings.restoreRecordingShortcutDefaults()
+                    }
+                    .disabled(settings.areRecordingShortcutsDefault || controller.state != .idle)
+                    .help(L10n.tr("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged."))
+                }
+            }
+
+            // The polishing shortcut sits with the polishing switch it depends on.
+            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI) {
                 ShortcutRecorder(
                     title: L10n.tr("AI polishing shortcut"),
                     value: settings.alternateFinishKey.title(for: settings.triggerKey),
@@ -233,18 +260,9 @@ private struct DictationSettingsTab: View {
                     Text(L10n.tr("Choose a different key from the dictation key. The AI polishing shortcut is disabled while they match."))
                         .font(.caption).foregroundStyle(.orange)
                 }
-                HStack {
-                    Spacer()
-                    Button(L10n.tr("Reset recording shortcuts")) {
-                        ShortcutRecorder.cancelCapture()
-                        settings.restoreRecordingShortcutDefaults()
-                    }
-                    .disabled(settings.areRecordingShortcutsDefault || controller.state != .idle)
-                    .help(L10n.tr("Restore the two recording shortcuts. Recording mode, translation, and other settings are unchanged."))
-                }
             }
 
-            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
+            AudioInputSettingsView(settings: settings)
         }
         .formStyle(.grouped)
     }
@@ -578,111 +596,3 @@ private struct DictionaryTab: View {
     }
 }
 
-// MARK: - History
-
-private struct HistoryTab: View {
-    @ObservedObject private var localization = LocalizationSettings.shared
-    @ObservedObject var history = HistoryStore.shared
-    @State private var confirmClear = false
-    @State private var search = ""
-
-    private var filteredEntries: [HistoryEntry] {
-        let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return history.entries }
-        return history.entries.filter {
-            $0.output.localizedStandardContains(query) || $0.raw.localizedStandardContains(query)
-                || $0.app.localizedStandardContains(query)
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                DictationActivityView()
-                Divider()
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.tr("Recent history")).font(.headline)
-                        Text(L10n.format("%d saved entries", history.entries.count))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(L10n.tr("Clear history…")) { confirmClear = true }
-                        .disabled(history.entries.isEmpty)
-                }
-                if !history.entries.isEmpty {
-                    TextField(L10n.tr("Search history"), text: $search)
-                        .textFieldStyle(.roundedBorder)
-                }
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(filteredEntries) { entry in
-                        HistoryRow(entry: entry)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .contextMenu {
-                                Button(L10n.tr("Copy Result")) { TextIO.copyToClipboard(entry.output) }
-                                Button(L10n.tr("Copy Raw Transcript")) { TextIO.copyToClipboard(entry.raw) }
-                                Divider()
-                                Button(L10n.tr("Delete")) { history.delete(entry) }
-                            }
-                        Divider()
-                    }
-                    if history.entries.isEmpty {
-                        Text(L10n.tr("No history yet")).foregroundStyle(.secondary)
-                    } else if filteredEntries.isEmpty {
-                        Text(L10n.tr("No matching history")).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .alert(L10n.tr("Clear saved history?"), isPresented: $confirmClear) {
-            Button(L10n.tr("Cancel"), role: .cancel) {}
-            Button(L10n.tr("Clear history"), role: .destructive) { history.clear() }
-        } message: {
-            Text(L10n.tr("This deletes saved transcripts. Daily activity totals are kept separately; use Clear activity to remove those too."))
-        }
-    }
-}
-
-private struct HistoryRow: View {
-    @ObservedObject private var localization = LocalizationSettings.shared
-    let entry: HistoryEntry
-    @State private var copied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(kindTitle).font(.caption2.bold())
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Capsule().fill(.quaternary))
-                Text(entry.app).font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Text(entry.date, format: .dateTime.month().day().hour().minute())
-                    .font(.caption).foregroundStyle(.secondary)
-                Button {
-                    TextIO.copyToClipboard(entry.output)
-                    copied = true
-                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .help(L10n.tr("Copy Result"))
-                .accessibilityLabel(L10n.tr("Copy Result"))
-            }
-            Text(entry.output).lineLimit(4).textSelection(.enabled)
-            if entry.raw != entry.output, entry.kind == .dictation {
-                Text(entry.raw).font(.caption).foregroundStyle(.tertiary).lineLimit(2)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var kindTitle: String {
-        switch entry.kind {
-        case .dictation: return L10n.tr("Dictation")
-        case .edit: return L10n.tr("Voice Edit")
-        case .translation: return L10n.tr("Translation")
-        }
-    }
-}

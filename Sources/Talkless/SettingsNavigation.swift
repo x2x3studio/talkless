@@ -3,7 +3,15 @@ import Foundation
 /// Settings sidebar pages. Kept free of view dependencies so the app delegate, setup guide
 /// and focused tests can route to a page without compiling the whole Settings window.
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case dictation, translation, models, aiService, dictionary, overlay, history, system, about
+    // Voice input comes first; translation is a secondary tool.
+    case dictation, models, dictionary, aiService, overlay, history, translation, system, about
+
+    /// Sidebar groups, in display order.
+    static let groups: [(title: String, sections: [SettingsSection])] = [
+        ("Voice input", [.dictation, .models, .dictionary, .aiService, .overlay]),
+        ("Tools", [.history, .translation]),
+        ("General", [.system, .about]),
+    ]
 
     var id: Self { self }
 

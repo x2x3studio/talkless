@@ -24,15 +24,17 @@ If macOS opens the emoji panel when you press Fn, set the Globe-key action to **
 
 Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. If Accessibility or Microphone permission is missing, or the selected local speech model is not downloaded, a warning row appears at the top of the menu; click it to open the right setting. Trying to dictate or translate while a permission is missing also opens that System Settings pane; dictated text is copied so you can paste it with ⌘V. Opening Talkless again while it is running shows Settings (or the setup guide if setup is unfinished). AI polishing controls are in Dictation settings, not a separate menu row.
 
+Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech recognition, Dictionary, AI service, Overlay), **Tools** (History, Translation) and **General** (System, About).
+
 | Settings page | What you can change |
 | --- | --- |
-| **Dictation** | Microphone, recording mode and keys, AI polishing, output language, app-aware tone, additional instructions, voice editing |
-| **Translation** | Source and target languages, automatic direction, preferred languages, translation shortcut |
+| **Dictation** | Recording mode and keys, AI polishing and its shortcut, output language, app-aware tone, additional instructions, voice editing, microphone |
 | **Speech recognition** | Recognition engine, local model downloads, Apple recognition language, cloud recognition connection |
+| **Dictionary** | Confirmed terms, heard-as fixes, import/export and suggested spelling corrections |
 | **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |
-| **Dictionary** | Confirmed terms and suggested spelling corrections |
 | **Overlay** | Preview, backdrop, opacity, animations and cursor following |
-| **History** | Saved results and daily dictation activity |
+| **History** | Daily dictation activity, and saved results grouped by day with search and type filters |
+| **Translation** | Source and target languages, automatic direction, preferred languages, translation shortcut |
 | **System** | Interface language, permissions, setup guide, launch at login and diagnostics |
 | **About** | Installed version/build, updates, website and source-code links |
 

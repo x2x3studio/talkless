@@ -824,3 +824,15 @@
 "No matching history" = "没有匹配的历史记录";
 "Copy Last Result" = "复制上一次结果";
 "Copy the most recent dictation result to the clipboard." = "把最近一次听写结果复制到剪贴板。";
+"Voice input" = "语音输入";
+"Tools" = "工具";
+"General" = "通用";
+"All" = "全部";
+"Yesterday" = "昨天";
+"Your dictations, voice edits, and translations will appear here." = "听写、语音编辑和翻译的结果会显示在这里。";
+"Try another search or filter." = "换个关键词或筛选条件试试。";
+"Clear search" = "清除搜索";
+"Show" = "显示";
+"Heard: " = "原文：";
+"Instruction: " = "指令：";
+"Original: " = "原文：";

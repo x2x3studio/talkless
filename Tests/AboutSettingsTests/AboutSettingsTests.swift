@@ -42,7 +42,7 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
             assertions += 1
             precondition(condition(), message)
         }
-        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "translation", "models", "aiService", "dictionary", "overlay", "history", "system", "about"],
+        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "models", "dictionary", "aiService", "overlay", "history", "translation", "system", "about"],
               "About appends without changing existing section raw values/order")
         check(SettingsSection.about.symbol == "info.circle", "About uses a native information symbol")
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 604, height: 570),

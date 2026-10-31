@@ -158,6 +158,12 @@ enum L10n {
         }
     }
 
+    /// Tests only: the test runner lives inside an .app, so the packaged-app lookup
+    /// deliberately finds no catalog there. Production never calls this.
+    static func useCatalog(_ catalog: LocalizationCatalog) {
+        state.withLock { $0.catalog = catalog }
+    }
+
     fileprivate static func select(_ localization: String, locale: Locale) {
         state.withLock {
             $0.localization = localization
