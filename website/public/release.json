@@ -1,18 +1,20 @@
 {
-  "version": "2026.1031.38693",
-  "build": "1793443493",
+  "version": "2026.1031.40954",
+  "build": "1793445754",
   "channel": "beta",
   "architecture": "arm64",
   "minimumMacOS": "26",
-  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.38693-beta.1793443493/Talkless-2026.1031.38693-1793443493-arm64.dmg",
-  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.38693-beta.1793443493",
+  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.40954-beta.1793445754/Talkless-2026.1031.40954-1793445754-arm64.dmg",
+  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.40954-beta.1793445754",
   "publishedDate": "2026-10-31",
   "notes": {
     "en": [
-      "Setup Guide now offers an optional Launch at login step using the same macOS-controlled setting as System preferences. Nothing is enabled automatically."
+      "AI polishing, voice editing, and translation reuse warm connections, and Talkless starts connecting to the AI service while you speak, so results arrive sooner.",
+      "Saving history no longer blocks the interface after each dictation."
     ],
     "zh-Hans": [
-      "\u8bbe\u7f6e\u5f15\u5bfc\u589e\u52a0\u53ef\u9009\u7684\u201c\u767b\u5f55\u65f6\u542f\u52a8\u201d\uff0c\u4e0e\u7cfb\u7edf\u8bbe\u7f6e\u9875\u5171\u7528\u540c\u4e00\u9879 macOS \u767b\u5f55\u9879\u8bbe\u7f6e\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5f00\u542f\u3002"
+      "AI \u6da6\u8272\u3001\u8bed\u97f3\u7f16\u8f91\u548c\u7ffb\u8bd1\u4f1a\u590d\u7528\u5df2\u5efa\u7acb\u7684\u8fde\u63a5\uff0c\u5e76\u5728\u8bf4\u8bdd\u65f6\u63d0\u524d\u8fde\u63a5 AI \u670d\u52a1\uff0c\u7ed3\u679c\u8fd4\u56de\u66f4\u5feb\u3002",
+      "\u4fdd\u5b58\u5386\u53f2\u8bb0\u5f55\u4e0d\u518d\u5728\u6bcf\u6b21\u542c\u5199\u540e\u963b\u585e\u754c\u9762\u3002"
     ]
   }
 }

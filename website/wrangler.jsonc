@@ -11,8 +11,11 @@
       "zone_id": "836efe7e1a2771b09123fbef27be147f"
     }
   ],
+  "main": "src/worker.js",
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/download", "/release.json"],
     "html_handling": "drop-trailing-slash",
     "not_found_handling": "404-page"
   }

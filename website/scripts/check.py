@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline website checks; --links also verifies the repository and pinned DMG."""
+"""Offline website checks; --links also verifies the repository and the fallback snapshot DMG."""
 import argparse
 from html import escape
 from html.parser import HTMLParser
@@ -143,7 +143,11 @@ def main():
     assert release['downloadURL'] == expected_download, 'Unexpected download path'
     assert release['releaseURL'] == f'{REPOSITORY}/releases/tag/{tag}', 'Release tag mismatch'
     assert release['channel'] == 'beta' and release['architecture'] == 'arm64' and release['minimumMacOS'] == '26', 'Release platform metadata mismatch'
-    assert (PUBLIC / '_redirects').read_text() == f'/download {expected_download} 302\n', 'Run sync-release.py after changing release.json'
+    redirects = PUBLIC / '_redirects'
+    assert not redirects.exists() or '/download' not in redirects.read_text(), 'The Worker owns /download; a static redirect would pin an old build'
+    worker = (ROOT / 'src' / 'worker.js').read_text()
+    assert "'/download'" in worker and "'/release.json'" in worker and 'env.ASSETS.fetch' in worker, 'Worker must serve /download and /release.json with a static fallback'
+    subprocess.run(['node', '--check', str(ROOT / 'src' / 'worker.js')], check=True)
     for filename in ('index.html', 'updates.html'):
         assert f'data-release-version>{release["version"]}<' in (PUBLIC / filename).read_text(), f'Static release is stale: {filename}'
     assert set(release['notes']) == {'en', 'zh-Hans'} and len(release['notes']['en']) == len(release['notes']['zh-Hans']), 'Release notes need paired translations'

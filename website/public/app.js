@@ -16,6 +16,7 @@ let localeRequest = 0;
 let demoRun = 0;
 let demoPlaying = false;
 let noteEdited = false;
+let runtimeNotes = null;
 
 function preferredLocale(languages) {
   for (const language of languages) {
@@ -35,7 +36,11 @@ function chosenLocale() {
   return preferredLocale(navigator.languages || [navigator.language || 'en']);
 }
 
-function text(key) { return catalog[key] || catalogs.get('en')?.[key] || key; }
+function text(key) {
+  const note = key.match(/^release\.note\.(\d+)$/);
+  if (note && runtimeNotes) return runtimeNotes[currentLocale]?.[note[1]] || runtimeNotes.en[note[1]] || key;
+  return catalog[key] || catalogs.get('en')?.[key] || key;
+}
 
 async function loadCatalog(locale) {
   if (catalogs.has(locale)) return catalogs.get(locale);
@@ -172,7 +177,36 @@ document.addEventListener('keydown', event => {
   announcement.textContent = text('demo.cancelled');
 });
 
-// Release labels, notes and /download are synchronized at deploy time.
-// Do not mix cached runtime release metadata with this document's published notes.
+// Static markup is the deploy-time snapshot and the no-JavaScript fallback. The Worker's
+// /release.json follows the newest published build; /download already redirects to it.
+async function applyRelease() {
+  try {
+    const response = await fetch('/release.json');
+    if (!response.ok) return;
+    const release = await response.json();
+    if (!/^[0-9.]+$/.test(release.version) || !/^[0-9]+$/.test(release.build)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(release.publishedDate)) return;
+    for (const element of document.querySelectorAll('[data-release-version]')) element.textContent = release.version;
+    for (const element of document.querySelectorAll('[data-release-build]')) element.textContent = release.build;
+    for (const element of document.querySelectorAll('[data-release-date]')) {
+      element.textContent = release.publishedDate;
+      element.setAttribute('datetime', release.publishedDate);
+    }
+    for (const tag of document.querySelectorAll('.download-link .button-tag')) tag.hidden = release.channel !== 'beta';
+    const list = document.querySelector('[data-release-changes]');
+    const notes = release.notes;
+    if (list && Array.isArray(notes?.en) && notes.en.length && notes['zh-Hans']?.length === notes.en.length) {
+      runtimeNotes = notes;
+      list.replaceChildren(...notes.en.map((_, index) => {
+        const item = document.createElement('li');
+        item.dataset.i18n = `release.note.${index}`;
+        item.textContent = text(item.dataset.i18n);
+        return item;
+      }));
+    }
+  } catch { /* Keep the static release snapshot. */ }
+}
+
 await loadCatalog('en').then(strings => { catalog = strings; }).catch(() => {});
 await setLocale(chosenLocale());
+await applyRelease();

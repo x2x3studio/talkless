@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync the download redirect, static release metadata and bilingual notes; no network."""
+"""Sync the static fallback release metadata and bilingual notes; no network."""
 from datetime import date
 from html import escape
 import json
@@ -41,6 +41,5 @@ for path in sorted(PUBLIC.glob('*.html')):
         assert count == 1, 'Release notes markup changed; review sync script'
     path.write_text(html)
 assert versions == 2, 'Static version markup changed; review sync script'
-# Temporary redirect: new deployments can advance the pinned asset without a cached 301.
-(PUBLIC / '_redirects').write_text(f'/download {expected} 302\n')
-print(f'Synced /download, release {release["version"]}, publication date and {len(notes["en"])} bilingual notes')
+# /download is served by the Worker (src/worker.js); this snapshot is only its fallback.
+print(f'Synced fallback release {release["version"]}, publication date and {len(notes["en"])} bilingual notes')

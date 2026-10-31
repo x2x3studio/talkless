@@ -24,7 +24,7 @@ class Element {
   focus() { this.focused = true; this.listeners.focus?.(); }
 }
 
-async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false } = {}) {
+async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false, runtime = release } = {}) {
   const elements = Object.fromEntries((page === 'home' ? ['#play-demo', '#demo-output', '#demo-transcript', '#dictation-pill', '#demo-announcement', '#release-version'] : ['#locale-announcement', '#release-version']).map(id => [id, new Element()]));
   if (page === 'home') elements['#play-demo'].strong = new Element();
   elements['#release-version'].textContent = release.version;
@@ -38,13 +38,19 @@ async function boot({ languages = ['en-US'], reduced = true, stored = null, sear
   siteLinks[1].href = '/';
   const headingKey = page === 'home' ? 'hero.line1' : page === 'privacy' ? 'privacy.page.title' : `${page}.title`;
   const localized = [new Element({ i18n: headingKey })];
+  const build = new Element();
+  build.textContent = release.build;
+  const published = new Element();
+  published.textContent = release.publishedDate;
+  const tags = [new Element(), new Element()];
+  const changes = new Element();
   const requests = [];
   const storage = new Map(stored ? [['talkless.website.language', stored]] : []);
   const document = {
     documentElement: { lang: 'en' },
     body: { dataset: { page } },
-    querySelector(selector) { return elements[selector] ?? (selector.startsWith('meta[') ? new Element() : null); },
-    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': localized, '[data-release-version]': [elements['#release-version']] })[selector] || []; },
+    querySelector(selector) { return selector === '[data-release-changes]' ? (page === 'updates' ? changes : null) : elements[selector] ?? (selector.startsWith('meta[') ? new Element() : null); },
+    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': [...localized, ...changes.children], '[data-release-version]': [elements['#release-version']], '[data-release-build]': [build], '[data-release-date]': [published], '.download-link .button-tag': tags })[selector] || []; },
     createElement() { return new Element(); },
     createTextNode(value) { const node = new Element(); node.textContent = value; return node; },
     addEventListener(name, listener) { this[name] = listener; },
@@ -59,13 +65,14 @@ async function boot({ languages = ['en-US'], reduced = true, stored = null, sear
     URL, URLSearchParams, setTimeout: (callback) => setTimeout(callback, 0),
     fetch: async path => {
       requests.push(path);
-      assert(path.startsWith('/locales/'), 'Only locale catalogs may be fetched');
+      assert(path.startsWith('/locales/') || path === '/release.json', 'Only same-origin locale and release data may be fetched');
+      if (path === '/release.json') return { ok: runtime !== null, json: async () => runtime };
       return { ok: !path.includes(failCatalog || 'never-match'), json: async () => path === '/locales/en.json' ? en : zh };
     },
   });
   await vm.runInContext(`(async () => { ${source}\n})();`, context, { filename: fileURLToPath(new URL('app.js', publicDirectory)) });
   await new Promise(resolve => setTimeout(resolve, 0));
-  return { elements, locales, downloads, notes, document, context, requests, storage, siteLinks, localized, headingKey };
+  return { elements, locales, downloads, notes, document, context, requests, storage, siteLinks, localized, headingKey, build, published, tags, changes };
 }
 
 const basic = await boot();
@@ -97,7 +104,24 @@ assert.equal((await boot({ search: '?lang=en', stored: 'zh-Hans' })).document.do
 const failedChinese = await boot({ languages: ['zh-CN'], failCatalog: 'zh-Hans' });
 assert.equal(failedChinese.document.documentElement.lang, 'en');
 assert.match(failedChinese.elements['#demo-announcement'].textContent, /could not be loaded/);
-assert(!source.includes("fetch('/release.json')"), 'Release notes and version remain deployment-synchronized, not runtime-rewritten');
+// The Worker's /release.json advances labels and notes past the deploy-time snapshot.
+const newer = { ...release, version: '2099.1231.86399', build: '4102444799', channel: 'stable', publishedDate: '2099-12-31',
+  notes: { en: ['First runtime note.', 'Second runtime note.'], 'zh-Hans': ['\u7b2c\u4e00\u6761', '\u7b2c\u4e8c\u6761'] } };
+const live = await boot({ page: 'updates', runtime: newer });
+assert.equal(live.elements['#release-version'].textContent, newer.version);
+assert.equal(live.build.textContent, newer.build);
+assert.equal(live.published.textContent, newer.publishedDate);
+assert.equal(live.published.attributes.datetime, newer.publishedDate);
+assert(live.tags.every(tag => tag.hidden), 'Stable builds drop the Beta tag');
+assert.deepEqual(live.changes.children.map(item => item.textContent), newer.notes.en);
+await live.locales[1].listeners.click();
+assert.deepEqual(live.changes.children.map(item => item.textContent), newer.notes['zh-Hans'], 'Runtime notes follow the language switch');
+assert((await boot({ runtime: { ...newer, channel: 'beta' } })).tags.every(tag => tag.hidden === false), 'Beta builds keep the tag');
+const offline = await boot({ page: 'updates', runtime: null });
+assert.equal(offline.elements['#release-version'].textContent, release.version, 'Failed release fetch keeps the static snapshot');
+assert.equal(offline.changes.children.length, 0);
+const malformed = await boot({ runtime: { ...newer, version: '<b>1</b>' } });
+assert.equal(malformed.elements['#release-version'].textContent, release.version, 'Malformed runtime metadata is ignored');
 for (const page of ['guide', 'privacy', 'updates', 'support']) {
   const local = await boot({ page, search: '?lang=zh-Hans', blockedStorage: true });
   assert.equal(local.document.documentElement.lang, 'zh-Hans');
@@ -121,5 +145,5 @@ animated.document.keydown({ key: 'Escape' });
 await pending;
 assert.equal(animated.elements['#dictation-pill'].dataset.state, 'idle');
 assert.equal(animated.elements['#demo-output'].textContent, '', 'Escape must prevent insertion');
-assert(basic.requests.every(path => path.startsWith('/locales/')), 'Only local language data may be requested');
-console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, static downloads, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');
+assert(basic.requests.every(path => path.startsWith('/locales/') || path === '/release.json'), 'Only same-origin data may be requested');
+console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, same-origin /download, runtime release labels/notes with static fallback, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');
