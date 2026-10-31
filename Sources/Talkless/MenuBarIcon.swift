@@ -25,8 +25,9 @@ enum MenuBarIcon {
         }
     }
 
-    /// One fixed width for every state, so the menu bar item never shifts.
-    static let size = NSSize(width: 28, height: 18)
+    /// The original Pip canvas: marks shrink to fit beside Pip instead of widening the icon,
+    /// so Pip's size and position never change and the menu bar item never shifts.
+    static let size = NSSize(width: 25, height: 18)
 
     static func image(for state: State) -> NSImage {
         let image = NSImage(size: size, flipped: true) { _ in
@@ -44,7 +45,7 @@ enum MenuBarIcon {
             if let badge = state.badge {
                 // "@" is much wider than "?" and "!", so it is set smaller to share the column.
                 let mark = NSAttributedString(string: badge, attributes: [
-                    .font: NSFont.systemFont(ofSize: badge == "@" ? 8.5 : 11, weight: .heavy),
+                    .font: NSFont.systemFont(ofSize: badge == "@" ? 5.5 : 8.5, weight: .heavy),
                     .foregroundColor: NSColor.black,
                 ])
                 // Start every mark's ink right after a one-point gap from Pip (whose ink ends
@@ -52,7 +53,7 @@ enum MenuBarIcon {
                 // about half a point of clearance from the gap.
                 let ink = mark.boundingRect(with: NSSize(width: 20, height: 20),
                                             options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
-                mark.draw(at: NSPoint(x: 19.5 - ink.minX, y: badge == "@" ? 2 : 1))
+                mark.draw(at: NSPoint(x: 19.4 - ink.minX, y: badge == "@" ? 1.5 : 0))
             }
             return true
         }
