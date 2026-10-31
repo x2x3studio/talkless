@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+- With the menu bar menu open, Command-Comma opens Settings and Command-Q quits, as the menu shows.
+
+### Improved
+- The ?, ! and @ status marks sit closer to the menu bar cat.
+- Voice editing shows a blue pencil from the moment recording starts, so you can tell it will replace the selected text and press Esc if you only meant to dictate. Its settings now explain how it works and warn when no AI service is configured.
+
+## 2026.1031.62571
+
 ### Improved
 - The menu bar cat keeps its original size and proportions. The ?, ! and @ status marks are smaller and sit at its top-right corner, where the old dot was.
 

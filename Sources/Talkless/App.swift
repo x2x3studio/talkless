@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var testTextView: NSTextView?
     private var updateController: UpdateController?
     private var cancellables: Set<AnyCancellable> = []
+    /// Status menus of an inactive accessory app ignore their own key equivalents.
+    private var menuKeyMonitor: Any?
 
     override init() {
         // AppSettings writes migrated/default preferences during initialization, so
@@ -276,6 +278,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     // MARK: - Menu
+
+    /// While the status menu is open, handle the Command shortcuts it advertises: AppKit does
+    /// not deliver them to the menu because opening it never activates this accessory app.
+    func menuWillOpen(_ menu: NSMenu) {
+        menuKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  let key = event.charactersIgnoringModifiers?.lowercased(),
+                  let item = menu.items.first(where: {
+                      $0.isEnabled && $0.keyEquivalentModifierMask == .command && $0.keyEquivalent == key
+                  }), let action = item.action else { return event }
+            menu.cancelTracking()
+            // Run after tracking ends so a new window can become key.
+            DispatchQueue.main.async { NSApp.sendAction(action, to: item.target ?? self, from: item) }
+            return nil
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        if let menuKeyMonitor { NSEvent.removeMonitor(menuKeyMonitor) }
+        menuKeyMonitor = nil
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         MenuContent.populate(menu, state: .init(
