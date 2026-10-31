@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Improved
+- Settings pages are grouped: Voice input (Dictation, Speech recognition, Dictionary, AI service, Overlay) first, then Tools (History, Translation) and General.
+- The History page groups results by day, with search, type filters, kind icons and a copy button on each entry.
+- On the Dictation page, the AI polishing shortcut now sits with the polishing switch, and microphone selection moves to the end.
+
+## 2026.1031.53892
+
 ### Added
 - Search history by result, raw text or app, and copy any entry with one click.
 - The menu bar menu offers Copy Last Result after a dictation.
