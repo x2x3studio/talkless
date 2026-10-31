@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Improved
+- The menu bar cat keeps its original size and proportions. The ?, ! and @ status marks are smaller and sit at its top-right corner, where the old dot was.
+
+## 2026.1031.61355
+
+### Improved
 - The menu bar status mark now sits right beside the cat, so the icon stays compact instead of stretching wide.
 
 ## 2026.1031.59966
