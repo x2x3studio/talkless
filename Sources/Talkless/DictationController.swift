@@ -460,6 +460,10 @@ final class DictationController: ObservableObject {
         // callbacks must never wait for engine/input-node/HAL startup or teardown.
         state = .recording
         configureRecordingFinish()
+        // Overlap the AI service handshake with speech instead of paying it after recognition.
+        if editSelection != nil || (recordingPolishEnabled && settings.llmConfigured) {
+            LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
+        }
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
         hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])

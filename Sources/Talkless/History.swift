@@ -23,6 +23,8 @@ final class HistoryStore: ObservableObject {
 
     private let url: URL
     private let activity: DictationActivityStore
+    /// Serial so writes land in order; encoding up to 500 entries stays off the main thread.
+    private let writer = DispatchQueue(label: "app.talkless.history", qos: .utility)
 
     // Injectable paths/stores keep synthetic tests away from the user's Application Support.
     init(url: URL? = nil, activity: DictationActivityStore? = nil, observeDictionaryReview: Bool = true) {
@@ -67,10 +69,19 @@ final class HistoryStore: ObservableObject {
         entries.reduce(0) { $0 + $1.duration }
     }
 
+    /// Blocks until queued writes finish; call before the process exits.
+    func flush() {
+        writer.sync {}
+    }
+
     private func save() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(entries) else { return }
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        let entries = entries
+        let url = url
+        writer.async {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            guard let data = try? encoder.encode(entries) else { return }
+            try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        }
     }
 }

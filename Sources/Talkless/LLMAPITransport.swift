@@ -127,6 +127,27 @@ enum LLMAPITransport {
         guard timeout.isFinite, timeout > 0, timeout <= 120 else { throw LLMClient.ClientError.invalidTimeout }
     }
 
+    /// Production requests share one session so keep-alive/HTTP/2 connections survive between
+    /// requests. Per-request deadlines come from URLRequest.timeoutInterval and data(for:).
+    static let shared = session(configuration: .ephemeral, timeout: 120)
+
+    /// Warm DNS/TCP/TLS for an imminent request. Sends no credentials, text, or model ID:
+    /// only a HEAD for the service origin root, whose response is ignored.
+    static func preconnect(baseURL: String, apiProtocol: LLMProtocol) {
+        guard let endpoint = try? endpoint(baseURL: baseURL, apiProtocol: apiProtocol, model: nil, models: true),
+              !isLoopback(endpoint) else { return }
+        var components = URLComponents()
+        components.scheme = endpoint.scheme
+        components.host = endpoint.host
+        components.port = endpoint.port
+        components.path = "/"
+        guard let url = components.url else { return }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "HEAD"
+        request.setValue(userAgent(), forHTTPHeaderField: "User-Agent")
+        shared.dataTask(with: request).resume()
+    }
+
     static func session(configuration: URLSessionConfiguration, timeout: TimeInterval) -> URLSession {
         // Copy the caller's configuration so tests and callers do not observe mutations.
         let configuration = configuration.copy() as! URLSessionConfiguration

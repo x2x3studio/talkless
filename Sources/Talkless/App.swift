@@ -262,6 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        HistoryStore.shared.flush()
         Diagnostics.shared.finishSession()
         permissionTimer?.invalidate()
     }

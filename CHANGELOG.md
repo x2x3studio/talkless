@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Improved
+- AI polishing, voice editing, and translation reuse warm connections, and Talkless starts connecting to the AI service while you speak, so results arrive sooner.
+- Saving history no longer blocks the interface after each dictation.
+
+## 2026.1031.38693
+
 ### Added
 - Setup Guide now offers an optional Launch at login step using the same macOS-controlled setting as System preferences. Nothing is enabled automatically.
 

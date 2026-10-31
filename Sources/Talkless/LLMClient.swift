@@ -46,16 +46,18 @@ enum LLMClient {
     static let maximumModelPages = 20
 
     static func complete(system: String, user: String, config: Config, timeout: TimeInterval = 30) async throws -> String {
-        try await complete(system: system, user: user, config: config, timeout: timeout, sessionConfiguration: .ephemeral)
+        try await complete(system: system, user: user, config: config, timeout: timeout, sessionConfiguration: nil)
     }
 
     /// Configuration injection keeps tests entirely offline, including auth and request serialization.
+    /// Without one, the shared session reuses warm connections across dictations.
     static func complete(system: String, user: String, config: Config, timeout: TimeInterval = 30,
-                         sessionConfiguration: URLSessionConfiguration) async throws -> String {
+                         sessionConfiguration: URLSessionConfiguration?) async throws -> String {
         let request = try makeRequest(system: system, user: user, config: config, timeout: timeout)
-        let session = LLMAPITransport.session(configuration: sessionConfiguration, timeout: timeout)
-        defer { session.invalidateAndCancel() }
-        let data = try await LLMAPITransport.data(for: request, session: session, maximumBytes: maximumResponseBytes)
+        let isolated = sessionConfiguration.map { LLMAPITransport.session(configuration: $0, timeout: timeout) }
+        defer { isolated?.invalidateAndCancel() }
+        let data = try await LLMAPITransport.data(for: request, session: isolated ?? LLMAPITransport.shared,
+                                                  maximumBytes: maximumResponseBytes)
         try Task.checkCancellation()
         return try parseResponse(data, config: config)
     }
