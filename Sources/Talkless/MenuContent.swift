@@ -95,19 +95,14 @@ enum MenuContent {
             menu.addItem(item)
         }
 
-        let gesture = state.holdToTalk ? L10n.tr("hold") : L10n.tr("toggle")
+        let dictationTitle = state.holdToTalk
+            ? L10n.format("Dictation (hold %@)", state.dictationKeyTitle)
+            : L10n.format("Dictation (tap %@)", state.dictationKeyTitle)
         let dictationHelp = state.holdToTalk
             ? L10n.format("Hold %@ to talk; release to finish.", state.dictationKeyTitle)
-            : L10n.format("Tap %@ to start; tap again to finish.", state.dictationKeyTitle)
-        shortcut(L10n.format("Dictation (%@)", gesture), key: state.dictationKeyTitle,
+            : L10n.format("Tap %@ to start talking; press again to finish.", state.dictationKeyTitle)
+        shortcut(dictationTitle, key: "",
                  help: dictationHelp + L10n.tr(" Esc cancels recording or processing."))
-        if let key = state.alternateFinishKeyTitle {
-            let action = state.polishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
-            let help = state.polishEnabled
-                ? L10n.tr("While recording, press this key to finish and skip AI polishing for this input only. Your default stays unchanged.")
-                : L10n.tr("While recording, press this key to finish and use AI polishing for this input only. Your default stays unchanged.")
-            shortcut(action, key: key, help: help + " " + L10n.tr("Your default is captured when recording starts."))
-        }
         if let key = state.translationShortcutTitle {
             shortcut(L10n.tr("Translate selection"), key: key,
                      help: L10n.format("Select text in another app, then press %@ to translate it.", key))
@@ -120,7 +115,14 @@ enum MenuContent {
         }
 
         menu.addItem(.separator())
-        menu.addItem(action(L10n.tr("Settings…"), actions.openSettings, key: ","))
+        let settingsItem = action(L10n.tr("Settings…"), actions.openSettings, key: ",")
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsItem.image?.isTemplate = true
+        // Newer macOS versions hide menu images unless explicitly requested.
+        if #available(macOS 27.0, *) {
+            settingsItem.preferredImageVisibility = .visible
+        }
+        menu.addItem(settingsItem)
         // Preserve UpdateController's target, enabled state, and status explanation.
         menu.addItem(updateItem ?? label(L10n.tr("Check for Updates…"), toolTip: L10n.tr("Updates are not configured for this build.")))
         menu.addItem(.separator())

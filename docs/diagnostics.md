@@ -1,6 +1,6 @@
 # Recording diagnostics
 
-This page describes the implementation accompanying **2026.1031.18018**. **Settings > System > Diagnostics** offers **Export diagnostics…**, **Open logs** and **Open crash reports**. Export creates a local ZIP; Talkless does not upload it. Relaunch after an unexpected exit before exporting so the previous-session marker is recorded.
+**Settings > System > Diagnostics** offers **Export diagnostics…**, **Open logs** and **Open crash reports**. Export creates a local ZIP; Talkless does not upload it. Relaunch after an unexpected exit before exporting so the previous-session marker is recorded.
 
 ## What is collected
 
@@ -26,7 +26,15 @@ The ZIP includes a snapshot of the rotating logs, `system.json` and explanatory 
 
 `session.previous_unclean_exit` means the prior session marker was not removed. Force Quit, power loss or interrupted shutdown can cause it; it does not prove a crash. Talkless leaves fatal signals and Objective-C exceptions to macOS rather than installing its own crash handler. A user-facing error and a structured diagnostic reason are also different: for example, the interruption message mentions a changed/disconnected device, while the recorded cause may be a stopped engine or changed format.
 
-For a report, include the failure time, app version/build, recording mode and visible error, without private dictated text. For update problems also include the channel and displayed status in **Settings > System > Updates**; Last checked records an attempt, not necessarily success. AI connection receipts are a separate, explicit copy action described in [AI service](ai-polish.md#test-connection-and-its-receipt).
+For a report, include the failure time, app version/build from **Settings > About > Updates**, recording mode and visible error, without private dictated text. For update problems also include the channel and displayed status there; Last checked records an attempt, not necessarily success. AI connection receipts are a separate, explicit copy action described in [AI service](ai-polish.md#test-connection-and-its-receipt).
+
+## Overlay feedback and timing
+
+Recording and final recognition share the waveform and user-facing **Dictating** label. Their controller states and diagnostic events remain distinct: the shared visual does not mean the microphone is still recording after you finish. The latest transcript stays visible through recognition and AI processing, with a phase icon on the left instead of replacing existing text with a status label. There is no shortcut-hint footer.
+
+After insertion returns, the final result remains with a checkmark for about **two seconds**. The controller is already idle; this display does not delay insertion or the next recording. As with `paste_returned`, the checkmark does not independently confirm that the destination app accepted the paste. Error text replaces the transcript and disappears after about **three seconds**. Empty recognition and cancellation dismiss without a completed result.
+
+Blue underlines mark dictionary spellings present in the displayed text; amber backgrounds mark literal final AI additions/replacements relative to finalized recognition. Neither is proof of a dictionary-caused correction or a grammar/spelling check. Revision decoration is skipped above 512 visible comparison tokens or 64 KiB per input; no decoration does not establish that text was unchanged. No additional text or highlight ranges are added to diagnostics. See the [overlay guide](user-guide.md#overlay) for display limits and examples.
 
 ## Startup and packaged resources
 
@@ -42,11 +50,15 @@ It prints one JSON report and exits `0` for success or `1` for failure. It check
 
 ## Audio startup and recovery
 
+One serial background queue owns the audio engine, device queries, configuration, start, stop and teardown. These native calls never run inside the UI/event-tap callback. Healthy recordings with the same route reuse their engine instead of assigning the same microphone on every press; capture is stopped between recordings. Cancellation returns immediately, while native cleanup remains serialized behind any in-flight operation.
+
+Startup has a five-second deadline; stop, monitoring and queued cleanup have three-second deadlines independent of the native worker. If a native call never returns, its queue is marked unusable and further capture is refused until Talkless restarts. A deadline cannot safely terminate a Core Audio call: the app does not create replacement queues or accumulate parallel HAL operations. `audio_operation_timeout` distinguishes this failure from first-buffer timeout; `audio_engine_reused` records healthy reuse.
+
 The audio tap explicitly uses a Sendable callback so it does not inherit MainActor isolation when Core Audio invokes it on a background thread. Before constructing the engine, the app checks that the requested input device exists and has input channels. It reacquires a coherent route/format and checks again immediately before installing the tap. Device-disconnection races in the native API remain possible; Swift guards cannot catch an Objective-C exception.
 
 **System default** leaves the engine's default route alone. Core Audio may expose a process-local aggregate rather than the physical microphone as the engine's current device; a different ID alone is not an error. Startup still requires an available default input, readable current route, stable snapshots and compatible formats. An explicit microphone must match the selected device and is assigned to that engine only, not made the system-wide default; an unavailable selected device is not silently replaced. A configuration notification triggers validation, not automatic cancellation. Healthy unchanged capture continues.
 
-Startup diagnostics distinguish device discovery, current-device query failure, explicit route mismatch, unready formats and unstable configuration. They record direct/aggregate/unknown route kind, route-policy and format checks, current-device status, and separate selected/actual route-change flags. Raw device IDs, names and UIDs are not logged.
+Startup diagnostics distinguish device discovery, current-device query failure, explicit route mismatch, unready formats and unstable configuration. `route_matches_requested` means the route satisfies the default/explicit selection policy, not that two device IDs are equal or aggregate membership was proved. `route_kind` is `aggregate` only when Core Audio reports that class, `direct` for a matching device, and otherwise `unknown`. An unknown class alone does not reject the default route. `selected_device_changed` compares the freshly resolved requested input—including the system default—with its baseline; `actual_device_changed` compares the engine's current route. Logs also include numeric current-device status and availability/format checks, but never raw device IDs, names or UIDs.
 
 A stopped/reconfigured engine may be rebuilt **once, before any audio has been delivered**. Recovery does not stitch a new route onto an existing recording. After capture begins, a real interruption discards partial audio; Stop also validates native state so key release cannot bypass an interruption handler still in the queue. Stale callbacks from earlier attempts/sessions are ignored.
 
@@ -72,4 +84,6 @@ open -n -W --stdout /tmp/talkless-mic.stdout --stderr /tmp/talkless-mic.stderr \
   /Applications/Talkless.app --args --test-microphone
 ```
 
-This requires existing microphone permission and uses the system-default input. It captures for three seconds without saving audio, running ASR or pasting. Success prints `Microphone test passed: <count> background audio callbacks.` Failure prints `Microphone test failed: <error>` and the app exits nonzero. This mode takes the app's startup path; unlike `--verify-bundle`, it is not isolated from normal settings initialization. It does not exercise the configured hotkey or an explicitly selected microphone.
+This requires existing microphone permission and uses the system-default input. It captures for three seconds without saving audio, running ASR or pasting. Add `--test-repeat 20` to exercise 20 consecutive recordings with the same recorder (1–30 supported). Add `--test-selected-microphone` to use the microphone saved in Settings instead of System default. These flags are explicit opt-ins to real audio capture; they never request permission automatically.
+
+Success prints the total background audio callbacks and completed recording count. Failure prints `Microphone test failed: <error>` and the app exits nonzero. This mode takes the app's startup path; unlike `--verify-bundle`, it is not isolated from normal settings initialization. It does not exercise the configured hotkey.

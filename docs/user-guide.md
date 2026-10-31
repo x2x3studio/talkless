@@ -22,7 +22,7 @@ If macOS opens the emoji panel when you press Fn, set the Globe-key action to **
 
 ## Find your settings
 
-Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. Its dictation, AI polishing, and translation rows are shortcut references, not clickable commands.
+Click Talkless's menu bar icon and choose the gear-marked **Settings…**. The menu also offers **Check for Updates…** and **Quit Talkless**. The dictation reference shows your actual key and gesture—for example, **Dictation (hold Fn / Globe)** or **Dictation (tap Fn / Globe)**. It and the translation shortcut row are references, not clickable commands. AI polishing controls are in Dictation settings, not a separate menu row.
 
 | Settings page | What you can change |
 | --- | --- |
@@ -33,7 +33,8 @@ Click Talkless's menu bar icon and choose **Settings…**. The menu also offers 
 | **Dictionary** | Confirmed terms and suggested spelling corrections |
 | **Overlay** | Preview, backdrop, opacity, animations and cursor following |
 | **History** | Saved results and daily dictation activity |
-| **System** | Interface language, permissions, setup guide, launch at login, updates and diagnostics |
+| **System** | Interface language, permissions, setup guide, launch at login and diagnostics |
+| **About** | Installed version/build, updates, website and source-code links |
 
 ### Interface language and startup
 
@@ -67,7 +68,7 @@ By default, **Fn** records and **Right Option** is the **AI polishing shortcut**
 - With polishing **off** by default, the key shows **Use AI polishing** and requests polishing for this input.
 - With polishing **on** by default, the key shows **Skip AI polishing** and uses the original transcript for this input.
 
-Press it by itself in toggle mode, or while still holding the dictation key in hold mode. This affects **only the current input** and never changes your saved default. The menu and setup guide name the action directly; the recording overlay shows the captured default and the key's action. The shortcut does nothing while idle and is unavailable during selected-text voice editing. If polishing fails or is not configured, Talkless keeps the original transcript.
+Press it by itself in toggle mode, or while still holding the dictation key in hold mode. This affects **only the current input** and never changes your saved default. **Dictation > Recording** and the setup guide name the action directly; the overlay does not show shortcut instructions or a polishing-toggle footer. The shortcut does nothing while idle and is unavailable during selected-text voice editing. If polishing fails or is not configured, Talkless keeps the original transcript.
 
 ### Change or reset shortcuts
 
@@ -156,19 +157,29 @@ Scanning considers up to 500 recent history entries and shows up to 100 suggesti
 
 ### Dictionary words in live transcription
 
-During ordinary dictation, words matching your confirmed dictionary are underlined with a subtle background in the live overlay. This means **the spelling appears in the current transcript**, not that the recognizer reports using a dictionary hint or correcting a mistake. The dictionary is captured when recording starts; edits apply to the next recording. Unaccepted review suggestions are not highlighted.
+During ordinary dictation, words matching your confirmed dictionary have a **blue underline and subtle background** in the overlay. Matching continues through recognition, polishing, insertion and the brief completed-result display. This means **the spelling appears in the displayed text**, not that the recognizer or AI used a dictionary hint to correct a mistake. The dictionary is captured when recording starts; edits apply to the next recording. Unaccepted review suggestions are not highlighted.
 
-Matching respects capitalization and word boundaries for Latin terms, and uses direct character matching for Chinese terms. Longer overlapping terms take precedence. Highlights update with each provisional transcript, so they may change as recognition revises its text. To keep long recordings responsive, highlighting scans the latest 1,024 characters; terms starting before that window are not annotated. The full transcript, paste output and saved history are unchanged.
+Matching respects capitalization and word boundaries for Latin terms, and uses direct character matching for Chinese terms. Longer overlapping terms take precedence. Highlights update as provisional recognition or final output changes. To keep long recordings responsive, dictionary highlighting scans the latest 1,024 characters; terms starting before that window are not annotated. The full transcript, paste output and saved history are unchanged.
 
-Live highlighting requires an engine that supplies partial text (local Qwen or Apple). Cloud recognition has no live partials. Spoken instructions in voice-edit mode and processing labels are not highlighted. Post-recording polishing corrections remain visible as before/after evidence in dictionary Review, not as claims of a dictionary-caused correction.
+Live highlighting requires an engine that supplies partial text (local Qwen or Apple). Cloud recognition has no live partials, but its final transcript can be annotated after recognition. Voice-editing text, empty-state labels and errors are not annotated. Amber AI-change highlighting is separate from dictionary matching; a changed dictionary term can have both an amber background and a blue underline. Dictionary Review still provides saved before/after spelling evidence.
 
 ## Overlay
 
-The recording overlay is quiet: no start/stop sounds or routine success messages. It shows the latest live text, then **Recognizing**, **Polishing**, or **Editing** as applicable. It hides after completion. Error messages are brief and **disappear after about three seconds**.
+The overlay keeps your latest transcript visible through recognition and AI processing instead of replacing it with a status message. Long dictation shows the latest lines. A small icon on the left indicates the phase: recording and final recognition share a waveform and the accessible label **Dictating**; polishing uses sparkles and voice editing uses a pencil. A text status appears only when there is no transcript yet. There are no start/stop sounds or shortcut-hint footer.
 
-By default it stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. The menu bar icon adds a filled dot while recording and an outlined dot while processing.
+The final text appears during insertion, then remains with a checkmark for **about two seconds**. This review time does not delay insertion or block another recording; starting again replaces the completed result. Empty recognition and cancellation dismiss the overlay without a completed result. Errors replace the text briefly and **disappear after about three seconds**.
 
-**Settings > Overlay** includes a sample-only live preview, with recording, recognizing and polishing stages and short, long or dictionary-match recording text. The dictionary sample uses a fixed demo word, not your saved terms. No audio is recorded and no provider is contacted by the preview.
+### Final AI changes
+
+After ordinary dictation is polished, **amber backgrounds** mark literal additions and replacements in the final output compared with the finalized recognition transcript—not changes between live recognition partials. Dictionary matches retain their blue underline. These are text differences, **not grammar or spelling judgments**, and there are no grammar/spelling wavy underlines. Voice-editing results are not annotated this way.
+
+Whitespace-only changes and whole-word deletions leave no colored span in the result. A shortened word such as “colour” → “color” is a replacement and is highlighted as a whole word. For responsiveness, revision highlighting is skipped if either input exceeds **512 visible comparison tokens or 64 KiB of UTF-8 text**. These are local comparison tokens, not provider billing tokens. The output is never truncated or changed by this limit. Review History for the full result and raw transcript.
+
+### Appearance and preview
+
+By default the overlay stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. The menu bar icon adds a filled dot while recording and an outlined dot while processing.
+
+**Settings > Overlay** includes a sample-only live preview with **Dictating**, **Polishing**, **Editing** and **Completed** stages. Dictating represents recording and final recognition together. Choose **Short**, **Long** or **Dictionary match** text; Completed demonstrates final changes in the short and dictionary samples. The dictionary sample uses a fixed demo word, not your saved terms. No audio is recorded and no provider is contacted by the preview.
 
 - Choose **Translucent** or **Solid** backdrop.
 - Set translucent background opacity from **20% to 100%**; text and icons stay opaque. Solid is always opaque.
@@ -200,7 +211,7 @@ Activity records new dictations from its tracking start date; older history is n
 
 ## Updates and troubleshooting
 
-**Settings > System > Updates** shows the installed version/build, update channel and last check attempt. Choose **Stable** or **Beta**; returning to Stable does not downgrade an installed beta.
+**Settings > About > Updates** shows the installed version/build, update channel and last check attempt. Choose **Stable** or **Beta**; returning to Stable does not downgrade an installed beta. **About > Project** links to the [website](https://typeless.x2x3.com) and source repository. The website hosts the [guide](https://typeless.x2x3.com/guide), [privacy details](https://typeless.x2x3.com/privacy) and [updates](https://typeless.x2x3.com/updates).
 
 Automatic checks are on by default for new preferences and run every **30 minutes** while Talkless is running. Checks during dictation or an active update session wait until a later interval. You choose when to download and install. Turning automatic checks off does not cancel an update in progress. **Last checked** is the time of the last attempt, not proof that you are up to date. Use **Check for Updates…**, or **Show update…** when an update window is already available.
 

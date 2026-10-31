@@ -38,6 +38,21 @@ for entryPoint in entryPoints {
                  "Ordinary recording HUD must use the exact same snapshot as Qwen")
 }
 print("PASS shared dictionary snapshot wiring in normal dictation and audio test")
+let audioTest = entryPoints[1]
+guard let pollSnapshot = audioTest.range(of: "let pollingGeneration = generation"),
+      let pollingLoop = audioTest.range(of: "while ModelManager.shared.isChecking"),
+      let pollSleep = audioTest.range(of: "try await Task.sleep(for: .milliseconds(50))"),
+      let pollFence = audioTest.range(of: "guard generation == pollingGeneration, state == .idle, !changingModel"),
+      let sessionGeneration = audioTest.range(of: "generation += 1") else {
+    fatalError("Audio test must fence the model-check polling await against a new recording/cancel")
+}
+precondition(pollSnapshot.upperBound < pollingLoop.lowerBound && pollSleep.upperBound < pollFence.lowerBound
+             && pollFence.upperBound < sessionGeneration.lowerBound)
+let afterPacingSleep = audioTest.components(separatedBy: "try await clock.sleep(until: deadline)")[1]
+precondition(afterPacingSleep.components(separatedBy: "session.feed(frame)")[0]
+    .contains("guard self.generation == generation, !Task.isCancelled"),
+    "A cancelled file test must not feed a frame after its pacing await")
+print("PASS model-check polling and audio pacing generation fences")
 let transcription = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Transcription.swift"), encoding: .utf8)
 let sessionProtocol = transcription.components(separatedBy: "// MARK: - On-device SpeechAnalyzer")[0]
 let stub = #"""

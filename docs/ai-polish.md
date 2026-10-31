@@ -1,6 +1,6 @@
 # AI service and polishing
 
-This page describes the implementation accompanying **2026.1031.18018**. Speech recognition and AI processing are separate: local Qwen3 ASR or Apple recognition does not need an AI service. Optional polishing sends the recognized text to your configured provider; cloud speech recognition also sends audio to its separately configured service. Talkless uses native HTTP requests, not Claude Code or another CLI.
+Speech recognition and AI processing are separate: local Qwen3 ASR or Apple recognition does not need an AI service. Optional polishing sends the recognized text to your configured provider; cloud speech recognition also sends audio to its separately configured service. Talkless uses native HTTP requests, not Claude Code or another CLI.
 
 ## Configuration
 
@@ -27,6 +27,16 @@ OpenRouter's preset uses `https://openrouter.ai/api/v1` and your own key. `openr
 - Polishing sends a JSON-framed transcript plus editing instructions. Dictionary terms are candidate spellings, not mandatory replacements. With app-aware tone enabled, the prompt also identifies the frontmost app and its writing context. Additional instructions and a chosen output language are included when set.
 - **Settings > Dictation > Voice editing** enables selected-text editing, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms. The AI polishing shortcut is unavailable during voice editing.
 - **Settings > Translation** requires a configured AI service but is independent of the polishing toggle. A translation request includes the selected text and language instructions. Source/target settings and Auto direction are separate from dictation output language and interface language. Matching explicit source/target language IDs skips the provider; Auto detection alone is not that bypass. Changing languages in the translation panel can send a new request. See [selected-text translation](user-guide.md#selected-text-translation).
+
+## Overlay feedback
+
+The overlay keeps the recognized text visible while polishing runs, with a small sparkles icon on the left. The AI polishing shortcut's **Use AI polishing** / **Skip AI polishing** action is explained in Dictation settings and the setup guide, not a menu row or overlay footer.
+
+When the final output is ready, amber backgrounds show literal additions and replacements compared with the **finalized recognition transcript**. Blue dictionary underlines independently mark confirmed spellings present in the displayed text and can coexist with amber backgrounds. Neither annotation proves that the dictionary caused a correction. Amber does not indicate grammar or spelling errors; there are no grammar/spelling wavy underlines. Live recognition revisions and voice-editing results do not receive this AI-change annotation.
+
+Whitespace-only changes and whole-token deletions produce no colored result span. A word shortened by removing letters is highlighted as a replacement. Revision comparison is local and bounded to **512 visible comparison tokens and 64 KiB of UTF-8 text per input**; if either input exceeds a limit, revision decoration is skipped without changing the output. These tokens are unrelated to the provider's token accounting. Highlighting makes no extra AI requests.
+
+Final text remains visible with a checkmark for about **two seconds after insertion returns**, without delaying insertion or blocking the next recording. On a polishing failure, the raw transcript is inserted and the fallback message appears for about **three seconds** instead. History retains the raw and final text for later review. See [overlay controls](user-guide.md#overlay).
 
 ## Test Connection and its receipt
 

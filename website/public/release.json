@@ -1,0 +1,22 @@
+{
+  "version": "2026.1031.26846",
+  "build": "1793431646",
+  "channel": "beta",
+  "architecture": "arm64",
+  "minimumMacOS": "26",
+  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.26846-beta.1793431646/Talkless-2026.1031.26846-1793431646-arm64.dmg",
+  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.26846-beta.1793431646",
+  "publishedDate": "2026-10-31",
+  "notes": {
+    "en": [
+      "System-default microphones no longer fail startup solely because Core Audio uses a separate aggregate device. Explicit microphone selection remains strict.",
+      "Microphone startup errors distinguish an unavailable device from an unready format or audio route.",
+      "Shortcuts and setup now say Use AI polishing or Skip AI polishing, with plain instructions for the current input."
+    ],
+    "zh-Hans": [
+      "\u4fee\u590d\u7cfb\u7edf\u9ed8\u8ba4\u9ea6\u514b\u98ce\u56e0 Core Audio \u4f7f\u7528\u805a\u5408\u8bbe\u5907\u800c\u88ab\u8bef\u5224\u4e0d\u53ef\u7528\u7684\u95ee\u9898\uff1b\u6307\u5b9a\u9ea6\u514b\u98ce\u4ecd\u4e25\u683c\u4f7f\u7528\u6240\u9009\u8bbe\u5907\u3002",
+      "\u9ea6\u514b\u98ce\u542f\u52a8\u5931\u8d25\u4f1a\u533a\u5206\u8bbe\u5907\u4e0d\u53ef\u7528\u3001\u683c\u5f0f\u672a\u5c31\u7eea\u548c\u97f3\u9891\u8def\u7531\u5f02\u5e38\u3002",
+      "\u5feb\u6377\u952e\u4e0e\u8bbe\u7f6e\u5f15\u5bfc\u7edf\u4e00\u4f7f\u7528\u201c\u4f7f\u7528 AI \u6da6\u8272\u201d\u6216\u201c\u8df3\u8fc7 AI \u6da6\u8272\u201d\uff0c\u76f4\u63a5\u8bf4\u660e\u672c\u6b21\u8f93\u5165\u7684\u52a8\u4f5c\u3002"
+    ]
+  }
+}

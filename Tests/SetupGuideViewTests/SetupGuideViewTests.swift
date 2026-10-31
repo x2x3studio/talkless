@@ -84,7 +84,7 @@ struct SetupGuideViewTests {
         )
         check(SetupGuideStep.allCases.count == 7, "Seven steps including current controls")
         let controls = SetupGuideControls(dictationKeyTitle: "Right ⌘", holdToTalk: false)
-        check(controls.dictationInstruction == "Tap Right ⌘ to start; tap again to finish.", "Controls respect customized key and toggle gesture")
+        check(controls.dictationInstruction == "Tap Right ⌘ to start talking; press again to finish.", "Controls respect customized key and toggle gesture")
         check(SetupGuideControls(dictationKeyTitle: "Fn").dictationInstruction == "Hold Fn to talk; release to finish.", "Hold controls describe release-to-finish")
         for enabled in [false, true] {
             let controls = SetupGuideControls(alternateFinishKeyTitle: "Right ⌘", polishEnabled: enabled)

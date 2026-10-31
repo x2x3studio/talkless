@@ -5,7 +5,7 @@ struct OverlaySettingsView: View {
     @Binding var appearance: HUDAppearance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @State private var previewStage = HUDPreviewStage.recording
+    @State private var previewStage = HUDPreviewStage.dictating
     @State private var previewSample = HUDPreviewSample.dictionary
 
     var body: some View {
@@ -21,8 +21,7 @@ struct OverlaySettingsView: View {
                     ForEach(HUDPreviewSample.allCases) { Text($0.title).tag($0) }
                 }
                 .id("sample-\(localization.locale.identifier)")
-                .disabled(previewStage != .recording)
-                Text(L10n.tr("Underlined words match your dictionary. This does not confirm that recognition was corrected."))
+                Text(L10n.tr("Underlined: dictionary match. Highlighted: changed by AI."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.tr("Sample text only. No audio recording or AI requests."))
@@ -83,22 +82,24 @@ struct OverlaySettingsView: View {
 }
 
 enum HUDPreviewStage: String, CaseIterable, Identifiable {
-    case recording, recognizing, polishing
+    case dictating, polishing, editing, completed
 
     var id: Self { self }
     var title: String {
         switch self {
-        case .recording: L10n.tr("Recording")
-        case .recognizing: L10n.tr("Recognizing")
+        case .dictating: L10n.tr("Dictating")
         case .polishing: L10n.tr("Polishing")
+        case .editing: L10n.tr("Editing")
+        case .completed: L10n.tr("Completed")
         }
     }
 
     var phase: HUDModel.Phase {
         switch self {
-        case .recording: .listening(handsFree: true)
-        case .recognizing: .recognizing
+        case .dictating: .listening(handsFree: true)
         case .polishing: .polishing
+        case .editing: .editing
+        case .completed: .completed
         }
     }
 }
@@ -112,6 +113,15 @@ enum HUDPreviewSample: String, CaseIterable, Identifiable {
         case .short: L10n.tr("Short")
         case .long: L10n.tr("Long")
         case .dictionary: L10n.tr("Dictionary match")
+        }
+    }
+
+    /// Synthetic final output, never a claimed grammar check or live AI request.
+    var finalText: String {
+        switch self {
+        case .dictionary: L10n.tr("Let's review Talkless tomorrow morning.")
+        case .short: L10n.tr("Let's meet tomorrow morning to review the draft.")
+        case .long: text
         }
     }
 
@@ -139,7 +149,9 @@ struct OverlayPreview: View {
         self.sample = sample
         let model = HUDModel(appearance: appearance)
         model.phase = stage.phase
-        model.preview = sample.text
+        model.preview = stage == .completed ? sample.finalText : sample.text
+        model.isEditMode = stage == .editing
+        model.revisionOriginal = stage == .completed ? sample.text : nil
         // A fixed demo term, never the user's dictionary or recognition session.
         model.setDictionaryTerms(["Talkless"])
         _model = StateObject(wrappedValue: model)
@@ -169,7 +181,15 @@ struct OverlayPreview: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(L10n.format("%@ overlay preview", stage.title))
         .onChange(of: appearance) { _, value in model.appearance = value }
-        .onChange(of: stage) { _, value in model.phase = value.phase }
-        .onChange(of: sample.text) { _, value in model.preview = value }
+        .onChange(of: stage) { _, value in
+            model.phase = value.phase
+            model.isEditMode = value == .editing
+            model.preview = value == .completed ? sample.finalText : sample.text
+            model.revisionOriginal = value == .completed ? sample.text : nil
+        }
+        .onChange(of: sample.text) { _, value in
+            model.preview = stage == .completed ? sample.finalText : value
+            model.revisionOriginal = stage == .completed ? value : nil
+        }
     }
 }

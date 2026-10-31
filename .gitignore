@@ -51,6 +51,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+.wrangler/
 
 # Local configuration, credentials, and signing material
 .env

@@ -11,15 +11,28 @@ final class HUDModel: ObservableObject {
         case recognizing
         case polishing
         case editing
+        case inserting
+        case completed
         case error(String)
 
         var statusText: String? {
             switch self {
             case .working: L10n.tr("Preparing recognition")
-            case .recognizing: L10n.tr("Recognizing")
             case .polishing: L10n.tr("Polishing")
             case .editing: L10n.tr("Editing")
-            case .hidden, .listening, .error: nil
+            case .inserting: L10n.tr("Inserting")
+            case .completed: L10n.tr("Completed")
+            case .hidden, .listening, .recognizing, .error: nil
+            }
+        }
+
+        var accessibilityLabel: String {
+            switch self {
+            // Capture and final recognition are one continuous user-facing activity.
+            // Keep the engine phases distinct for controller sequencing and diagnostics.
+            case .listening, .recognizing: L10n.tr("Dictating")
+            case .error(let message): message
+            default: statusText ?? ""
             }
         }
     }
@@ -27,13 +40,17 @@ final class HUDModel: ObservableObject {
     @Published var phase: Phase = .hidden {
         didSet {
             switch phase {
-            case .hidden, .error: setDictionaryTerms([])
+            case .hidden, .error:
+                setDictionaryTerms([])
+                revisionOriginal = nil
             default: break
             }
         }
     }
     @Published var isEditMode = false
     @Published var preview = ""
+    /// Only a finalized ASR transcript, never successive provisional partials.
+    @Published var revisionOriginal: String?
     @Published var recordingHint: String?
     @Published var appearance: HUDAppearance
     @Published private(set) var dictionaryTerms: [String] = []
@@ -66,7 +83,11 @@ final class HUDModel: ObservableObject {
     func attributedDisplayText(increasedContrast: Bool = false) -> AttributedString {
         let text = displayText
         var attributed = AttributedString(text)
-        guard case .listening = phase, !isEditMode else { return attributed }
+        guard !isEditMode, !preview.isEmpty else { return attributed }
+        switch phase {
+        case .hidden, .error, .editing: return attributed
+        default: break
+        }
         // The HUD intentionally keeps its dark surface in both system appearances.
         // A pale blue wash and a separate underline remain visible without changing
         // the font, text color, or line metrics; contrast mode strengthens both.
@@ -86,6 +107,16 @@ final class HUDModel: ObservableObject {
                 pattern: .solid, color: accent.opacity(increasedContrast ? 1 : 0.85)
             )
         }
+        // Factual additions/replacements only. Amber fill can coexist with the blue
+        // dictionary underline; neither decoration changes glyphs or line metrics.
+        if (phase == .inserting || phase == .completed), let revisionOriginal {
+            let revision = Color(red: 1, green: 0.77, blue: 0.38)
+            for range in TextRevisionHighlight.ranges(original: revisionOriginal, revised: text) {
+                guard let start = AttributedString.Index(range.lowerBound, within: attributed),
+                      let end = AttributedString.Index(range.upperBound, within: attributed) else { continue }
+                attributed[start..<end].backgroundColor = revision.opacity(increasedContrast ? 0.34 : 0.22)
+            }
+        }
         return attributed
     }
 
@@ -97,7 +128,7 @@ final class HUDModel: ObservableObject {
         switch phase {
         case .hidden: ""
         case .error(let message): message
-        default: phase.statusText ?? preview
+        default: preview.isEmpty ? (phase.statusText ?? "") : preview
         }
     }
 
@@ -114,7 +145,7 @@ final class HUDModel: ObservableObject {
         paragraph.lineSpacing = 3
         paragraph.lineBreakMode = .byWordWrapping
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: phase.statusText == nil ? .regular : .medium),
+            .font: NSFont.systemFont(ofSize: 13, weight: .regular),
             .paragraphStyle: paragraph,
         ]
         let text = displayText as NSString
@@ -127,26 +158,20 @@ final class HUDModel: ObservableObject {
         return CGSize(width: width, height: max(18, ceil(bounds.height) + 3))
     }
 
-    var visibleRecordingHint: String? {
-        guard case .listening = phase, !isEditMode,
-              let recordingHint, !recordingHint.isEmpty else { return nil }
-        return recordingHint
-    }
-
-    var hintHeight: CGFloat { visibleRecordingHint == nil ? 0 : 22 }
-
+    // Shortcut state is retained for the controller, but never adds visible HUD chrome.
     var contentSize: CGSize {
         let text = textSize
-        let hintWidth = visibleRecordingHint.map {
-            ceil(($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width) + 2
-        } ?? 0
         return CGSize(
-            width: min(Self.maximumWidth, max(
-                Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0),
-                hintWidth + Self.horizontalPadding * 2
-            )),
-            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2 + hintHeight)
+            width: min(Self.maximumWidth,
+                Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0)),
+            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2)
         )
+    }
+
+    /// Keep the same latest lines in view throughout recognition and cleanup.
+    var textAlignment: Alignment {
+        if case .error = phase { return .topLeading }
+        return .bottomLeading
     }
 }
 
@@ -194,8 +219,8 @@ final class HUDController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
         // Layout uses the cached anchor; only opt-in tracking queries the caret.
-        layoutSubscription = Publishers.CombineLatest3(
-            model.$phase.removeDuplicates(), model.$preview.removeDuplicates(), model.$recordingHint.removeDuplicates()
+        layoutSubscription = Publishers.CombineLatest(
+            model.$phase.removeDuplicates(), model.$preview.removeDuplicates()
         )
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLayout() }
@@ -234,8 +259,18 @@ final class HUDController {
     func show(_ phase: HUDModel.Phase) {
         guard phase != .hidden else { hide(); return }
         hideTask?.cancel()
+        // A result or error keeps the panel visible, but the next recording must
+        // sample its own active display rather than reuse the previous session's.
+        let startsAfterResult: Bool
+        if case .listening = phase {
+            switch model.phase {
+            case .completed, .error: startsAfterResult = true
+            default: startsAfterResult = false
+            }
+        } else { startsAfterResult = false }
         model.phase = phase
         updateLayout()
+        if startsAfterResult && panel.isVisible { position() }
         if !panel.isVisible {
             position()
             panel.orderFrontRegardless()
@@ -244,6 +279,10 @@ final class HUDController {
         switch phase {
         case .error:
             hide(after: .seconds(3))
+        case .completed:
+            // Review time is nonblocking: insertion is already finished and the
+            // next recording replaces this result and cancels its dismissal.
+            hide(after: .seconds(2))
         default:
             break
         }
@@ -314,29 +353,23 @@ struct HUDView: View {
     var body: some View {
         let size = model.contentSize
         let textSize = model.textSize
-        let visibleTextHeight = size.height - HUDModel.verticalPadding * 2 - model.hintHeight
+        let visibleTextHeight = size.height - HUDModel.verticalPadding * 2
         Group {
             if model.phase != .hidden {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .top, spacing: HUDModel.spacing) {
-                        indicator
-                            .frame(width: HUDModel.indicatorWidth, height: 18)
-                        if !model.displayText.isEmpty {
-                            Text(model.attributedDisplayText(increasedContrast: contrast == .increased))
-                                .fontWeight(model.phase.statusText == nil ? .regular : .medium)
-                                .lineSpacing(3)
-                                .frame(width: textSize.width, alignment: .leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(width: textSize.width, height: visibleTextHeight, alignment: textAlignment)
-                                .clipped()
-                        }
-                    }
-                    if let hint = model.visibleRecordingHint {
-                        Text(hint)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(1)
-                            .frame(height: 16)
+                HStack(alignment: .top, spacing: HUDModel.spacing) {
+                    indicator
+                        .frame(width: HUDModel.indicatorWidth, height: 18)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(model.phase.accessibilityLabel)
+                        .help(model.phase.accessibilityLabel)
+                    if !model.displayText.isEmpty {
+                        Text(model.attributedDisplayText(increasedContrast: contrast == .increased))
+                            .lineSpacing(3)
+                            .frame(width: textSize.width, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: textSize.width, height: visibleTextHeight, alignment: model.textAlignment)
+                            .clipped()
+                            .accessibilityHint(model.isEditMode ? "" : L10n.tr("Underlined: dictionary match. Highlighted: changed by AI."))
                     }
                 }
                 .font(.system(size: 13))
@@ -362,39 +395,31 @@ struct HUDView: View {
         .frame(width: size.width, height: size.height)
     }
 
-    private var textAlignment: Alignment {
-        if case .listening = model.phase { return .bottomLeading }
-        return .topLeading
-    }
-
     private var animates: Bool { model.appearance.animates(reduceMotion: reduceMotion) }
 
     @ViewBuilder
     private var indicator: some View {
         switch model.phase {
-        case .listening:
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(model.isEditMode ? Color.orange : Color.red)
-                .symbolEffect(.pulse, options: .repeating.speed(0.65), isActive: animates)
-                .accessibilityLabel(L10n.tr("Recording"))
-        case .working, .recognizing:
-            if animates {
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(.white)
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: "waveform")
-                    .font(.system(size: 13, weight: .medium))
-                    .accessibilityHidden(true)
-            }
-        case .polishing, .editing:
+        case .listening, .working, .recognizing:
+            Image(systemName: "waveform")
+                .font(.system(size: 13, weight: .medium))
+                .symbolEffect(.pulse, options: .repeating, isActive: animates)
+        case .polishing:
             Image(systemName: "sparkles")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
-                .accessibilityHidden(true)
+        case .editing:
+            Image(systemName: "pencil.line")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
+                .symbolEffect(.pulse, options: .repeating, isActive: animates)
+        case .inserting:
+            Image(systemName: "arrow.down.to.line")
+                .font(.system(size: 13, weight: .medium))
+        case .completed:
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .medium))
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef4f8">
+  <meta name="description" content="Troubleshoot permissions, speech models, text insertion and AI connections, and prepare a useful Talkless bug report.">
+  <meta property="og:title" content="Support — Talkless">
+  <meta property="og:description" content="Troubleshoot permissions, speech models, text insertion and AI connections, and prepare a useful Talkless bug report.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://typeless.x2x3.com/support">
+  <meta name="color-scheme" content="light">
+  <link rel="canonical" href="https://typeless.x2x3.com/support">
+  <link rel="icon" href="/assets/pip.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+  <title>Support — Talkless</title>
+</head>
+<body data-page="support">
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/" data-site-link aria-label="Talkless home"><img src="/assets/pip.svg" alt="" width="37" height="37"><span>Talkless</span></a>
+    <nav class="main-nav" aria-label="Main navigation" data-i18n-aria="nav.label">
+      <a href="/guide" data-site-link data-i18n="footer.guide">User guide</a>
+      <a href="/privacy" data-site-link data-i18n="nav.privacy">Privacy</a>
+      <a href="https://github.com/x2x3studio/talkless" class="source-link">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+    <div class="language-switch" role="group" aria-label="Website language" data-i18n-aria="language.label"><button type="button" data-locale="en" aria-pressed="true" lang="en">EN</button><span aria-hidden="true">/</span><button type="button" data-locale="zh-Hans" aria-pressed="false" lang="zh-Hans" aria-label="Simplified Chinese">&#x7B80;&#x4F53;</button></div>
+  </header>
+  <main id="main" class="doc-main wrap">
+    <div class="doc-heading"><p class="eyebrow" data-i18n="support.eyebrow">WHEN SOMETHING GETS IN THE WAY</p><h1  data-i18n="support.title">Let’s get your<br>words moving again.</h1><p class="doc-intro" data-i18n="support.intro">Try the checks below first. They cover the most common reasons a dictation does not start or reach your text field.</p></div>
+    <div class="doc-layout"><aside class="doc-index"><nav aria-label="On this page" data-i18n-aria="docs.onPage"><p class="eyebrow" data-i18n="docs.onPage">On this page</p><a href="#recording" data-i18n="support.recording.title">Recording will not start</a><a href="#model" data-i18n="support.model.title">The model is not ready</a><a href="#text" data-i18n="support.text.title">Text went missing or landed elsewhere</a><a href="#ai" data-i18n="support.ai.title">AI is unavailable</a><a href="#report" data-i18n="support.report.title">Report a reproducible problem</a></nav><a class="button button-primary download-link" href="/download" data-i18n="download.label">Download for Mac</a><p class="doc-requirements" data-i18n="download.requirements">Apple Silicon · macOS 26+ · Source available</p></aside><article class="doc-sheet"><section id="recording" class="doc-section"><h2  data-i18n="support.recording.title">Recording will not start</h2><p  data-i18n="support.recording.body">Check Microphone and Accessibility in macOS Privacy &amp; Security, then reopen Talkless if macOS asks. In Dictation settings, verify the selected microphone is connected. Try System default or another available input. If a device disconnects or its route changes, start a new recording.</p></section><section id="model" class="doc-section"><h2  data-i18n="support.model.title">The model is not ready</h2><p  data-i18n="support.model.body">Open Settings → Speech recognition. Let the download finish verifying and preparing, or retry a failed download. If your network cannot reach the selected source, choose another supported mirror. For Apple recognition, check the selected language and its speech assets.</p></section><section id="text" class="doc-section"><h2  data-i18n="support.text.title">Text went missing or landed elsewhere</h2><p  data-i18n="support.text.body">Keep the intended text field focused until processing finishes. Check History for the completed result and copy it again. Some apps restrict pasting or exposing selected text. Try a normal text field in Notes to narrow down whether the issue belongs to one app.</p></section><section id="ai" class="doc-section"><h2  data-i18n="support.ai.title">AI is unavailable</h2><p  data-i18n="support.ai.body">Check your provider, key and model in AI service settings. Configuration complete is not proof of a successful connection. Test Connection sends a fixed sample and may incur a provider charge. A polishing failure keeps the original transcript; translation and voice editing show their own errors. Never share your API key in a bug report.</p></section><section id="report" class="doc-section"><h2  data-i18n="support.report.title">Report a reproducible problem</h2><p  data-i18n="support.report.body">Use the GitHub repository link in the header, then choose Issues. Include your Talkless version and build, macOS version, Mac model, speech engine, microphone and clear steps to reproduce. Say what you expected and what actually happened. This website does not collect or submit reports.</p><p  data-i18n="support.report.diagnostics">If diagnostics would help, use Settings → System → Diagnostics to export a local ZIP. Review its contents before attaching it; optional crash reports may include personal information and file paths. Nothing is automatically uploaded. Avoid sharing private dictation or selected text.</p></section></article></div>
+    <nav class="doc-next" aria-label="Keep going" data-i18n-aria="docs.more"><a href="/guide" data-site-link data-i18n="footer.guide">User guide</a><a href="/privacy" data-site-link data-i18n="nav.privacy">Privacy</a><a href="/updates" data-site-link data-i18n="closing.release">Release notes</a><a href="/support" data-site-link data-i18n="nav.support" aria-current="page">Support</a></nav>
+    <p id="locale-announcement" class="sr-only" role="status" aria-live="polite"></p>
+  </main>
+  <footer class="site-footer wrap"><div><a class="brand" href="/" data-site-link><img src="/assets/pip.svg" alt="" width="28" height="28"><span>Talkless</span></a><p data-i18n="footer.note">Made by x2x3studio. Made for your Mac.</p></div><nav aria-label="Footer navigation" data-i18n-aria="footer.nav"><a href="/" data-site-link data-i18n="nav.home">Back to Talkless</a></nav><a class="back-top" href="#" data-i18n="footer.top">Back to top ↑</a></footer>
+</body>
+</html>

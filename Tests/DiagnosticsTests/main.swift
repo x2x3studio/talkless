@@ -108,15 +108,15 @@ schema.recordAsync(event: "audio_start_configuration", metadata: unsafeFields)
 schema.record(event: "audio_engine_started") // flushes prior async records without a testing-only API
 let schemaEvents = try events(schemaLogs)
 require(schemaEvents[0]["metadata"] as? [String: String] == technicalFields, "Technical schema lost allowed fields or retained private ones")
-let cancellationReasons = ["escape", "combo", "user", "recorder_interruption", "recognition_error", "stop_interruption"]
+let cancellationReasons = ["escape", "combo", "user", "recorder_interruption", "recognition_error", "stop_interruption", "startup_release", "startup_failed", "stop_failed"]
 let audioReasons = ["unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped",
                    "no_audio_timeout", "conversion_failed", "start_failed", "recovery_exhausted", "invalid_format",
-                   "unavailable", "configuration_race", "configuration_change", "user", "route_mismatch", "route_unavailable"]
+                   "unavailable", "configuration_race", "configuration_change", "user", "route_mismatch", "route_unavailable", "native_operation_timeout"]
 for reason in cancellationReasons + audioReasons {
     schema.recordAsync(event: "dictation_cancel", metadata: ["reason": reason])
 }
 let lifecycleEvents = ["audio_start", "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
-    "audio_interruption", "audio_recovery", "audio_start_failed", "recording_blocked", "recording_stopped", "recording_empty",
+    "audio_interruption", "audio_recovery", "audio_start_failed", "audio_operation_timeout", "audio_engine_reused", "recording_blocked", "recording_stopped", "recording_empty",
     "processing_start", "processing_complete", "processing_error", "processing_cancelled", "recognition_error", "recognition_empty",
     "polish_start", "polish_complete", "polish_error", "edit_start", "edit_complete", "edit_error", "paste_returned"]
 for event in lifecycleEvents { schema.recordAsync(event: event) }

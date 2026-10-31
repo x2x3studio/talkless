@@ -96,7 +96,7 @@ final class Diagnostics: @unchecked Sendable {
     func show(_ phase: Phase) {}
     func hide() {}
 }
-@MainActor final class FakeRecorder { func stop() {} }
+@MainActor final class FakeRecorder { func cancel() {} }
 @MainActor final class FakeSession { func cancel() {} }
 @MainActor final class FakeTranslationHotKey {
     var isActive = false
@@ -132,6 +132,7 @@ final class Diagnostics: @unchecked Sendable {
     }
     var handsFree = false
     var generation = 0
+    var acceptsRecognitionHUDUpdates = false
     private var diagnosticOperation: DictationOperation?
     var recordingModelDirectory: URL?
     let hud = FakeHUD()
@@ -139,7 +140,7 @@ final class Diagnostics: @unchecked Sendable {
     let recorder = FakeRecorder()
     var session: FakeSession?
     var processingTask: Task<Void, Never>?
-    var startupDelay: TimeInterval = 0
+    var startupTask: Task<Void, Never>?
     var onSetup: (() -> Void)?
     var starts = 0
     var stops = 0
@@ -160,6 +161,7 @@ final class Diagnostics: @unchecked Sendable {
     }
     func startRecording() {
         generation += 1
+        acceptsRecognitionHUDUpdates = true
         diagnosticOperation = DictationOperation(generation: generation, engine: "qwen",
                                                  recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
         onSetup?()
@@ -172,7 +174,6 @@ __ERROR_CALLBACK__
         onRecorderError = { [weak self] message in
 __RECORDER_ERROR_CALLBACK__
         }
-        Thread.sleep(forTimeInterval: startupDelay)
         state = .recording
         configureRecordingFinish()
     }
@@ -213,21 +214,20 @@ TESTS = r'''
         for mode in RecordingGestureMode.allCases {
             let cold = GestureHarness()
             cold.settings.recordingGestureMode = mode
-            cold.startupDelay = 0.45
-            let began = Date()
+            // This gesture-only fixture assumes startup has completed. Real async
+            // pending-start races run production code in run-processing-hud-tests.py.
             cold.press(base)
             cold.release(base + 100_000_000)
-            precondition(Date().timeIntervalSince(began) >= 0.45)
             precondition(cold.state == (mode == .hold ? .processing : .recording),
-                         "Startup delay must not change the selected release behavior")
+                         "Completed startup must preserve the selected release behavior")
             precondition(cold.stops == (mode == .hold ? 1 : 0) && cold.pressedAt == nil)
-            // These events were physically generated before the delayed first handler returned.
+            // Trailing presses after a completed start finish exactly once.
             cold.press(base + 180_000_000)
             cold.release(base + 250_000_000)
             precondition(cold.state == .processing && cold.stops == 1 && cold.starts == 1,
                          "Queued double tap must stop exactly once, without starting again")
         }
-        print("PASS Hold and Toggle with cold startup and queued double tap")
+        print("PASS Hold and Toggle after completed startup and queued double tap")
 
         for mode in RecordingGestureMode.allCases {
             for duration: UInt64 in [0, 100_000_000, 299_000_000, 300_000_000, 400_000_000, 2_000_000_000] {
@@ -522,8 +522,8 @@ TESTS = r'''
         let disabled = GestureHarness()
         disabled.settings.effectiveAlternateFinishKey = nil
         disabled.toggleFromMenu()
-        precondition(disabled.hud.recordingHint == "Default: Use AI polishing",
-                     "Disabled shortcut shows only the captured default, not an unavailable action")
+        precondition(disabled.hud.recordingHint == "This input: AI polishing",
+                     "Disabled shortcut shows only this recording's captured state, not an unavailable action")
         disabled.flags(base, key: 61, raw: option)
         precondition(disabled.stops == 0)
         print("PASS collision defense and disabled auxiliary preserve primary behavior")
@@ -545,14 +545,19 @@ TESTS = r'''
             normal.settings.polishEnabled = enabled
             normal.press(base)
             let expectedHint = enabled
-                ? "Default: Use AI polishing · rightOption: Skip AI polishing"
-                : "Default: Skip AI polishing · rightOption: Use AI polishing"
+                ? "This input: AI polishing · Press rightOption to skip polishing"
+                : "This input: no AI polishing · Press rightOption to use polishing"
             precondition(normal.hud.recordingHint == expectedHint,
                          "HUD names both the captured default and the key's concrete action")
             normal.settings.polishEnabled = !enabled
+            normal.settings.effectiveAlternateFinishKey = .rightCommand
+            normal.settings.recordingGestureMode = .toggle
             normal.refreshRecordingHint()
             precondition(normal.hud.recordingHint == expectedHint,
-                         "Display refresh must retain the recording-start default, not the live setting")
+                         "Display refresh must retain recording-start state and key, not live settings")
+            precondition(normal.recordingPolishEnabled == enabled && normal.recordingAlternateFinishKey == .rightOption
+                         && normal.recordingGestureMode == .hold && normal.state == .recording && normal.stops == 0,
+                         "Relabeling must not mutate any recording snapshot or finish recording")
             normal.release(base + 400_000_000)
             precondition(normal.stoppedPolish == enabled && normal.oppositeStops == 0)
         }

@@ -13,9 +13,9 @@ enum TriggerKey: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .fn: return L10n.tr("Fn / Globe")
-        case .rightOption: return L10n.tr("Right Option ⌥")
-        case .rightCommand: return L10n.tr("Right Command ⌘")
-        case .rightControl: return L10n.tr("Right Control ⌃")
+        case .rightOption: return L10n.tr("Right Option")
+        case .rightCommand: return L10n.tr("Right Command")
+        case .rightControl: return L10n.tr("Right Control")
         }
     }
 
@@ -37,8 +37,8 @@ enum RecordingGestureMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .hold: L10n.tr("Hold to talk")
-        case .toggle: L10n.tr("Tap to toggle")
+        case .hold: L10n.tr("Hold to dictate")
+        case .toggle: L10n.tr("Tap to dictate")
         }
     }
 }

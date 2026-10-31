@@ -3,6 +3,19 @@
 ## Unreleased
 
 ### Fixed
+- Microphone startup and teardown no longer block the interface. Healthy recordings reuse their audio engine instead of repeatedly rebinding the same microphone.
+- Unresponsive native audio operations time out without accumulating replacement workers or inserting partial text.
+
+### Improved
+- Dictation keeps text visible through processing and uses one waveform for listening and final recognition. Icons indicate polishing and completion without replacing the transcript.
+- Final AI additions and changed words are highlighted separately from dictionary matches; results remain briefly visible without delaying text insertion.
+- The menu shows the configured hold or tap key, restores the Settings gear, and removes the AI-polishing shortcut row.
+- Version information and update controls move to About, separate from system preferences.
+- The website keeps help, privacy and release information onsite, with a single repository entry and stable download link.
+
+## 2026.1031.26846
+
+### Fixed
 - System-default microphones no longer fail startup solely because Core Audio uses a separate aggregate device. Explicit microphone selection remains strict.
 - Microphone startup errors distinguish an unavailable device from an unready format or audio route.
 

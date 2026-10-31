@@ -4,9 +4,11 @@
 
 Talkless is a macOS menu bar app for voice input. Hold a key, speak, and release to insert the text into your current app.
 
+Website: [typeless.x2x3.com](https://typeless.x2x3.com)
+
 ## What it does
 
-- **Dictation:** local speech recognition with live previews. Hold to talk or tap to toggle, with a quiet, customizable overlay.
+- **Dictation:** local speech recognition with live text that stays visible through processing. Hold to talk or tap to toggle, with a quiet, customizable overlay.
 - **Optional AI:** polish dictation, edit selected text by voice, or translate a selection using your own provider.
 - **Personal dictionary:** add preferred spellings and review suggested corrections from local history.
 - **History and activity:** copy past results and see daily dictation totals.

@@ -1,0 +1,19 @@
+{
+  "name": "talkless-site",
+  "account_id": "4eabc6133e4f7a94c29a0c15cfa9cc53",
+  "compatibility_date": "2026-10-31",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "typeless.x2x3.com",
+      "custom_domain": true,
+      "zone_id": "836efe7e1a2771b09123fbef27be147f"
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

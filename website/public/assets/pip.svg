@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="220 235 580 565" fill="none">
+  <!-- Approved Pip artwork, transcribed from Sources/Talkless/MenuBarIcon.swift.
+       Eyes and smile are transparent negative space; 28-unit small-mark smile. -->
+  <defs><mask id="face" maskUnits="userSpaceOnUse" x="200" y="200" width="620" height="620"><path fill="#fff" d="M200 200h620v620H200z"/><rect x="357" y="449" width="122" height="166" rx="61" fill="#000"/><rect x="528" y="433" width="122" height="166" rx="61" fill="#000"/><path d="M471 633C489 657 517 655 539 631" stroke="#000" stroke-width="28" stroke-linecap="round"/></mask></defs>
+  <path fill="#183746" mask="url(#face)" d="M292 715C218 645 214 503 260 410L292 271C299 239 323 237 345 267L405 348C463 327 521 326 583 344L679 260C705 237 729 250 730 282L730 430C789 497 800 616 754 690C716 752 648 778 580 771C533 766 485 790 438 782C397 775 368 744 339 740C322 738 305 728 292 715Z"/>
+</svg>

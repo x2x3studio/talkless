@@ -13,7 +13,7 @@ enum SettingsAppearance {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case dictation, translation, models, aiService, dictionary, overlay, history, system
+    case dictation, translation, models, aiService, dictionary, overlay, history, system, about
 
     var id: Self { self }
 
@@ -27,6 +27,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: L10n.tr("Overlay")
         case .history: L10n.tr("History")
         case .system: L10n.tr("System")
+        case .about: L10n.tr("About")
         }
     }
 
@@ -40,6 +41,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: "rectangle.on.rectangle"
         case .history: "clock"
         case .system: "gearshape"
+        case .about: "info.circle"
         }
     }
 
@@ -52,7 +54,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .dictionary: L10n.tr("Review and manage preferred spellings.")
         case .overlay: L10n.tr("Preview and customize recording feedback.")
         case .history: L10n.tr("Your recent dictations, edits, and translations.")
-        case .system: L10n.tr("Permissions, updates, and troubleshooting.")
+        case .system: L10n.tr("Permissions, language, startup, and troubleshooting.")
+        case .about: L10n.tr("Version, updates, and project information.")
         }
     }
 }
@@ -122,7 +125,9 @@ struct SettingsView: View {
                     case .translation:
                         TranslationSettingsView(controller: controller, onConfigureAI: { selection = .aiService })
                     case .system:
-                        SystemSettingsTab(controller: controller, updateController: updateController)
+                        SystemSettingsTab(controller: controller)
+                    case .about:
+                        AboutSettingsTab(controller: controller, updateController: updateController)
                     case .overlay:
                         OverlaySettingsView(appearance: $settings.hudAppearance)
                     case .models:
@@ -217,8 +222,12 @@ private struct DictationSettingsTab: View {
                     .accessibilityLabel(L10n.tr("Reset recording mode"))
                 }
                 .disabled(controller.state != .idle)
-                Text(L10n.tr("Hold: release to finish. Tap: press again to finish. Escape cancels."))
+                Text((settings.recordingGestureMode == .hold
+                      ? L10n.format("Hold %@ to talk; release to finish.", settings.triggerKey.title)
+                      : L10n.format("Tap %@ to start talking; press again to finish.", settings.triggerKey.title))
+                     + " " + L10n.tr("Esc cancels."))
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 ShortcutRecorder(
                     title: L10n.tr("Dictation key"), value: settings.triggerKey.title,
@@ -300,7 +309,6 @@ private struct DictationSettingsTab: View {
 private struct SystemSettingsTab: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
-    var updateController: UpdateController?
     @State private var accessibility = DictationController.accessibilityGranted
     @State private var microphone = DictationController.microphoneStatus
     private let refresh = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
@@ -348,9 +356,6 @@ private struct SystemSettingsTab: View {
 
             LaunchAtLoginSettingsView()
 
-            if let updateController {
-                UpdateSettingsView(updater: updateController, controller: controller)
-            }
             DiagnosticsSection()
         }
         .formStyle(.grouped)
@@ -432,6 +437,66 @@ private struct PermissionRow: View {
                     .accessibilityLabel(L10n.format("Grant %@ access", title))
             }
         }
+    }
+}
+
+// MARK: - About
+
+private struct AboutSettingsTab: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
+    @ObservedObject var controller: DictationController
+    var updateController: UpdateController?
+
+    // Preview/development callers may omit the updater. Read metadata only;
+    // opening About must never create another updater or start a check.
+    private var installedVersion: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              !version.isEmpty else { return L10n.tr("Development build") }
+        guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              !build.isEmpty else { return version }
+        return L10n.format("%@ (build %@)", version, build)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 48, height: 48)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Talkless").font(.headline)
+                        Text(L10n.tr("Voice input for macOS."))
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            if let updateController {
+                // The existing section includes installed version; show it only once.
+                UpdateSettingsView(updater: updateController, controller: controller)
+            } else {
+                Section(L10n.tr("Updates")) {
+                    LabeledContent(L10n.tr("Installed version"), value: installedVersion)
+                    Text(L10n.tr("Updates are not configured for this build."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section(L10n.tr("Project")) {
+                LabeledContent(L10n.tr("Website")) {
+                    Link("typeless.x2x3.com", destination: URL(string: "https://typeless.x2x3.com")!)
+                }
+                LabeledContent(L10n.tr("Source code")) {
+                    Link("GitHub", destination: URL(string: "https://github.com/x2x3studio/talkless")!)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

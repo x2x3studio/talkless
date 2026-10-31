@@ -3,10 +3,168 @@ import AudioToolbox
 import CoreAudio
 import Foundation
 
-/// Capture audio from the chosen microphone and convert it to 16 kHz mono Float32.
-/// Engine inspection/teardown is main-actor-only. Native callbacks only touch locked
-/// capture state; in particular, neither callback logs or tears down a Core Audio object.
+/// Main-actor-facing lifecycle; no native engine/HAL operation happens on this actor.
 final class AudioRecorder: @unchecked Sendable {
+    static let sampleRate: Double = 16_000
+    static let format = NativeAudioRecorder.format
+    private let operations = AudioOperationQueue()
+    private let native = NativeAudioRecorder()
+    @MainActor private var session: UUID?
+    @MainActor private var operationID = UUID()
+    @MainActor private var monitorTask: Task<Void, Never>?
+
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        get { native.onBuffer }
+        set { native.onBuffer = newValue }
+    }
+    var onLevel: (@Sendable (Float) -> Void)? {
+        get { native.onLevel }
+        set { native.onLevel = newValue }
+    }
+    var onError: (@MainActor @Sendable (String) -> Void)? {
+        get { native.onError }
+        set { native.onError = newValue }
+    }
+    var interruptionError: String? { native.interruptionError }
+    var isRunning: Bool { native.isRunning }
+    var duration: TimeInterval { native.duration }
+
+    @MainActor init() {}
+
+    @MainActor
+    func start(deviceUID: String? = nil, operationID: UUID? = nil) async throws {
+        if session != nil { cancel() }
+        let session = native.reserveSession()
+        let operation = operationID ?? UUID()
+        self.session = session
+        self.operationID = operation
+        do {
+            try await perform(timeout: 5, stage: "startup", session: session, operation: operation) { native in
+                try native.start(session: session, deviceUID: deviceUID, operationID: operation)
+            }
+            guard self.session == session else { throw CancellationError() }
+            monitorTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+                    guard let self, self.session == session else { return }
+                    do {
+                        let keepMonitoring = try await self.perform(timeout: 3, stage: "recording", session: session, operation: operation) {
+                            $0.monitor(session: session)
+                        }
+                        if !keepMonitoring { return }
+                    } catch { return }
+                }
+            }
+        } catch {
+            if self.session == session {
+                native.invalidate(message: error is CancellationError ? nil : error.localizedDescription)
+                self.session = nil
+                queueCleanup(operation: operation)
+            }
+            throw error
+        }
+    }
+
+    @MainActor
+    func stop() async throws -> [Float] {
+        guard let session else {
+            if let error = interruptionError { throw TalklessError.message(error) }
+            return []
+        }
+        monitorTask?.cancel()
+        monitorTask = nil
+        // Closing capture is lock-only; final HAL validation precedes engine.stop.
+        native.beginFinalization()
+        do {
+            let samples = try await perform(timeout: 3, stage: "shutdown", session: session, operation: operationID) {
+                try $0.stop(session: session)
+            }
+            guard self.session == session else { throw CancellationError() }
+            self.session = nil
+            return samples
+        } catch {
+            if self.session == session {
+                native.invalidate(message: error is CancellationError ? nil : error.localizedDescription)
+                self.session = nil
+                queueCleanup(operation: operationID)
+            }
+            throw error
+        }
+    }
+
+    @MainActor
+    func cancel() {
+        monitorTask?.cancel()
+        monitorTask = nil
+        session = nil
+        native.invalidate()
+        queueCleanup(operation: operationID)
+    }
+
+    @MainActor
+    private func perform<Value: Sendable>(timeout: TimeInterval, stage: String, session: UUID, operation: UUID,
+                                         work: @escaping @Sendable (NativeAudioRecorder) throws -> Value) async throws -> Value {
+        let native = native
+        return try await withTaskCancellationHandler {
+            try await operations.run(timeout: timeout, onTimeout: { [weak self] in
+                native.invalidate(message: L10n.tr(AudioOperationQueue.unresponsive))
+                Self.logTimeout(stage: stage, operation: operation)
+                Task { @MainActor in
+                    guard let self, self.session == session else { return }
+                    if stage == "recording" { self.onError?(L10n.tr(AudioOperationQueue.unresponsive)) }
+                }
+            }) { try work(native) }
+        } onCancel: {
+            if stage != "recording" { native.invalidate(session: session) }
+        }
+    }
+
+    private func queueCleanup(operation: UUID) {
+        let native = native
+        operations.cancel(cleanup: { native.tearDownAttempt() }, onTimeout: {
+            native.invalidate(message: L10n.tr(AudioOperationQueue.unresponsive))
+            Self.logTimeout(stage: "cleanup", operation: operation)
+        })
+    }
+
+    private static func logTimeout(stage: String, operation: UUID) {
+        Diagnostics.shared.recordAsync(event: "audio_operation_timeout", metadata: [
+            "operation_id": operation.uuidString, "stage": stage, "reason": "native_operation_timeout",
+        ])
+    }
+
+    deinit {
+        // NativeAudioRecorder may outlive this facade indefinitely if HAL is hung.
+        // A healthy teardown clears all native references before its eventual deinit.
+        let native = native
+        native.invalidate()
+        operations.cancel(cleanup: { native.tearDownAttempt() }, onTimeout: {})
+    }
+
+    static func wavData(from samples: [Float]) -> Data {
+        var data = Data()
+        let byteCount = UInt32(samples.count * 2)
+        func append<T: FixedWidthInteger>(_ v: T) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
+        data.append(contentsOf: Array("RIFF".utf8)); append(36 + byteCount)
+        data.append(contentsOf: Array("WAVE".utf8))
+        data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16))
+        append(UInt16(1))
+        append(UInt16(1))
+        append(UInt32(sampleRate))
+        append(UInt32(sampleRate) * 2)
+        append(UInt16(2))
+        append(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); append(byteCount)
+        data.reserveCapacity(data.count + Int(byteCount))
+        for s in samples { append(Int16(max(-1, min(1, s)) * Float(Int16.max))) }
+        return data
+    }
+}
+
+/// Capture audio from the chosen microphone and convert it to 16 kHz mono Float32.
+/// Engine inspection/teardown is confined to AudioOperationQueue. Native callbacks
+/// only touch locked capture state; neither callback logs or tears down native objects.
+private final class NativeAudioRecorder: @unchecked Sendable {
     static let sampleRate: Double = 16_000
     static let format = AVAudioFormat(
         commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false
@@ -33,6 +191,7 @@ final class AudioRecorder: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var tapFormat: AVAudioFormat?
     private var accepting = false
+    private var finalizing = false
     private var samples: [Float] = []
     private var bufferCallback: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private var levelCallback: (@Sendable (Float) -> Void)?
@@ -48,16 +207,17 @@ final class AudioRecorder: @unchecked Sendable {
     private var frameCount = 0
     private var firstBufferTime: TimeInterval?
 
-    @MainActor private var engine: AVAudioEngine?
-    @MainActor private var configurationObserver: NSObjectProtocol?
-    @MainActor private var monitorTask: Task<Void, Never>?
-    @MainActor private var baseline: Configuration?
-    @MainActor private var deviceUID: String?
-    @MainActor private var operationID = UUID()
-    @MainActor private var startedAt: TimeInterval = 0
-    @MainActor private var attemptStartedAt: TimeInterval = 0
-    @MainActor private var recoveryCount = 0
-    @MainActor private var firstBufferLogged = false
+    fileprivate var engine: AVAudioEngine?
+    private var configurationObserver: NSObjectProtocol?
+    private var baseline: Configuration?
+    private var deviceUID: String?
+    private var operationID = UUID()
+    private var startedAt: TimeInterval = 0
+    private var attemptStartedAt: TimeInterval = 0
+    private var recoveryCount = 0
+    private var configuredUID: String?
+    private var tapInstalled = false
+    private var firstBufferLogged = false
 
     private struct Configuration {
         let device: AudioDeviceID
@@ -102,25 +262,53 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    @MainActor init() {}
+    init() {}
 
     private static let interrupted = "Microphone recording was interrupted because the audio device changed or disconnected. Check your microphone and start again."
     private static let noAudio = "The microphone did not deliver audio. Check your microphone and try again."
 
-    @MainActor
-    func start(deviceUID: String? = nil, operationID: UUID? = nil) throws {
-        stop()
-        self.deviceUID = deviceUID
-        self.operationID = operationID ?? UUID()
-        startedAt = ProcessInfo.processInfo.systemUptime
-        recoveryCount = 0
-        firstBufferLogged = false
+    /// Only the facade reserves/invalidates a session. A cancelled queued startup
+    /// must never recreate it when the native worker eventually returns.
+    func beginFinalization() {
+        lock.withLock { accepting = false; finalizing = true }
+    }
+
+    func reserveSession() -> UUID {
         let session = UUID()
         lock.withLock {
             sessionID = session
+            finalizing = false
+            accepting = false
             recordingError = nil
-            captureFailure = nil
             samples.removeAll(keepingCapacity: true)
+        }
+        return session
+    }
+
+    func invalidate(session: UUID? = nil, message: String? = nil) {
+        lock.withLock {
+            if let session, sessionID != session { return }
+            accepting = false
+            sessionID = nil
+            attemptID = nil
+            if let message { recordingError = message }
+            samples.removeAll(keepingCapacity: true)
+        }
+    }
+
+    func checkSession(_ session: UUID) throws {
+        guard lock.withLock({ sessionID == session }) else { throw CancellationError() }
+    }
+
+    func start(session: UUID, deviceUID: String?, operationID: UUID) throws {
+        try checkSession(session)
+        self.deviceUID = deviceUID
+        self.operationID = operationID
+        startedAt = ProcessInfo.processInfo.systemUptime
+        recoveryCount = 0
+        firstBufferLogged = false
+        lock.withLock {
+            captureFailure = nil
             bufferCount = 0
             frameCount = 0
             inputFrameCount = 0
@@ -131,25 +319,20 @@ final class AudioRecorder: @unchecked Sendable {
         log("audio_start")
         do {
             try installAndStart(session: session)
+            try checkSession(session)
             try validateOrRecover(session: session, stage: "startup")
+            try checkSession(session)
             log("audio_engine_started", fields: ["startup_ms": milliseconds(since: startedAt)])
-            // A timer, rather than a task/log enqueue from the realtime tap, observes
-            // counters and conversion failures. It also bounds a silent startup.
-            monitorTask = Task { @MainActor [weak self] in
-                while !Task.isCancelled {
-                    do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
-                    guard self?.monitor(session: session) == true else { return }
-                }
-            }
         } catch {
             log("audio_start_failed", fields: ["reason": "start_failed"])
-            lock.withLock { recordingError = error.localizedDescription; accepting = false }
-            stop()
+            lock.withLock {
+                if sessionID == session { recordingError = error.localizedDescription; accepting = false }
+            }
+            tearDownAttempt()
             throw error
         }
     }
 
-    @MainActor
     private func installAndStart(session: UUID) throws {
         // Validate hardware before accessing inputNode, which can otherwise advertise
         // a fictitious format and make installTap raise an Objective-C exception.
@@ -159,15 +342,29 @@ final class AudioRecorder: @unchecked Sendable {
             log("audio_start_failed", fields: ["reason": "device_unavailable", "resolved_device_available": "false"])
             throw error
         }
-        let engine = AVAudioEngine()
+        try checkSession(session)
+        if let engine, let baseline {
+            let current = snapshot(engine: engine)
+            if configuredUID != deviceUID || current.startupFailure(requested: device, previous: baseline) != nil {
+                tearDownAttempt()
+            }
+        }
+        let reused = self.engine != nil
+        let engine = self.engine ?? AVAudioEngine()
+        self.engine = engine // Ownership, including failure/deinit, stays on native queue.
         let input = engine.inputNode
+        try checkSession(session)
         guard let audioUnit = input.audioUnit else {
             throw TalklessError.message(L10n.tr("Cannot configure the microphone audio input"))
         }
         // Preserve the working system-default route: setting CurrentDevice here causes
         // unnecessary HAL reconfiguration during prepare/start on some microphones.
-        if deviceUID != nil {
-            let status = AudioUnitSetProperty(
+        if deviceUID != nil, !reused {
+            var actual = AudioDeviceID(kAudioObjectUnknown)
+            var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+            let readStatus = AudioUnitGetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice,
+                                                 kAudioUnitScope_Global, 0, &actual, &size)
+            let status = readStatus == noErr && actual == device ? noErr : AudioUnitSetProperty(
                 audioUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                 &device, UInt32(MemoryLayout<AudioDeviceID>.size)
             )
@@ -196,15 +393,20 @@ final class AudioRecorder: @unchecked Sendable {
         guard let converter = AVAudioConverter(from: format, to: Self.format) else {
             throw TalklessError.message(L10n.tr("Cannot convert the microphone audio format"))
         }
-        self.engine = engine
+        configuredUID = deviceUID
         baseline = configuration
+        if reused { log("audio_engine_reused", configuration: configuration, fields: ["stage": "startup"]) }
+        try checkSession(session)
         let attempt = UUID()
         lock.withLock {
+            guard sessionID == session else { return }
             self.converter = converter
             tapFormat = format
             attemptID = attempt
             captureFailure = nil
-            accepting = true
+            // Finalization may race a recovery already executing on the native
+            // queue. Never reopen its sample gate after the key-release boundary.
+            accepting = !finalizing
             validationScheduled = false
         }
         configurationObserver = NotificationCenter.default.addObserver(
@@ -225,15 +427,19 @@ final class AudioRecorder: @unchecked Sendable {
             throw startupError(reason: reason)
         }
         // AVAudioNodeTapBlock is non-Sendable: explicitly opt out of inherited MainActor isolation.
+        try checkSession(session)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
             self?.process(buffer, session: session, attempt: attempt)
         }
+        tapInstalled = true
+        try checkSession(session)
         engine.prepare()
+        try checkSession(session)
         try engine.start()
+        try checkSession(session)
         attemptStartedAt = ProcessInfo.processInfo.systemUptime
     }
 
-    @MainActor
     private func startupError(reason: String) -> TalklessError {
         let message: String
         switch reason {
@@ -254,24 +460,14 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func configurationChanged(session: UUID, attempt: UUID) {
-        let schedule = lock.withLock {
-            guard sessionID == session, attemptID == attempt, recordingError == nil else { return false }
+        // No HAL, task creation, logging, or teardown on the notification thread.
+        lock.withLock {
+            guard sessionID == session, attemptID == attempt, recordingError == nil else { return }
             configurationRevision += 1
-            guard !validationScheduled else { return false }
             validationScheduled = true
-            return true
-        }
-        guard schedule else { return }
-        // Notifications are evidence to validate, not proof of interruption. Do not
-        // query HAL or stop/release the engine on its notification callback thread.
-        Task { @MainActor [weak self] in
-            guard let self, self.lock.withLock({ self.sessionID == session && self.attemptID == attempt }) else { return }
-            do { try self.validateOrRecover(session: session, stage: "recording") }
-            catch { self.interrupt(session: session, reason: "configuration_change", message: error.localizedDescription) }
         }
     }
 
-    @MainActor
     private func snapshot(engine: AVAudioEngine) -> Configuration {
         let input = engine.inputNode
         let hardware = input.inputFormat(forBus: 0)
@@ -300,7 +496,6 @@ final class AudioRecorder: @unchecked Sendable {
                              hardware: hardware)
     }
 
-    @MainActor
     private func failure(for configuration: Configuration) -> String? {
         guard let baseline else { return "invalid_format" }
         if !configuration.resolvedAvailable { return "device_unavailable" }
@@ -314,7 +509,6 @@ final class AudioRecorder: @unchecked Sendable {
 
     /// Read native state outside our lock, then verify no notification raced the read.
     /// Bounded retries avoid spinning when a driver continually changes configuration.
-    @MainActor
     private func assessment() -> (Configuration, String?, Int) {
         let engine = self.engine!
         var configuration = snapshot(engine: engine)
@@ -327,7 +521,6 @@ final class AudioRecorder: @unchecked Sendable {
         return (configuration, "configuration_race", lock.withLock { configurationRevision })
     }
 
-    @MainActor
     private func validateOrRecover(session: UUID, stage: String) throws {
         guard lock.withLock({ sessionID == session }), engine != nil else { return }
         let (configuration, reason, revision) = assessment()
@@ -344,8 +537,9 @@ final class AudioRecorder: @unchecked Sendable {
         // Never stitch a replacement route onto audio already sent to recognition.
         // Closing the gate under the conversion lock makes this decision atomic.
         let canRecover = lock.withLock {
+            guard sessionID == session else { return false }
             accepting = false
-            return bufferCount == 0 && recoveryCount == 0 && reason != "conversion_failed"
+            return !finalizing && bufferCount == 0 && recoveryCount == 0 && reason != "conversion_failed"
         }
         guard canRecover else {
             log("audio_interruption", configuration: configuration, fields: ["reason": reason, "stage": stage])
@@ -367,8 +561,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    @MainActor
-    private func monitor(session: UUID) -> Bool {
+    fileprivate func monitor(session: UUID) -> Bool {
         guard lock.withLock({ sessionID == session }) else { return false }
         logFirstBuffer()
         let state = lock.withLock { (captureFailure, validationScheduled) }
@@ -383,7 +576,6 @@ final class AudioRecorder: @unchecked Sendable {
         return true
     }
 
-    @MainActor
     private func interrupt(session: UUID, reason: String, message: String) {
         let current = lock.withLock {
             guard sessionID == session, recordingError == nil else { return false }
@@ -394,13 +586,15 @@ final class AudioRecorder: @unchecked Sendable {
         }
         guard current else { return }
         log("audio_interruption", fields: ["reason": reason, "stage": "recording"])
-        stop()
-        onError?(message)
+        tearDownAttempt()
+        Task { @MainActor [weak self] in
+            guard let self, self.lock.withLock({ self.sessionID == session && self.recordingError == message }) else { return }
+            self.onError?(message)
+        }
     }
 
-    @MainActor
-    @discardableResult
-    func stop() -> [Float] {
+    func stop(session: UUID) throws -> [Float] {
+        try checkSession(session)
         let active = lock.withLock {
             // Wait for any conversion/callback before freezing the final sample list.
             accepting = false
@@ -416,6 +610,7 @@ final class AudioRecorder: @unchecked Sendable {
                 for attempt in 0..<3 {
                     let (configuration, assessedReason, revision) = assessment()
                     let result = lock.withLock { () -> (Bool, String?) in
+                        guard sessionID == session else { return (true, "cancelled") }
                         if configurationRevision != revision && attempt < 2 { return (false, nil) }
                         let reason = configurationRevision == revision ? assessedReason : "configuration_race"
                         if reason != nil { recordingError = L10n.tr(Self.interrupted) }
@@ -430,35 +625,44 @@ final class AudioRecorder: @unchecked Sendable {
                 }
             }
             lock.withLock {
+                guard sessionID == session || sessionID == nil else { return }
                 sessionID = nil
                 if recordingError != nil { samples.removeAll(keepingCapacity: true) }
             }
             logFirstBuffer()
             log("audio_recording_summary", fields: ["stage": "shutdown"], asynchronous: true)
         }
-        tearDownAttempt()
-        monitorTask?.cancel()
-        monitorTask = nil
+        let failed = lock.withLock { recordingError }
+        if failed != nil { tearDownAttempt() }
+        else { finishCapture() }
+        if let failed { throw TalklessError.message(failed) }
         return lock.withLock { samples }
     }
 
-    @MainActor
-    private func tearDownAttempt() {
+    /// Stop the microphone between turns, but preserve the negotiated engine route.
+    /// The converter and tap are per-recording, so neither resampler state nor late
+    /// callbacks can contaminate a new utterance on this reused engine.
+    private func finishCapture() {
         lock.withLock { accepting = false; attemptID = nil; validationScheduled = false }
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
         }
-        engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
+        if tapInstalled { engine?.inputNode.removeTap(onBus: 0); tapInstalled = false }
+        lock.withLock { converter = nil; tapFormat = nil }
+    }
+
+    fileprivate func tearDownAttempt() {
+        finishCapture()
         engine = nil
         baseline = nil
-        lock.withLock { converter = nil; tapFormat = nil }
+        configuredUID = nil
     }
 
     private func process(_ buffer: AVAudioPCMBuffer, session: UUID, attempt: UUID) {
         lock.withLock {
-            guard accepting, sessionID == session, attemptID == attempt, let converter else { return }
+            guard accepting, !finalizing, sessionID == session, attemptID == attempt, let converter else { return }
             // The converter must never see a newly negotiated, incompatible format.
             guard buffer.format == tapFormat else {
                 captureFailure = "format_changed"; accepting = false; return
@@ -492,19 +696,16 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    @MainActor
     private func logFirstBuffer() {
         guard !firstBufferLogged, let time = lock.withLock({ firstBufferTime }) else { return }
         firstBufferLogged = true
         log("audio_first_buffer", fields: ["first_buffer_ms": String(Int(max(0, time - startedAt) * 1_000))], asynchronous: true)
     }
 
-    @MainActor
     private func milliseconds(since time: TimeInterval) -> String {
         String(Int(max(0, ProcessInfo.processInfo.systemUptime - time) * 1_000))
     }
 
-    @MainActor
     private func log(_ event: String, configuration: Configuration? = nil,
                      fields: [String: String] = [:], asynchronous: Bool = false) {
         var metadata = lock.withLock { [
@@ -550,24 +751,6 @@ final class AudioRecorder: @unchecked Sendable {
         else { Diagnostics.shared.record(event: event, metadata: metadata) }
     }
 
-    static func wavData(from samples: [Float]) -> Data {
-        var data = Data()
-        let byteCount = UInt32(samples.count * 2)
-        func append<T: FixedWidthInteger>(_ v: T) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
-        data.append(contentsOf: Array("RIFF".utf8)); append(36 + byteCount)
-        data.append(contentsOf: Array("WAVE".utf8))
-        data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16))
-        append(UInt16(1))
-        append(UInt16(1))
-        append(UInt32(sampleRate))
-        append(UInt32(sampleRate) * 2)
-        append(UInt16(2))
-        append(UInt16(16))
-        data.append(contentsOf: Array("data".utf8)); append(byteCount)
-        data.reserveCapacity(data.count + Int(byteCount))
-        for s in samples { append(Int16(max(-1, min(1, s)) * Float(Int16.max))) }
-        return data
-    }
 }
 
 enum TalklessError: LocalizedError {

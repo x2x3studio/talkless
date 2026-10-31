@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef4f8">
+  <meta name="description" content="What stays on your Mac, what optional providers receive, and how Talkless stores credentials, history and diagnostics.">
+  <meta property="og:title" content="Privacy — Talkless">
+  <meta property="og:description" content="What stays on your Mac, what optional providers receive, and how Talkless stores credentials, history and diagnostics.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://typeless.x2x3.com/privacy">
+  <meta name="color-scheme" content="light">
+  <link rel="canonical" href="https://typeless.x2x3.com/privacy">
+  <link rel="icon" href="/assets/pip.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+  <title>Privacy — Talkless</title>
+</head>
+<body data-page="privacy">
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/" data-site-link aria-label="Talkless home"><img src="/assets/pip.svg" alt="" width="37" height="37"><span>Talkless</span></a>
+    <nav class="main-nav" aria-label="Main navigation" data-i18n-aria="nav.label">
+      <a href="/guide" data-site-link data-i18n="footer.guide">User guide</a>
+      <a href="/privacy" data-site-link data-i18n="nav.privacy">Privacy</a>
+      <a href="https://github.com/x2x3studio/talkless" class="source-link">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+    <div class="language-switch" role="group" aria-label="Website language" data-i18n-aria="language.label"><button type="button" data-locale="en" aria-pressed="true" lang="en">EN</button><span aria-hidden="true">/</span><button type="button" data-locale="zh-Hans" aria-pressed="false" lang="zh-Hans" aria-label="Simplified Chinese">&#x7B80;&#x4F53;</button></div>
+  </header>
+  <main id="main" class="doc-main wrap">
+    <div class="doc-heading"><p class="eyebrow" data-i18n="privacy.page.eyebrow">KNOW WHAT GOES WHERE</p><h1  data-i18n="privacy.page.title">Local by default.<br>Specific about the rest.</h1><p class="doc-intro" data-i18n="privacy.page.intro">Local-first is a starting point, not a blanket promise that every feature is offline. Here is how the app and this website handle data.</p></div>
+    <div class="doc-layout"><aside class="doc-index"><nav aria-label="On this page" data-i18n-aria="docs.onPage"><p class="eyebrow" data-i18n="docs.onPage">On this page</p><a href="#audio" data-i18n="privacy.audio.title">Speech and model downloads</a><a href="#requests" data-i18n="privacy.requests.title">Optional AI requests</a><a href="#storage" data-i18n="privacy.storage.title">History and credentials</a><a href="#diagnostics" data-i18n="privacy.diagnostics.title">Diagnostics you choose to share</a><a href="#website" data-i18n="privacy.website.title">This website and distribution</a></nav><a class="button button-primary download-link" href="/download" data-i18n="download.label">Download for Mac</a><p class="doc-requirements" data-i18n="download.requirements">Apple Silicon · macOS 26+ · Source available</p></aside><article class="doc-sheet"><section id="audio" class="doc-section"><h2  data-i18n="privacy.audio.title">Speech and model downloads</h2><p  data-i18n="privacy.audio.body">Local Qwen processes audio on your Mac. Apple recognition runs on-device after required assets are available. Downloading models contacts the model source you choose; Talkless does not host the weights. Optional cloud recognition uploads the full recording and dictionary hints to your speech provider.</p></section><section id="requests" class="doc-section"><h2  data-i18n="privacy.requests.title">Optional AI requests</h2><p  data-i18n="privacy.requests.body">Polishing sends the transcript, dictionary hints and editing instructions. App-aware tone can include the foreground app and its writing context. Your additional instructions and output language are included when set. Voice editing sends the selection and spoken instruction; translation sends the selection and language instructions.</p><p  data-i18n="privacy.requests.choice">Opening AI settings does not send your text. Fetch Models and Test Connection are explicit network actions; a connection test uses a fixed sample, not your dictation. Provider pricing, processing and retention policies apply. Talkless cannot guarantee a provider’s privacy practices.</p></section><section id="storage" class="doc-section"><h2  data-i18n="privacy.storage.title">History and credentials</h2><p  data-i18n="privacy.storage.body">Preferences and dictionary terms use macOS UserDefaults. AI service keys use macOS Keychain. Important: the separate cloud speech-recognition key is currently stored in plaintext in UserDefaults, not Keychain.</p><p  data-i18n="privacy.storage.history">Models, text history, text-free daily totals and diagnostics live in your Mac’s Library/Application Support/Talkless folder. History contains text, not audio, and holds up to 500 results. Delete saved text in History; clear daily activity separately. Daily totals are retained for 400 calendar days.</p></section><section id="diagnostics" class="doc-section"><h2  data-i18n="privacy.diagnostics.title">Diagnostics you choose to share</h2><p  data-i18n="privacy.diagnostics.body">Event logs are bounded to 15 MB and exclude audio, transcripts, API keys and prompts. Export diagnostics creates a local ZIP; it does not upload it. Optional macOS crash reports can contain personal information and file paths. Inspect an export before sharing it.</p></section><section id="website" class="doc-section"><h2  data-i18n="privacy.website.title">This website and distribution</h2><p  data-i18n="privacy.website.body">The app does not collect telemetry. This website has no analytics, tracking scripts, remote fonts or microphone access. Its host may keep standard request logs. The demo uses sample text in your browser. The language preference is stored locally when available.</p><p  data-i18n="privacy.website.download">Download buttons use this site’s /download address, then redirect to the published GitHub release asset. GitHub handles that download under its own policies. Talkless is source available: you can inspect the repository from the single GitHub link in the header. This wording does not grant a software license.</p></section></article></div>
+    <nav class="doc-next" aria-label="Keep going" data-i18n-aria="docs.more"><a href="/guide" data-site-link data-i18n="footer.guide">User guide</a><a href="/privacy" data-site-link data-i18n="nav.privacy" aria-current="page">Privacy</a><a href="/updates" data-site-link data-i18n="closing.release">Release notes</a><a href="/support" data-site-link data-i18n="nav.support">Support</a></nav>
+    <p id="locale-announcement" class="sr-only" role="status" aria-live="polite"></p>
+  </main>
+  <footer class="site-footer wrap"><div><a class="brand" href="/" data-site-link><img src="/assets/pip.svg" alt="" width="28" height="28"><span>Talkless</span></a><p data-i18n="footer.note">Made by x2x3studio. Made for your Mac.</p></div><nav aria-label="Footer navigation" data-i18n-aria="footer.nav"><a href="/" data-site-link data-i18n="nav.home">Back to Talkless</a></nav><a class="back-top" href="#" data-i18n="footer.top">Back to top ↑</a></footer>
+</body>
+</html>

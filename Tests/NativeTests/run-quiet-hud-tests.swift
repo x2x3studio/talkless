@@ -5,6 +5,26 @@ let directory = FileManager.default.temporaryDirectory.appendingPathComponent("t
 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: directory) }
 let source = directory.appendingPathComponent("HUDTests.swift")
+// Compile the production display enums and hint formatter, but none of the controller's services.
+let settingsSource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Settings.swift"), encoding: .utf8)
+let displayStart = settingsSource.range(of: "enum TriggerKey:")!.lowerBound
+let displayEnd = settingsSource.range(of: "enum AlternateFinishKey:")!.lowerBound
+let controllerSource = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/DictationController.swift"), encoding: .utf8)
+let hintStart = controllerSource.range(of: "    private func refreshRecordingHint()")!.lowerBound
+let hintEnd = controllerSource.range(of: "    private func stopAndProcess", range: hintStart..<controllerSource.endIndex)!.lowerBound
+let displaySource = directory.appendingPathComponent("RecordingDisplay.swift")
+let hintMethod = controllerSource[hintStart..<hintEnd].replacingOccurrences(of: "private func", with: "func")
+try ("import Foundation\n" + settingsSource[displayStart..<displayEnd] + """
+
+@MainActor final class RecordingHintFixture {
+    var editSelection: String?
+    var recordingPolishEnabled = false
+    var recordingAlternateFinishKey: TriggerKey?
+    let hud = SyntheticHUD()
+    @MainActor final class SyntheticHUD { let model = HUDModel() }
+\(hintMethod)
+}
+""").write(to: displaySource, atomically: true, encoding: .utf8)
 try #"""
 import AppKit
 import Combine
@@ -22,6 +42,7 @@ struct HUDTests {
         let rendered = HUDModel(appearance: model.appearance)
         rendered.phase = model.phase
         rendered.preview = model.preview
+        rendered.revisionOriginal = model.revisionOriginal
         rendered.isEditMode = model.isEditMode
         rendered.recordingHint = model.recordingHint
         rendered.setDictionaryTerms(model.dictionaryTerms)
@@ -124,6 +145,32 @@ struct HUDTests {
         wait()
         precondition(matches(hud.frame, expected(pointer: firstPointer)),
                      "Changing stages keeps the fixed display: actual \(hud.frame), expected \(expected(pointer: firstPointer))")
+        hud.show(.completed)
+        let readsBeforeNewRecording = pointerReads
+        hud.model.preview = "New recording on the other display"
+        hud.show(.listening(handsFree: true))
+        precondition(matches(hud.frame, expected(pointer: pointer)),
+                     "A new recording during completion review chooses its own active display")
+        precondition(pointerReads == readsBeforeNewRecording + 1)
+        hud.model.preview = "Another partial on the same display"
+        hud.show(.listening(handsFree: true))
+        precondition(pointerReads == readsBeforeNewRecording + 1,
+                     "Repeated partials in the new session do not resample the display")
+        hud.show(.error("Synthetic previous-session error"))
+        pointer = firstPointer
+        let readsBeforeErrorRecovery = pointerReads
+        hud.model.preview = "New recording after an error"
+        hud.show(.listening(handsFree: false))
+        precondition(matches(hud.frame, expected(pointer: pointer)),
+                     "A new recording during error review chooses its own active display")
+        precondition(pointerReads == readsBeforeErrorRecovery + 1)
+        let errorRecoveryPointer = pointer
+        pointer = CGPoint(x: 1800, y: 500)
+        hud.model.preview = "Another partial after error recovery"
+        hud.show(.listening(handsFree: false))
+        precondition(pointerReads == readsBeforeErrorRecovery + 1
+                     && matches(hud.frame, expected(pointer: errorRecoveryPointer)),
+                     "Partials after error recovery retain the new session's fixed display")
         hud.hide()
         hud.show(.recognizing)
         precondition(matches(hud.frame, expected(pointer: pointer)), "A new session chooses the active display again")
@@ -276,10 +323,20 @@ struct HUDTests {
         model.isEditMode = true
         precondition(highlights(model.attributedDisplayText()).isEmpty, "Voice edit instructions never imply dictionary use")
         model.isEditMode = false
-        for phase in [HUDModel.Phase.working, .recognizing, .polishing, .editing] {
+        for phase in [HUDModel.Phase.working, .recognizing, .polishing, .inserting, .completed] {
             model.phase = phase
-            precondition(highlights(model.attributedDisplayText()).isEmpty, "Status labels never get highlights")
+            precondition(highlights(model.attributedDisplayText()) == ["Talkless", "Talkless"],
+                         "Exact dictionary matches persist across transcript processing and completion")
         }
+        model.preview = ""
+        model.setDictionaryTerms(["Preparing recognition", "Dictating", "Polishing", "Inserting", "Completed"])
+        for phase in [HUDModel.Phase.working, .recognizing, .polishing, .inserting, .completed] {
+            model.phase = phase
+            precondition(highlights(model.attributedDisplayText()).isEmpty,
+                         "Status fallback is never mistaken for recognized dictionary text")
+        }
+        model.phase = .editing
+        precondition(highlights(model.attributedDisplayText()).isEmpty, "Voice edit has no dictation dictionary attribution")
         for phase in [HUDModel.Phase.hidden, .error("Talkless")] {
             model.setDictionaryTerms(["Talkless"])
             model.phase = phase
@@ -301,6 +358,212 @@ struct HUDTests {
         print("PASS exact native dictionary attribution, glyph/layout preservation, partial revisions, edit/status exclusion, contrast, and lifecycle resets")
     }
 
+    @MainActor static func testDictatingPresentation(_ localization: LocalizationSettings) throws {
+        precondition(HUDPreviewStage.allCases == [.dictating, .polishing, .editing, .completed],
+                     "Settings exposes one continuous dictating stage, not technical capture/recognition phases")
+        precondition(HUDPreviewStage.dictating.phase == .listening(handsFree: true))
+        for (languageName, language) in [("en", InterfaceLanguage.english), ("zh", .simplifiedChinese)] {
+            localization.interfaceLanguage = language
+            let label = language == .english ? "Dictating" : "\u{542C}\u{5199}\u{4E2D}"
+            precondition(HUDPreviewStage.dictating.title == label)
+            for handsFree in [false, true] {
+                for editing in [false, true] {
+                    let model = HUDModel(appearance: HUDAppearance(backdrop: .solid, animationsEnabled: false))
+                    model.isEditMode = editing
+                    model.setDictionaryTerms(["Talkless"])
+                    for (sampleName, text) in [("empty", ""), ("short", "Review Talkless tomorrow."),
+                                              ("long", String(repeating: "Earlier words. ", count: 90) + "Review Talkless tomorrow.")] {
+                        let name = "dictating-\(languageName)-\(handsFree ? "toggle" : "hold")-\(editing ? "edit" : "input")-\(sampleName)"
+                        model.preview = text
+                        model.phase = .listening(handsFree: handsFree)
+                        let size = model.contentSize
+                        let attributed = model.attributedDisplayText()
+                        let captured = try snapshot(model, name: "\(name)-capture")
+                        precondition(model.phase.accessibilityLabel == label && model.phase.statusText == nil)
+                        model.phase = .recognizing
+                        precondition(model.phase == .recognizing, "Engine phase remains distinct after release")
+                        precondition(model.phase.accessibilityLabel == label && model.phase.statusText == nil)
+                        precondition(model.displayText == text && model.contentSize == size
+                                     && model.attributedDisplayText() == attributed,
+                                     "Release cannot replace text, rewrap it, or remove dictionary attribution")
+                        let recognized = try snapshot(model, name: "\(name)-release")
+                        precondition(captured.representation(using: .png, properties: [:]) ==
+                                     recognized.representation(using: .png, properties: [:]),
+                                     "Capture and final recognition must render the same waveform, text, and empty pill")
+                        if text.isEmpty {
+                            precondition(size == CGSize(width: 44, height: 40), "No placeholder or reserved footer for empty dictation")
+                        }
+                    }
+                }
+            }
+        }
+        localization.interfaceLanguage = .english
+        print("PASS unified dictating label/preview, identical native pixels across release, both locales/gestures, edit mode, empty and overflowing text")
+    }
+
+    @MainActor static func testRecordingCopy(_ localization: LocalizationSettings) throws {
+        let fixture = RecordingHintFixture()
+        let model = fixture.hud.model
+        model.appearance = HUDAppearance(backdrop: .solid, animationsEnabled: false)
+        for language in [InterfaceLanguage.simplifiedChinese, .english] {
+            localization.interfaceLanguage = language
+            for mode in RecordingGestureMode.allCases {
+                model.phase = .listening(handsFree: mode == .toggle)
+                for key in TriggerKey.allCases {
+                    for enabled in [false, true] {
+                        fixture.recordingPolishEnabled = enabled
+                        fixture.recordingAlternateFinishKey = key
+                        fixture.refreshRecordingHint()
+                        let expectedState = language == .english
+                            ? (enabled ? "This input: AI polishing" : "This input: no AI polishing")
+                            : (enabled ? "\u{672C}\u{6B21}\u{4F7F}\u{7528} AI \u{6DA6}\u{8272}" : "\u{672C}\u{6B21}\u{8DF3}\u{8FC7} AI \u{6DA6}\u{8272}")
+                        let expectedAction = language == .english
+                            ? "Press \(key.title) to \(enabled ? "skip" : "use") polishing"
+                            : "\u{6309}\(key.title)\(enabled ? "\u{8DF3}\u{8FC7}" : "\u{4F7F}\u{7528}")\u{6DA6}\u{8272}"
+                        precondition(model.recordingHint == "\(expectedState) · \(expectedAction)")
+                        let hint = model.recordingHint
+                        for preview in ["", "A short recording.", String(repeating: "Earlier words. ", count: 90)] {
+                            model.preview = preview
+                            let sizeWithHint = model.contentSize
+                            let pixelsWithHint = try snapshot(model, name: "internal-hint")
+                            model.recordingHint = nil
+                            precondition(model.contentSize == sizeWithHint, "Internal shortcut hints never change HUD size")
+                            let pixelsWithoutHint = try snapshot(model, name: "internal-no-hint")
+                            precondition(pixelsWithHint.representation(using: .png, properties: [:]) ==
+                                         pixelsWithoutHint.representation(using: .png, properties: [:]),
+                                         "Shortcut footer must not be drawn, even with an empty transcript")
+                            model.recordingHint = hint
+                            precondition(model.contentSize.width <= 380 && model.contentSize.height <= 174)
+                            precondition(model.displayText == preview)
+                        }
+                        if key == .rightCommand && mode == .hold {
+                            model.preview = language == .english ? "Send the notes after the meeting." : "\u{4F1A}\u{540E}\u{628A}\u{7B14}\u{8BB0}\u{53D1}\u{7ED9}\u{6211}。"
+                            try snapshot(model, name: "copy-\(language == .english ? "en" : "zh")-\(enabled ? "ai" : "no-ai")")
+                        }
+                        fixture.recordingAlternateFinishKey = nil
+                        fixture.refreshRecordingHint()
+                        precondition(model.recordingHint == expectedState, "No binding means state only")
+                        fixture.editSelection = "Synthetic selection"
+                        fixture.refreshRecordingHint()
+                        precondition(model.recordingHint == nil, "Voice edit never shows dictation hints")
+                        fixture.editSelection = nil
+                    }
+                }
+            }
+        }
+        localization.interfaceLanguage = .english
+        print("PASS internal shortcut copy for every locale/key/mode/state; no visible footer, unchanged native pixels and compact HUD bounds")
+    }
+
+    @MainActor static func testRevisionDecoration() throws {
+        let model = HUDModel(appearance: HUDAppearance(backdrop: .solid, animationsEnabled: false))
+        model.phase = .completed
+        model.preview = "\u{660E}\u{5929}\u{8BA8}\u{8BBA} Talkless。\u{8BF7}\u{53D1}\u{7ED9}\u{6211}。"
+        model.setDictionaryTerms(["Talkless"])
+        let plainSize = model.contentSize
+        let dictionaryOnly = try snapshot(model, name: "revision-dictionary-only")
+        model.revisionOriginal = "\u{660E}\u{5929}\u{8BA8}\u{8BBA} Talkles，\u{53D1}\u{7ED9}\u{6211}。"
+        let decorated = model.attributedDisplayText()
+        precondition(String(decorated.characters) == model.preview && model.contentSize == plainSize)
+        let dictionary = decorated.runs.filter { $0.underlineStyle != nil }.map { String(decorated.characters[$0.range]) }.joined()
+        precondition(dictionary == "Talkless", "Blue dictionary underline survives overlapping revision fill")
+        let changed = decorated.runs.filter { $0.backgroundColor != nil && $0.underlineStyle == nil }
+            .map { String(decorated.characters[$0.range]) }.joined()
+        precondition(changed.contains("\u{8BF7}") && changed.contains("。"), "Actual additions and punctuation replacements get fill")
+        precondition(decorated.runs.allSatisfy { $0.font == nil && $0.foregroundColor == nil })
+        let revised = try snapshot(model, name: "revision-marked")
+        precondition(revised.pixelsWide == dictionaryOnly.pixelsWide && revised.pixelsHigh == dictionaryOnly.pixelsHigh)
+        var amberPixels = 0
+        for y in 0..<revised.pixelsHigh {
+            for x in 0..<revised.pixelsWide {
+                let color = revised.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                if color.redComponent - color.blueComponent > 0.06,
+                   color.greenComponent - color.blueComponent > 0.03 { amberPixels += 1 }
+            }
+        }
+        precondition(amberPixels > 20, "Native renderer must draw factual change fill")
+        model.isEditMode = true
+        precondition(model.attributedDisplayText().runs.allSatisfy { $0.backgroundColor == nil && $0.underlineStyle == nil },
+                     "Voice-edit output is not compared with the spoken instruction")
+        model.isEditMode = false
+        model.phase = .polishing
+        precondition(model.attributedDisplayText().runs.filter { $0.underlineStyle == nil }.allSatisfy { $0.backgroundColor == nil },
+                     "No claimed changes before final AI output exists")
+        model.phase = .hidden
+        precondition(model.revisionOriginal == nil)
+        print("PASS native factual revision fill, overlap with exact dictionary underline, unchanged glyph metrics, and edit/processing/lifecycle exclusions")
+    }
+
+    @MainActor static func transcriptReview(_ localization: LocalizationSettings) throws {
+        for (languageName, language) in [("zh", InterfaceLanguage.simplifiedChinese), ("en", .english)] {
+            localization.interfaceLanguage = language
+            let chinese = language == .simplifiedChinese
+            let raw = chinese ? "\u{660E}\u{5929}\u{4E0A}\u{5348}\u{8BA8}\u{8BBA} Talkless，\u{628A}\u{4F1A}\u{540E}\u{7684}\u{7B14}\u{8BB0}\u{53D1}\u{7ED9}\u{6211}。" : "Let's discuss Talkless tomorrow morning, send me the notes after the meeting."
+            let final = chinese ? "\u{660E}\u{5929}\u{4E0A}\u{5348}\u{8BA8}\u{8BBA} Talkless。\u{4F1A}\u{540E}\u{8BF7}\u{628A}\u{7B14}\u{8BB0}\u{53D1}\u{7ED9}\u{6211}。" : "Let's discuss Talkless tomorrow morning. Please send me the notes after the meeting."
+            var models: [HUDModel] = []
+            var labels: [String] = []
+            for stage in HUDPreviewStage.allCases {
+                let model = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
+                model.phase = stage.phase
+                model.preview = stage == .completed ? final : raw
+                model.isEditMode = stage == .editing
+                model.revisionOriginal = stage == .completed ? raw : nil
+                model.setDictionaryTerms(["Talkless"])
+                models.append(model)
+                labels.append(stage == .dictating ? (chinese ? "\u{542C}\u{5199}\u{4E2D} · \u{6B63}\u{5728}\u{8BF4}\u{8BDD}" : "Dictating · speaking") : stage.title)
+                try snapshot(model, name: "transcript-\(languageName)-\(stage.rawValue)")
+                if stage == .dictating {
+                    let released = HUDModel(appearance: model.appearance)
+                    released.phase = .recognizing
+                    released.preview = raw
+                    released.setDictionaryTerms(["Talkless"])
+                    models.append(released)
+                    labels.append(chinese ? "\u{542C}\u{5199}\u{4E2D} · \u{677E}\u{952E}\u{540E}\u{4ECD}\u{4FDD}\u{6301}\u{6CE2}\u{5F62}" : "Dictating · same waveform after release")
+                    try snapshot(released, name: "transcript-\(languageName)-released")
+                }
+                if stage == .completed {
+                    model.phase = .inserting
+                    try snapshot(model, name: "transcript-\(languageName)-inserting")
+                    model.phase = .completed
+                }
+            }
+            let empty = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
+            empty.phase = .listening(handsFree: true)
+            empty.recordingHint = "This input: AI polishing · Press Right Command to skip polishing"
+            precondition(empty.displayText.isEmpty && empty.contentSize == CGSize(width: 44, height: 40))
+            models.append(empty)
+            try snapshot(empty, name: "transcript-\(languageName)-empty")
+            labels.append(chinese ? "\u{542C}\u{5199}\u{4E2D} · \u{5C1A}\u{65E0}\u{6587}\u{5B57}" : "Dictating · no words yet")
+            let sheet = VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(chinese ? "\u{6587}\u{5B57}\u{7559}\u{5728}\u{539F}\u{5904}，\u{56FE}\u{6807}\u{8BF4}\u{660E}\u{8FDB}\u{5EA6}" : "The words stay. The icon shows progress.")
+                        .font(.system(size: 23, weight: .semibold))
+                    Text(chinese ? "\u{8FB9}\u{8BF4}\u{8FB9}\u{542C}\u{5199}，\u{677E}\u{952E}\u{540E}\u{4E0D}\u{5207}\u{6362}\u{56FE}\u{6807}；\u{6DA6}\u{8272}\u{65F6}\u{624D}\u{53D8}\u{4E3A}\u{661F}\u{5149}，\u{5B8C}\u{6210}\u{540E}\u{770B}\u{6E05}\u{5B9E}\u{9645}\u{4FEE}\u{6539}。" : "One waveform while speaking and after release; sparkles for polishing, actual changes on completion.")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                LazyVGrid(columns: [GridItem(.fixed(408)), GridItem(.fixed(408))], alignment: .leading, spacing: 22) {
+                    ForEach(models.indices, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(labels[index]).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                            ZStack(alignment: .leading) {
+                                Color.clear
+                                HUDView(model: models[index], materialBlending: .withinWindow)
+                            }
+                            .frame(width: 408, height: 90)
+                        }
+                    }
+                }
+                Text(chinese ? "\u{84DD}\u{8272}\u{4E0B}\u{5212}\u{7EBF}：\u{8BCD}\u{5178}\u{5339}\u{914D} · \u{6696}\u{8272}\u{9AD8}\u{4EAE}：AI \u{5B9E}\u{9645}\u{4FEE}\u{6539} · \u{5B8C}\u{6210}\u{540E}\u{505C}\u{7559} 2 \u{79D2}，\u{4E0D}\u{5EF6}\u{8FDF}\u{8F93}\u{5165} · \u{4EC5}\u{4F9B}\u{5BA1}\u{9605}" : "Blue underline: dictionary match · Amber: actual AI change · 2-second result, no input delay · Review only")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .padding(30)
+            .frame(width: 898, height: 592, alignment: .topLeading)
+            .background(Color(nsColor: .windowBackgroundColor))
+            try snapshotView(sheet, size: CGSize(width: 898, height: 592), name: "transcript-contact-\(languageName)")
+        }
+        localization.interfaceLanguage = .english
+    }
+
     @MainActor static func main() throws {
         let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
         localization.interfaceLanguage = .english
@@ -308,6 +571,10 @@ struct HUDTests {
         _ = NSApplication.shared
         testPlacementPreferences()
         try testDictionaryHighlights()
+        try testDictatingPresentation(localization)
+        try testRecordingCopy(localization)
+        try testRevisionDecoration()
+        try transcriptReview(localization)
         var caretReads = 0
         let updates = CurrentValueSubject<HUDAppearance, Never>(HUDAppearance())
         let hud = HUDController(appearanceUpdates: updates.eraseToAnyPublisher(), caretProvider: {
@@ -349,10 +616,9 @@ struct HUDTests {
         precondition(hud.model.contentSize.height > shortSize.height)
         try snapshot(hud.model, name: "explicit-newlines")
         hud.model.preview = "Recognized words"
-        hud.model.recordingHint = "AI on · Right Option ⌥: use original"
+        hud.model.recordingHint = "This input: AI polishing · Press Right Option to skip polishing"
         hud.show(.listening(handsFree: true))
-        precondition(hud.model.visibleRecordingHint != nil && hud.model.hintHeight == 22)
-        precondition(hud.model.contentSize.height == shortSize.height + 22)
+        precondition(hud.model.contentSize == shortSize, "No visible recording footer or reserved footer space")
         precondition(hud.frame.size == hud.model.contentSize)
         try snapshot(hud.model, name: "alternate-finish")
         hud.model.preview = String(repeating: "Earlier words fill the preview. ", count: 40) + "LATEST WORDS"
@@ -360,24 +626,27 @@ struct HUDTests {
         precondition(hud.model.contentSize.height == HUDModel.maximumHeight)
         try snapshot(hud.model, name: "alternate-finish-long")
         hud.model.isEditMode = true
-        precondition(hud.model.visibleRecordingHint == nil && hud.model.hintHeight == 0)
+        precondition(hud.model.contentSize.height == HUDModel.maximumHeight)
         hud.model.isEditMode = false
         hud.model.preview = "Recognized words"
         for (phase, label) in [
             (HUDModel.Phase.working, "Preparing recognition"),
-            (.recognizing, "Recognizing"),
+            (.recognizing, "Dictating"),
             (.polishing, "Polishing"),
-            (.editing, "Editing")
+            (.editing, "Editing"),
+            (.inserting, "Inserting"),
+            (.completed, "Completed")
         ] {
             hud.show(phase)
             precondition(hud.model.phase == phase)
-            precondition(hud.model.visibleRecordingHint == nil)
+            precondition(hud.model.phase.accessibilityLabel == label, "Icon phase remains verbal for accessibility")
             precondition(hud.model.preview == "Recognized words")
-            precondition(hud.model.displayText == label)
+            precondition(hud.model.displayText == "Recognized words" && hud.model.contentSize == shortSize)
+            precondition(hud.model.textAlignment == .bottomLeading)
             hud.model.preview = "Late recognition preview"
-            precondition(hud.model.displayText == label)
+            precondition(hud.model.displayText == "Late recognition preview")
             hud.model.preview = ""
-            precondition(hud.model.displayText == label)
+            precondition(hud.model.displayText == (phase == .recognizing ? "" : label))
             hud.model.preview = "Recognized words"
             try snapshot(hud.model, name: String(label.prefix(while: { $0 != " " })).lowercased())
         }
@@ -403,12 +672,32 @@ struct HUDTests {
         RunLoop.main.run(until: Date().addingTimeInterval(0.08))
         precondition(hud.model.phase == .polishing, "New stage cancels a stale hide task")
         hud.hide()
+        hud.model.preview = "Final result"
+        hud.model.revisionOriginal = "Raw result"
+        hud.show(.completed)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        precondition(hud.model.phase == .completed, "Completion review is visible without blocking insertion")
+        hud.model.preview = "New recording"
+        hud.model.revisionOriginal = nil
+        hud.show(.listening(handsFree: true))
+        RunLoop.main.run(until: Date().addingTimeInterval(2.1))
+        precondition(hud.model.phase == .listening(handsFree: true) && hud.model.preview == "New recording",
+                     "Old completion dismissal cannot hide a new session")
+        hud.show(.completed)
+        // Task scheduling under parallel builds can exceed a 100ms timing margin.
+        // Keep the production two-second delay; allow bounded scheduler slack here.
+        let dismissalDeadline = Date().addingTimeInterval(3)
+        while hud.model.phase != .hidden && Date() < dismissalDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        precondition(hud.model.phase == .hidden && hud.model.preview.isEmpty && hud.model.revisionOriginal == nil,
+                     "Completion automatically clears after the brief review")
 
         let preview = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
         for stage in HUDPreviewStage.allCases {
             preview.phase = stage.phase
             preview.preview = HUDPreviewSample.short.text
-            precondition(preview.displayText == (stage == .recording ? HUDPreviewSample.short.text : stage.title))
+            precondition(preview.displayText == HUDPreviewSample.short.text)
             let stageSize = preview.contentSize
             for opacity in [0.2, 0.9, 1.0] {
                 preview.appearance.backgroundOpacity = opacity
@@ -435,7 +724,7 @@ struct HUDTests {
             size: CGSize(width: 603, height: 478), name: "overlay-settings-small-bottom", scrollToBottom: true)
         for (name, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
             try snapshotView(OverlayPreview(appearance: HUDAppearance(animationsEnabled: false),
-                stage: .recording, sample: .short).environment(\.colorScheme, scheme),
+                stage: .dictating, sample: .short).environment(\.colorScheme, scheme),
                 size: CGSize(width: 550, height: 214), name: "preview-\(name)")
         }
         // Render the real production settings/HUD in both languages and appearances.
@@ -445,7 +734,7 @@ struct HUDTests {
             localization.refreshLocale()
             for (schemeName, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
                 try snapshotView(OverlayPreview(appearance: HUDAppearance(animationsEnabled: false),
-                    stage: .recording, sample: .dictionary).environment(\.colorScheme, scheme),
+                    stage: .dictating, sample: .dictionary).environment(\.colorScheme, scheme),
                     size: CGSize(width: 550, height: 214), name: "dictionary-preview-\(languageName)-\(schemeName)")
                 try snapshotView(OverlaySettingsView(appearance: .constant(HUDAppearance(animationsEnabled: false)))
                     .environment(\.colorScheme, scheme),
@@ -502,13 +791,14 @@ func run(_ executable: String, _ arguments: [String]) throws {
     guard process.terminationStatus == 0 else { exit(process.terminationStatus) }
 }
 let binary = directory.appendingPathComponent("hud-tests")
-try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library", source.path,
+try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library", source.path, displaySource.path,
     root.appendingPathComponent("Sources/Talkless/L10n.swift").path,
     root.appendingPathComponent("Sources/Talkless/TranslationLanguages.swift").path,
     root.appendingPathComponent("Sources/Talkless/LanguagePickerView.swift").path,
     root.appendingPathComponent("Sources/Talkless/HUDAppearance.swift").path,
     root.appendingPathComponent("Sources/Talkless/Overlay.swift").path,
     root.appendingPathComponent("Sources/Talkless/DictionaryHighlight.swift").path,
+    root.appendingPathComponent("Sources/Talkless/TextRevisionHighlight.swift").path,
     root.appendingPathComponent("Sources/Talkless/OverlaySettingsView.swift").path,
     root.appendingPathComponent("Sources/Talkless/CaretPosition.swift").path,
     root.appendingPathComponent("Sources/Talkless/TextIO.swift").path, "-o", binary.path])

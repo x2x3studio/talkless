@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile production stopAndProcess/finish against fakes; no device or API access."""
+"""Compile production async startup/stop/gestures/HUD and diagnostics against fakes; no device or API access."""
 from pathlib import Path
 import re
 import subprocess
@@ -42,32 +42,45 @@ enum L10n {
     }
 }
 
-enum HUDModel {
-    enum Phase: Equatable { case working, recognizing, polishing, editing, hidden, error(String) }
-}
 @MainActor final class FakeHUD {
     var phases: [HUDModel.Phase] = []
-    var model: FakeHUD { self }
-    var recordingHint: String?
-    func setDictionaryTerms(_ terms: [String]) {}
-    func show(_ phase: HUDModel.Phase) { phases.append(phase) }
+    let model = HUDModel()
+    func show(_ phase: HUDModel.Phase) {
+        phases.append(phase)
+        model.phase = phase
+        if phase == .hidden { model.preview = "" }
+    }
+    func hide() { show(.hidden) }
 }
 final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
     var events: [(String, [String: String])] = []
     func record(event: String, metadata: [String: String] = [:]) { events.append((event, metadata)) }
 }
-struct AudioRecorder {
+@MainActor final class AudioRecorder {
     static let sampleRate = 16_000.0
     var interruptionError: String?
     var samples: [Float] = [0]
-    func stop() -> [Float] { samples }
+    var stops = 0
+    var pendingStop: CheckedContinuation<[Float], Error>?
+    var suspendStop = false
+    func stop() async throws -> [Float] {
+        stops += 1
+        if suspendStop { return try await withCheckedThrowingContinuation { pendingStop = $0 } }
+        if let interruptionError { throw NSError(domain: "Synthetic", code: 1, userInfo: [NSLocalizedDescriptionKey: interruptionError]) }
+        return samples
+    }
+    func cancel() {}
 }
 @MainActor final class FakeSession {
     var onFinish: () -> Void = {}
     var result = "raw transcript"
     var failure: Error?
+    var cancelled = false
+    var finishes = 0
+    func cancel() { cancelled = true }
     func finish(samples: [Float]) async throws -> String {
+        finishes += 1
         precondition(samples == [0] || samples.isEmpty)
         await Task.yield()
         onFinish()
@@ -105,7 +118,12 @@ enum PolishValidation {
 }
 @MainActor enum TextIO {
     static var inserted: [String] = []
-    static func insert(_ text: String) async { inserted.append(text) }
+    static var onInsert: (String) -> Void = { _ in }
+    static func insert(_ text: String) async {
+        onInsert(text)
+        await Task.yield()
+        inserted.append(text)
+    }
 }
 struct HistoryEntry {
     enum Kind { case dictation, edit }
@@ -127,6 +145,7 @@ struct HistoryEntry {
     enum State { case idle, recording, processing }
     var state: State = .recording
     var generation = 0
+    var acceptsRecognitionHUDUpdates = true
     var recordingModelDirectory: URL?
     var recordingPreparationGeneration = 0
     var preparationGeneration = 0
@@ -146,6 +165,7 @@ struct HistoryEntry {
     var settings = Settings()
     var lastTranscript = ""
     var session: FakeSession? = FakeSession()
+    var startupTask: Task<Void, Never>?
     var processingTask: Task<Void, Never>?
     var recorder = AudioRecorder()
     let hud = FakeHUD()
@@ -154,7 +174,14 @@ struct HistoryEntry {
     func cancel(reason: String = "user") {
         diagnosticOperation?.record("dictation_cancel", ["reason": reason])
         cancelled = true
+        acceptsRecognitionHUDUpdates = false
+        startupTask?.cancel()
+        startupTask = nil
+        processingTask?.cancel()
+        processingTask = nil
         generation += 1
+        recorder.cancel()
+        session?.cancel()
         session = nil
         state = .idle
         hud.show(.hidden)
@@ -174,7 +201,17 @@ TESTS = r'''
         test.settings.polishEnabled = changeDefault ? !enabled : enabled
         test.settings.llmConfigured = configured
         test.editSelection = editing ? "selected text" : nil
+        test.hud.model.phase = .listening(handsFree: false)
+        let dictatingLabel = test.hud.model.phase.accessibilityLabel
+        precondition(dictatingLabel == "Dictating")
+        test.hud.model.preview = "partial transcript"
+        test.hud.model.isEditMode = editing
+        test.hud.model.setDictionaryTerms(editing ? [] : ["transcript"])
         test.session!.onFinish = {
+            precondition(test.hud.model.displayText == "partial transcript",
+                         "Recognition keeps the last live transcript, not a status label")
+            test.hud.model.preview = "revised partial transcript"
+            precondition(test.hud.model.displayText == "revised partial transcript")
             precondition(test.hud.phases == [.recognizing],
                          "Recognition must complete before polishing/editing is shown")
         }
@@ -183,11 +220,25 @@ TESTS = r'''
         LLMClient.onComplete = {
             precondition(test.hud.phases == [.recognizing, editing ? .editing : .polishing],
                          "The correct processing phase must be visible during the LLM call")
+            precondition(test.hud.model.displayText == "raw transcript",
+                         "Final recognition replaces partial words while polishing/editing runs")
+            precondition(!test.acceptsRecognitionHUDUpdates, "Late ASR callbacks cannot replace final raw words")
             precondition(TextIO.inserted.isEmpty)
+        }
+        TextIO.onInsert = { output in
+            precondition(test.hud.model.phase == .inserting && test.hud.model.displayText == output,
+                         "Final output must be visible during the real insertion await")
+            precondition(!test.acceptsRecognitionHUDUpdates)
+            precondition(test.hud.model.revisionOriginal == (editing ? nil : "raw transcript"))
+            let attributed = test.hud.model.attributedDisplayText()
+            let dictionary = attributed.runs.filter { $0.underlineStyle != nil }.map { String(attributed.characters[$0.range]) }.joined()
+            precondition(dictionary == (editing ? "" : "transcript"))
         }
         TextIO.inserted = []
         test.stopAndProcess(useOppositePolish: opposite)
         precondition(test.state == .processing && test.hud.phases == [.recognizing])
+        precondition(test.hud.model.phase.accessibilityLabel == dictatingLabel,
+                     "Engine capture/recognition phases share one continuous user-facing activity")
         precondition(test.pressedAt == nil && !test.hotkeys.armed,
                      "Stopping must clear the gesture and disarm alternate before awaiting recognition")
         // Changing global Settings during recognition cannot change the captured finish decision either.
@@ -216,11 +267,20 @@ TESTS = r'''
             }
         }
         precondition(diagnostics.last?.0 == "processing_complete")
+        precondition(diagnostics.contains { $0.0 == "recognition_complete" },
+                     "Merged HUD presentation must preserve technical recognition diagnostics")
         precondition(diagnostics.contains { $0.0 == "paste_attempt" } && diagnostics.contains { $0.0 == "paste_returned" })
         if failure { precondition(diagnostics.contains { $0.0 == "polish_error" && $0.1["fallback"] == "true" }) }
         precondition(!diagnostics.description.contains("transcript") && !diagnostics.description.contains("Synthetic polish failure"),
                      "Never log transcript/error content")
+        if case .error(let message) = phases.last! {
+            precondition(test.hud.model.displayText == message, "Actionable errors may replace transcript")
+        } else {
+            precondition(test.hud.model.phase == .completed && test.hud.model.displayText == output,
+                         "Completion keeps final words for nonblocking review; controller is already idle")
+        }
         LLMClient.onComplete = {}
+        TextIO.onInsert = { _ in }
         print("PASS \(name)")
     }
     @MainActor static func main() async {
@@ -228,12 +288,63 @@ TESTS = r'''
         interrupted.recorder.interruptionError = "Microphone disconnected"
         TextIO.inserted = []
         LLMClient.calls = 0
+        let interruptedSession = interrupted.session!
         interrupted.stopAndProcess()
-        precondition(interrupted.cancelled && interrupted.processingTask == nil)
-        precondition(interrupted.hud.phases == [.hidden, .error("Microphone disconnected")])
+        precondition(interrupted.state == .processing && interrupted.recorder.stops == 0)
+        await interrupted.processingTask?.value
+        precondition(interrupted.cancelled && interrupted.processingTask == nil && interruptedSession.cancelled)
+        precondition(interrupted.hud.phases == [.recognizing, .hidden, .error("Microphone disconnected")])
         precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && interrupted.history.entries.isEmpty)
         precondition(Diagnostics.shared.events.contains { $0.0 == "dictation_cancel" && $0.1["reason"] == "stop_interruption" })
         print("PASS interrupted recording never processes or pastes a partial transcript")
+        for outcome in ["timeout", "cancel_success", "cancel_error", "cancel_before_launch"] {
+            let test = ProcessingHarness()
+            test.recorder.suspendStop = true
+            let session = test.session!
+            test.hud.model.preview = "partial words"
+            TextIO.inserted = []
+            LLMClient.calls = 0
+            test.stopAndProcess()
+            let task = test.processingTask!
+            precondition(test.state == .processing && test.recorder.stops == 0)
+            if outcome == "cancel_before_launch" {
+                test.cancel()
+                await task.value
+                precondition(test.recorder.stops == 0 && session.finishes == 0)
+                continue
+            }
+            for _ in 0..<1000 {
+                if test.recorder.pendingStop != nil { break }
+                try? await Task.sleep(for: .milliseconds(1))
+            }
+            precondition(test.recorder.pendingStop != nil)
+            test.stopAndProcess()
+            precondition(test.recorder.stops == 1, "Only one stop may own teardown")
+            if outcome != "timeout" {
+                test.cancel()
+                test.state = .recording // a new recording is now active
+                test.session = FakeSession()
+                test.acceptsRecognitionHUDUpdates = true
+                test.hud.show(.listening(handsFree: true))
+                test.hud.model.preview = "new recording"
+            }
+            if outcome == "cancel_success" {
+                test.recorder.pendingStop!.resume(returning: [0])
+            } else {
+                test.recorder.pendingStop!.resume(throwing: NSError(domain: "Synthetic", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Microphone stop timed out"]))
+            }
+            await task.value
+            precondition(session.cancelled && session.finishes == 0)
+            precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && test.history.entries.isEmpty)
+            if outcome == "timeout" {
+                precondition(test.state == .idle && test.hud.model.phase == .error("Microphone stop timed out"))
+            } else {
+                precondition(test.state == .recording && test.hud.model.preview == "new recording")
+                precondition(test.session?.cancelled == false)
+            }
+        }
+        print("PASS pending stop returns immediately, timeout never pastes partial, cancellation/new-start rejects stale stop success/error")
         for failure in [nil, NSError(domain: "PRIVATE_ERROR_DESCRIPTION", code: 72), CancellationError()] as [Error?] {
             Diagnostics.shared.events = []
             let test = ProcessingHarness()
@@ -259,6 +370,40 @@ TESTS = r'''
             precondition(!logs.description.contains("PRIVATE_ERROR_DESCRIPTION"))
         }
         print("PASS empty audio/result, recognition failure, and cancellation diagnostics")
+        for cancelStage in ["recognition", "polishing", "editing", "insertion"] {
+            let test = ProcessingHarness()
+            test.hud.model.preview = "partial words"
+            test.editSelection = cancelStage == "editing" ? "selected text" : nil
+            LLMClient.fail = false
+            TextIO.inserted = []
+            test.session!.onFinish = { if cancelStage == "recognition" { test.cancel() } }
+            LLMClient.onComplete = {
+                if cancelStage == "polishing" || cancelStage == "editing" { test.cancel() }
+            }
+            TextIO.onInsert = { _ in if cancelStage == "insertion" { test.cancel() } }
+            test.stopAndProcess()
+            let task = test.processingTask!
+            await task.value
+            precondition(test.hud.model.phase == .hidden && test.hud.model.preview.isEmpty,
+                         "Cancelled work cannot reveal late output at \(cancelStage)")
+            precondition(test.history.entries.isEmpty)
+            if cancelStage != "insertion" { precondition(TextIO.inserted.isEmpty) }
+        }
+        LLMClient.onComplete = {}
+        TextIO.onInsert = { _ in }
+        let failedEdit = ProcessingHarness()
+        failedEdit.editSelection = "selected text"
+        failedEdit.hud.model.preview = "partial edit instruction"
+        LLMClient.fail = true
+        TextIO.inserted = []
+        failedEdit.stopAndProcess()
+        await failedEdit.processingTask?.value
+        if case .error(let message) = failedEdit.hud.model.phase {
+            precondition(failedEdit.hud.model.displayText == message)
+        } else { preconditionFailure("Edit failure must show its actionable error") }
+        precondition(TextIO.inserted.isEmpty && failedEdit.history.entries.isEmpty)
+        LLMClient.fail = false
+        print("PASS cancellation across all awaits prevents late preview/history; edit errors stay actionable")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
         for outcome in ["success", "empty", "failure", "cancelled", "stale", "new_preparation", "non_qwen"] {
@@ -296,37 +441,37 @@ TESTS = r'''
             }
         }
         print("PASS successful Qwen finish repairs failed prewarm readiness with directory/generation isolation")
-        await check("configured polish", phases: [.recognizing, .polishing, .hidden])
-        await check("disabled polish", enabled: false, phases: [.recognizing, .hidden])
-        await check("unconfigured polish", configured: false, phases: [.recognizing, .hidden])
+        await check("configured polish", phases: [.recognizing, .polishing, .inserting, .completed])
+        await check("disabled polish", enabled: false, phases: [.recognizing, .inserting, .completed])
+        await check("unconfigured polish", configured: false, phases: [.recognizing, .inserting, .completed])
         await check("disabled and unconfigured", enabled: false, configured: false,
-                    phases: [.recognizing, .hidden])
+                    phases: [.recognizing, .inserting, .completed])
         await check("editing is distinct from polishing", editing: true,
-                    phases: [.recognizing, .editing, .hidden])
+                    phases: [.recognizing, .editing, .inserting, .completed])
         await check("editing does not require polish enabled", enabled: false, editing: true,
-                    phases: [.recognizing, .editing, .hidden])
+                    phases: [.recognizing, .editing, .inserting, .completed])
         await check("failed polish preserves raw transcript and error", failure: true,
-                    phases: [.recognizing, .polishing,
+                    phases: [.recognizing, .polishing, .inserting,
                              .error("Polishing failed; using the original transcript.")])
         await check("opposite bypasses configured default AI", opposite: true,
-                    phases: [.recognizing, .hidden])
+                    phases: [.recognizing, .inserting, .completed])
         await check("opposite requests AI when default disabled", enabled: false, opposite: true,
-                    phases: [.recognizing, .polishing, .hidden])
+                    phases: [.recognizing, .polishing, .inserting, .completed])
         await check("opposite AI without configuration preserves raw with useful error", enabled: false,
                     configured: false, opposite: true,
-                    phases: [.recognizing,
+                    phases: [.recognizing, .inserting,
                              .error("Configure an AI service in Settings to polish. Using the original transcript.")])
         await check("opposite AI failure preserves raw", enabled: false, failure: true, opposite: true,
-                    phases: [.recognizing, .polishing,
+                    phases: [.recognizing, .polishing, .inserting,
                              .error("Polishing failed; using the original transcript.")])
         await check("editing cannot be bypassed defensively", editing: true, opposite: true,
-                    phases: [.recognizing, .editing, .hidden])
+                    phases: [.recognizing, .editing, .inserting, .completed])
         for enabled in [true, false] {
             for opposite in [true, false] {
                 let polish = opposite ? !enabled : enabled
                 await check("snapshot default=\(enabled) opposite=\(opposite)", enabled: enabled,
                             opposite: opposite, changeDefault: true,
-                            phases: polish ? [.recognizing, .polishing, .hidden] : [.recognizing, .hidden])
+                            phases: polish ? [.recognizing, .polishing, .inserting, .completed] : [.recognizing, .inserting, .completed])
             }
         }
     }
@@ -350,6 +495,9 @@ final class Diagnostics: @unchecked Sendable {
     enum Engine: String, CaseIterable { case qwen, apple, openAICompatible }
     var asrEngine: Engine = .qwen
     var audioInputDeviceUID: String?
+    var polishEnabled = true
+    var llmConfig = 0
+    var recordingGestureMode = StartupHarness.Gesture.hold
     var terms = ["Talkless", "\u{5317}\u{4EAC}"]
     var termReads = 0
     var dictionaryTerms: [String] { termReads += 1; return terms }
@@ -371,9 +519,6 @@ struct FakeApp { let localizedName: String?; let bundleIdentifier: String? }
     static let shared = ModelManager()
     var operationModelID: String?
 }
-@MainActor enum TextIO {
-    static func selectedTextViaAX() -> String? { "Selected sentence" }
-}
 enum AVCaptureDevice {
     enum Media { case audio }
     static func requestAccess(for media: Media, completion: (Bool) -> Void) { preconditionFailure("No permissions") }
@@ -382,6 +527,7 @@ enum AVCaptureDevice {
     var onPartial: ((String) -> Void)? { get set }
     func feed(_ buffer: Int)
     func cancel()
+    func finish(samples: [Float]) async throws -> String
 }
 @MainActor class FakeSession: TranscriptionSession {
     static var latest: FakeSession?
@@ -393,8 +539,10 @@ enum AVCaptureDevice {
     var prompt: String?
     var cancelled = false
     init() { Self.latest = self; Self.onCreate() }
+    var finishes = 0
     func feed(_ buffer: Int) {}
     func cancel() { cancelled = true }
+    func finish(samples: [Float]) async throws -> String { finishes += 1; return "raw transcript" }
 }
 @MainActor final class QwenTranscriptionSession: FakeSession {
     init(modelDirectory: URL, language: String?, contextualStrings: [String],
@@ -412,14 +560,33 @@ enum AVCaptureDevice {
     init(config: Config) { super.init(); prompt = config.prompt }
 }
 @MainActor final class FakeRecorder {
+    static let sampleRate = 16_000.0
     var onBuffer: ((Int) -> Void)?
     var onError: ((String) -> Void)?
     var fail = false
-    func start(deviceUID: String?, operationID: UUID) throws {
+    var suspendStart = false
+    var starts: [CheckedContinuation<Void, Error>] = []
+    var startCalls = 0
+    var stopCalls = 0
+    var cancelCalls = 0
+    var stopFailure: Error?
+    var selectedDevice: String?
+    func start(deviceUID: String?, operationID: UUID) async throws {
+        startCalls += 1
+        selectedDevice = deviceUID
+        if suspendStart { try await withCheckedThrowingContinuation { starts.append($0) } }
         if fail { throw NSError(domain: "Synthetic", code: 1) }
     }
-    func stop() {}
+    func stop() async throws -> [Float] {
+        stopCalls += 1
+        if let stopFailure { throw stopFailure }
+        return [0]
+    }
+    // Deliberately don't resume pending continuations: simulate callbacks from
+    // a native operation that returns after cancellation and a newer start.
+    func cancel() { cancelCalls += 1 }
 }
+typealias AudioRecorder = FakeRecorder
 @MainActor final class FakeHUD {
     let model = HUDModel()
     func show(_ phase: HUDModel.Phase) { model.phase = phase }
@@ -428,12 +595,13 @@ enum AVCaptureDevice {
 @MainActor final class FakeHotkeys { func armAlternateFinish(_ value: Int?) {} }
 @MainActor final class StartupHarness {
     enum State { case idle, recording, processing }
-    enum Gesture: String { case hold }
+    enum Gesture: String { case hold, toggle }
     enum Authorization { case authorized, notDetermined, denied, restricted }
     static var microphoneStatus: Authorization { .authorized }
     var state = State.idle
     var shortcutCaptureActive = false
     var generation = 0
+    var acceptsRecognitionHUDUpdates = true
     var recordingGestureMode = Gesture.hold
     var handsFree = false
     private var diagnosticOperation: DictationOperation?
@@ -451,10 +619,16 @@ enum AVCaptureDevice {
     var recordingPreparationGeneration = 0
     var preparationGeneration = 0
     var pressedAt: UInt64?
+    var startupTask: Task<Void, Never>?
     var processingTask: Task<Void, Never>?
     var onModelSetupRequested: (() -> Void)?
-    func configureRecordingFinish() {}
+    var recordingPolishEnabled = true
+    var lastTranscript = ""
+    let history = FakeHistory()
+    let translationPanel = FakeTranslationPanel()
+    func configureRecordingFinish() { recordingPolishEnabled = settings.polishEnabled }
     func updateTriggerKey() {}
+    func markModelReadyAfterRecognition(directory: URL?, generation: Int, preparation: Int) {}
 '''
 
 STARTUP_TESTS = r'''
@@ -466,13 +640,22 @@ STARTUP_TESTS = r'''
             $0.underlineStyle == nil ? nil : String(attributed.characters[$0.range])
         }
     }
-    @MainActor static func main() {
+    @MainActor static func wait(_ condition: () -> Bool) async {
+        for _ in 0..<1000 {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        preconditionFailure("Timed out waiting for fake lifecycle")
+    }
+    @MainActor static func main() async {
         for engine in FakeSettings.Engine.allCases {
             let test = StartupHarness()
             test.settings.asrEngine = engine
             // Simulate a Settings edit during construction, between snapshot and HUD setup.
             FakeSession.onCreate = { test.settings.terms = ["NextSession"] }
             test.startRecording()
+            precondition(test.recorder.startCalls == 0, "Event handler only schedules native startup")
+            await test.startupTask?.value
             let old = FakeSession.latest!
             precondition(test.state == .recording && test.settings.termReads == 1)
             precondition(test.hud.model.dictionaryTerms == ["Talkless", "\u{5317}\u{4EAC}"])
@@ -500,7 +683,18 @@ STARTUP_TESTS = r'''
                 test.state = .processing
                 test.hud.show(.recognizing)
                 old.onPartial?("Talkless")
-                precondition(test.hud.model.phase == .recognizing && matched(test.hud.model).isEmpty)
+                precondition(test.hud.model.phase == .recognizing && matched(test.hud.model) == ["Talkless"])
+                precondition(test.hud.model.displayText == "Talkless")
+                test.acceptsRecognitionHUDUpdates = false
+                for phase in [HUDModel.Phase.polishing, .editing, .inserting, .completed] {
+                    test.hud.model.preview = "finalized words"
+                    test.hud.show(phase)
+                    old.onPartial?("late partial")
+                    old.onStatus?("late status")
+                    old.onError?("late error")
+                    precondition(test.hud.model.phase == phase && test.hud.model.displayText == "finalized words",
+                                 "Late callbacks cannot replace final raw or output after recognition completes")
+                }
             }
             test.cancel()
             precondition(test.hud.model.dictionaryTerms.isEmpty)
@@ -522,6 +716,7 @@ STARTUP_TESTS = r'''
             test.cancel()
             test.recorder.fail = true
             test.startRecording()
+            await test.startupTask?.value
             precondition(test.state == .idle && test.hud.model.dictionaryTerms.isEmpty)
             let failedPhase = test.hud.model.phase
             FakeSession.latest?.onPartial?("NextSession")
@@ -543,26 +738,271 @@ STARTUP_TESTS = r'''
             test.cancel()
         }
         print("PASS production recording snapshots for Qwen/Apple/cloud, dynamic dictionary edits, partial revisions, processing exclusion, cancel/startup failures, stale generations, and voice edit")
+
+        FakeSession.onCreate = {}
+        LLMClient.onComplete = {}
+        TextIO.onInsert = { _ in }
+        let timestamp: UInt64 = 10_000_000_000
+        // Cancellation can happen synchronously in the next event, before Task runs.
+        let neverOpened = StartupHarness()
+        neverOpened.triggerPressed(at: timestamp)
+        let neverOpenedTask = neverOpened.startupTask!
+        neverOpened.triggerReleased(at: timestamp + 1)
+        precondition(neverOpened.state == .idle && neverOpened.startupTask == nil)
+        await neverOpenedTask.value
+        precondition(neverOpened.recorder.startCalls == 0 && neverOpened.recorder.stopCalls == 0)
+        print("PASS hold release before task launch never opens or uploads audio")
+
+        for action in ["hold_release", "escape", "combo", "user"] {
+            for staleFailure in [false, true] {
+                let test = StartupHarness()
+                test.recorder.suspendStart = true
+                test.triggerPressed(at: timestamp)
+                let oldTask = test.startupTask!
+                let oldSession = FakeSession.latest!
+                await wait { test.recorder.starts.count == 1 }
+                switch action {
+                case "hold_release": test.triggerReleased(at: timestamp + 10)
+                case "escape": precondition(test.escapePressed())
+                case "combo": test.comboKeyPressed(at: timestamp + 10)
+                default: test.cancel()
+                }
+                precondition(test.state == .idle && oldSession.cancelled && test.recorder.cancelCalls == 1)
+                precondition(test.startupTask == nil && test.processingTask == nil)
+                test.triggerReleased(at: timestamp + 20)
+                precondition(test.state == .idle && test.recorder.stopCalls == 0)
+                test.triggerPressed(at: timestamp + 30)
+                let currentTask = test.startupTask!
+                let currentSession = FakeSession.latest!
+                await wait { test.recorder.starts.count == 2 }
+                if staleFailure {
+                    test.recorder.starts[0].resume(throwing: NSError(domain: "Old start timeout", code: 1))
+                } else {
+                    test.recorder.starts[0].resume()
+                }
+                await oldTask.value
+                oldSession.onPartial?("stale words")
+                oldSession.onStatus?("stale status")
+                oldSession.onError?("stale failure")
+                precondition(test.state == .recording && test.startupTask != nil && !currentSession.cancelled)
+                precondition(test.hud.model.preview.isEmpty && test.recorder.cancelCalls == 1)
+                test.recorder.starts[1].resume()
+                await currentTask.value
+                precondition(test.startupTask == nil && test.state == .recording && test.recorder.stopCalls == 0)
+                test.cancel()
+            }
+        }
+        print("PASS pending start release/Escape/combo/cancel, immediate next start, and stale success/error fencing")
+
+        for action in ["toggle", "menu", "alternate"] {
+            for enabled in [false, true] {
+                let test = StartupHarness()
+                test.settings.recordingGestureMode = .toggle
+                test.settings.polishEnabled = enabled
+                test.settings.audioInputDeviceUID = "captured-input"
+                test.recorder.suspendStart = true
+                test.triggerPressed(at: timestamp)
+                let session = FakeSession.latest!
+                // Changes before the scheduled task runs still belong to the next input.
+                test.settings.audioInputDeviceUID = "next-input"
+                test.settings.polishEnabled = !enabled
+                test.settings.recordingGestureMode = .hold
+                await wait { test.recorder.starts.count == 1 }
+                test.triggerReleased(at: timestamp + 10)
+                precondition(test.state == .recording && test.handsFree)
+                switch action {
+                case "toggle": test.triggerPressed(at: timestamp + 20)
+                case "menu": test.toggleFromMenu()
+                default: test.alternateFinishPressed(at: timestamp + 20)
+                }
+                let task = test.processingTask!
+                precondition(test.state == .processing && test.recorder.stopCalls == 0)
+                test.triggerPressed(at: timestamp + 30)
+                test.triggerReleased(at: timestamp + 40)
+                test.alternateFinishPressed(at: timestamp + 50)
+                test.toggleFromMenu()
+                TextIO.inserted = []
+                LLMClient.calls = 0
+                test.recorder.starts[0].resume()
+                await task.value
+                let polish = action == "alternate" ? !enabled : enabled
+                precondition(test.recorder.selectedDevice == "captured-input")
+                precondition(test.recorder.startCalls == 1 && test.recorder.stopCalls == 1 && session.finishes == 1)
+                precondition(LLMClient.calls == (polish ? 1 : 0) && TextIO.inserted.count == 1)
+                precondition(test.state == .idle && test.history.entries.count == 1)
+            }
+        }
+        print("PASS pending toggle/menu/alternate finish exactly once, input/default snapshots, and trailing-event suppression")
+
+        let queued = StartupHarness()
+        queued.recorder.suspendStart = true
+        queued.toggleFromMenu()
+        let staleSession = FakeSession.latest!
+        await wait { queued.recorder.starts.count == 1 }
+        queued.toggleFromMenu()
+        let staleProcessing = queued.processingTask!
+        precondition(queued.state == .processing)
+        queued.cancel()
+        queued.toggleFromMenu()
+        let currentStartup = queued.startupTask!
+        await wait { queued.recorder.starts.count == 2 }
+        queued.recorder.starts[0].resume()
+        await staleProcessing.value
+        precondition(queued.state == .recording && queued.recorder.stopCalls == 0 && staleSession.finishes == 0)
+        queued.recorder.starts[1].resume()
+        await currentStartup.value
+        precondition(queued.state == .recording && queued.startupTask == nil && queued.recorder.stopCalls == 0)
+        queued.cancel()
+        print("PASS cancelled queued finish cannot stop a newer recording after old startup returns")
+
+        for queueFinish in [false, true] {
+            let test = StartupHarness()
+            test.recorder.suspendStart = true
+            test.toggleFromMenu()
+            let task = test.startupTask!
+            let session = FakeSession.latest!
+            await wait { test.recorder.starts.count == 1 }
+            if queueFinish { test.toggleFromMenu() }
+            let processing = test.processingTask
+            TextIO.inserted = []
+            LLMClient.calls = 0
+            test.recorder.starts[0].resume(throwing: NSError(domain: "Synthetic", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone start timed out"]))
+            await task.value
+            await processing?.value
+            precondition(test.state == .idle && test.startupTask == nil && test.processingTask == nil && session.cancelled)
+            precondition(test.hud.model.phase == .error("Cannot start recording: Microphone start timed out"))
+            precondition(test.recorder.stopCalls == 0 && session.finishes == 0 && LLMClient.calls == 0 && TextIO.inserted.isEmpty)
+        }
+        print("PASS start timeout surfaces actionable error and cancels queued finish without recognition/upload")
+    }
+}
+'''
+
+MICROPHONE_STUBS = r'''
+import Foundation
+struct FakeBuffer: Sendable { let frameLength: UInt32 }
+enum TalklessError: Error { case message(String) }
+@MainActor enum AVCaptureDevice {
+    enum Media { case audio }
+    enum Authorization { case authorized, denied }
+    static var permission = Authorization.authorized
+    static func authorizationStatus(for media: Media) -> Authorization { permission }
+}
+@MainActor final class AudioRecorder {
+    static var instances = 0
+    static var starts: [String?] = []
+    static var stops = 0
+    static var cancels = 0
+    static var startFailure = false
+    static var stopFailure = false
+    static var noBuffers = false
+    var onBuffer: (@Sendable (FakeBuffer) -> Void)?
+    init() { Self.instances += 1 }
+    func start(deviceUID: String?) async throws {
+        Self.starts.append(deviceUID)
+        if Self.startFailure { throw TalklessError.message("start timeout") }
+        let callback = onBuffer
+        let noBuffers = Self.noBuffers
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                if !noBuffers { callback?(FakeBuffer(frameLength: 800)) }
+                continuation.resume()
+            }
+        }
+    }
+    func stop() async throws -> [Float] {
+        Self.stops += 1
+        if Self.stopFailure { throw TalklessError.message("stop timeout") }
+        return [0]
+    }
+    func cancel() { Self.cancels += 1 }
+    static func reset() {
+        instances = 0; starts = []; stops = 0; cancels = 0
+        startFailure = false; stopFailure = false; noBuffers = false
+    }
+}
+@main struct MicrophoneTests {
+    @MainActor static func main() async throws {
+        for selected in [nil, "synthetic-device"] as [String?] {
+            AudioRecorder.reset()
+            let buffers = try await MicrophoneDiagnostic.run(seconds: 0.0001, repetitions: 20, deviceUID: selected)
+            precondition(buffers == 20 && AudioRecorder.instances == 1)
+            precondition(AudioRecorder.starts.count == 20 && AudioRecorder.starts.allSatisfy { $0 == selected })
+            precondition(AudioRecorder.stops == 20 && AudioRecorder.cancels == 1)
+        }
+        for repetitions in [0, 31] {
+            AudioRecorder.reset()
+            do {
+                _ = try await MicrophoneDiagnostic.run(repetitions: repetitions)
+                preconditionFailure("Invalid repetitions must fail before opening the device")
+            } catch {}
+            precondition(AudioRecorder.instances == 0)
+        }
+        for seconds in [Double.nan, .infinity, 0, -1, 31] {
+            AudioRecorder.reset()
+            do {
+                _ = try await MicrophoneDiagnostic.run(seconds: seconds)
+                preconditionFailure("Invalid duration must fail before opening the device")
+            } catch {}
+            precondition(AudioRecorder.instances == 0)
+        }
+        for fault in ["permission", "start", "stop", "empty"] {
+            AudioRecorder.reset()
+            AVCaptureDevice.permission = fault == "permission" ? .denied : .authorized
+            AudioRecorder.startFailure = fault == "start"
+            AudioRecorder.stopFailure = fault == "stop"
+            AudioRecorder.noBuffers = fault == "empty"
+            do {
+                _ = try await MicrophoneDiagnostic.run(seconds: 0.0001, repetitions: 20)
+                preconditionFailure("Fault must fail explicitly and stop repetition")
+            } catch {}
+            precondition(AudioRecorder.instances == (fault == "permission" ? 0 : 1))
+            precondition(AudioRecorder.cancels == (fault == "permission" ? 0 : 1))
+            precondition(AudioRecorder.starts.count <= 1 && AudioRecorder.stops <= 1)
+        }
+        print("PASS repeated microphone diagnostic reuses one recorder, preserves system/selected input, totals off-main buffers, validates arguments, and cancels on failure")
     }
 }
 '''
 
 operation = controller.split("private struct DictationOperation", 1)[1].split("/// Core dictation flow", 1)[0]
-source = "import Foundation\nprivate struct DictationOperation" + operation + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
+overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
+source = overlay_model + "\nprivate struct DictationOperation" + operation + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
 with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as directory:
     path = Path(directory)
     swift = path / "ProcessingHUDTests.swift"
     binary = path / "processing-hud-tests"
     swift.write_text(source)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
-                    str(swift), "-o", str(binary)], check=True)
+                    str(swift), str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
+                    str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
+                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
     # Real HUDModel, real startup/cancel methods, only external boundaries substituted.
-    startup = overlay_model + "\nprivate struct DictationOperation" + operation + STARTUP_STUBS
-    startup += method("startRecording").replace("NSWorkspace", "FakeWorkspace") + "\n" + method("cancel") + STARTUP_TESTS
+    shared_processing = STUBS.split("enum Prompts {", 1)[1].split("@MainActor final class FakeHotkeys", 1)[0]
+    shared_processing = "enum Prompts {" + shared_processing
+    shared_processing += '''
+    typealias Settings = FakeSettings
+    typealias Context = AppContext
+    extension TextIO { static func selectedTextViaAX() -> String? { "Selected sentence" } }
+    @MainActor final class FakeTranslationPanel {
+        var isVisible = false
+        func close() { isVisible = false }
+    }
+    '''
+    startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
+    startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
+                         ("startRecording", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
+                          "alternateFinishPressed", "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),
                     str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
-                    str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
+                    str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, timeout=30)
+    diagnostic = (ROOT / "Sources/Talkless/MicrophoneDiagnostic.swift").read_text().replace("import AVFoundation\n", "")
+    swift.write_text(diagnostic + MICROPHONE_STUBS)
+    subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)

@@ -26,7 +26,7 @@ struct SetupGuideControls: Equatable {
     var dictationInstruction: String {
         holdToTalk
             ? L10n.format("Hold %@ to talk; release to finish.", dictationKeyTitle)
-            : L10n.format("Tap %@ to start; tap again to finish.", dictationKeyTitle)
+            : L10n.format("Tap %@ to start talking; press again to finish.", dictationKeyTitle)
     }
 }
 

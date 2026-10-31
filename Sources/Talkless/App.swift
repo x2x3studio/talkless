@@ -67,8 +67,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if CommandLine.arguments.contains("--test-microphone") {
             Task {
                 do {
-                    let count = try await MicrophoneDiagnostic.run()
-                    FileHandle.standardOutput.write(Data("Microphone test passed: \(count) background audio callbacks.\n".utf8))
+                    let arguments = CommandLine.arguments
+                    var repetitions = 1
+                    if let index = arguments.firstIndex(of: "--test-repeat") {
+                        guard arguments.indices.contains(index + 1), let value = Int(arguments[index + 1]),
+                              (1...30).contains(value) else {
+                            throw TalklessError.message("--test-repeat requires a value from 1 to 30")
+                        }
+                        repetitions = value
+                    }
+                    let deviceUID = arguments.contains("--test-selected-microphone") ? settings.audioInputDeviceUID : nil
+                    let count = try await MicrophoneDiagnostic.run(repetitions: repetitions, deviceUID: deviceUID)
+                    FileHandle.standardOutput.write(Data("Microphone test passed: \(count) background audio callbacks across \(repetitions) recording(s).\n".utf8))
                     NSApp.terminate(nil)
                 } catch {
                     FileHandle.standardError.write(Data("Microphone test failed: \(error.localizedDescription)\n".utf8))

@@ -12,6 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "Sources/Talkless/AudioRecorder.swift"
+OPERATIONS = ROOT / "Sources/Talkless/AudioOperationQueue.swift"
 DEVICES = ROOT / "Sources/Talkless/AudioInputDevice.swift"
 
 STUBS = r'''
@@ -26,7 +27,7 @@ final class Diagnostics: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [(String, [String: String])] = []
     func record(event: String, metadata: [String: String] = [:]) {
-        MainActor.assertIsolated() // No diagnostics calls, even async ones, from native callbacks.
+        precondition(!TestContext.inCallback, "No diagnostics on the realtime audio callback")
         lock.withLock { entries.append((event, metadata)) }
     }
     func recordAsync(event: String, metadata: [String: String] = [:]) {
@@ -37,6 +38,9 @@ final class Diagnostics: @unchecked Sendable {
 '''
 
 HARNESS = r'''
+private enum TestContext {
+    static var inCallback: Bool { Thread.current.threadDictionary["audioCallback"] as? Bool == true }
+}
 private enum TestClock {
     nonisolated(unsafe) static var now: TimeInterval = 10
 }
@@ -45,6 +49,7 @@ private enum TestHardware {
     nonisolated(unsafe) static var channels: UInt32 = 2
     nonisolated(unsafe) static var status: OSStatus = noErr
     nonisolated(unsafe) static var enginesCreated = 0
+    nonisolated(unsafe) static var enginesDestroyed = 0
     nonisolated(unsafe) static var defaultReads = 0
     nonisolated(unsafe) static var setCalls = 0
     nonisolated(unsafe) static var selectionStatus: OSStatus = noErr
@@ -64,6 +69,13 @@ private enum TestHardware {
     nonisolated(unsafe) static var changeOutputOnRead = 0
     nonisolated(unsafe) static var notifyBeforeFreeze = false
     nonisolated(unsafe) static var plans: [Plan] = []
+    nonisolated(unsafe) static var block: String?
+    static let entered = DispatchSemaphore(value: 0)
+    static let release = DispatchSemaphore(value: 0)
+    static func checkpoint(_ stage: String) {
+        precondition(!Thread.isMainThread, "Native lifecycle must never run on main")
+        if block == stage { entered.signal(); release.wait() }
+    }
     struct Plan {
         var prepareNotification = false
         var startNotification = false
@@ -80,6 +92,7 @@ private func TestSetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
     precondition(property == kAudioOutputUnitProperty_CurrentDevice)
     precondition(scope == kAudioUnitScope_Global && element == 0)
     precondition(size == MemoryLayout<AudioDeviceID>.size)
+    TestHardware.checkpoint("setter")
     TestHardware.setCalls += 1
     if !TestHardware.ignoresSelection {
         TestAudioEngine.latest!.inputNode.actualDevice = data.assumingMemoryBound(to: AudioDeviceID.self).pointee
@@ -89,7 +102,7 @@ private func TestSetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
 private func TestGetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
     _ scope: AudioUnitScope, _ element: AudioUnitElement, _ data: UnsafeMutableRawPointer,
     _ size: UnsafeMutablePointer<UInt32>) -> OSStatus {
-    MainActor.assertIsolated()
+    precondition(!Thread.isMainThread, "HAL must not run on main")
     TestHardware.currentDeviceReads += 1
     if TestHardware.changeActualEveryRead || TestHardware.currentDeviceReads == TestHardware.changeActualOnRead {
         TestAudioEngine.latest!.inputNode.actualDevice += 1
@@ -100,7 +113,7 @@ private func TestGetProperty(_ unit: AudioUnit, _ property: AudioUnitPropertyID,
 private func TestGetPropertyDataSize(_ object: AudioObjectID,
     _ address: UnsafePointer<AudioObjectPropertyAddress>, _ qualifierSize: UInt32,
     _ qualifier: UnsafeRawPointer?, _ size: UnsafeMutablePointer<UInt32>) -> OSStatus {
-    MainActor.assertIsolated()
+    precondition(!Thread.isMainThread, "HAL must not run on main")
     size.pointee = address.pointee.mSelector == kAudioHardwarePropertyDevices
         ? UInt32(TestHardware.devices.count * MemoryLayout<AudioDeviceID>.size)
         : UInt32(MemoryLayout<AudioBufferList>.size)
@@ -110,7 +123,7 @@ private func TestGetPropertyData(_ object: AudioObjectID,
     _ address: UnsafePointer<AudioObjectPropertyAddress>, _ qualifierSize: UInt32,
     _ qualifier: UnsafeRawPointer?, _ size: UnsafeMutablePointer<UInt32>,
     _ data: UnsafeMutableRawPointer) -> OSStatus {
-    MainActor.assertIsolated()
+    precondition(!Thread.isMainThread, "HAL must not run on main")
     guard TestHardware.status == noErr else { return TestHardware.status }
     switch address.pointee.mSelector {
     case kAudioObjectPropertyClass:
@@ -145,7 +158,7 @@ private func format(_ rate: Double, _ channels: AVAudioChannelCount) -> AVAudioF
 // Callback intentionally non-Sendable, as in AVAudioNodeTapBlock in the real SDK.
 private final class TestAudioNode: @unchecked Sendable {
     private var callback: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
-    private var oldCallback: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
+    var oldCallback: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
     var actualDevice = TestHardware.actualDevice ?? TestHardware.device
     var hardware = format(48_000, 2)
     var output = TestHardware.invalidFormat ? format(0, 0)
@@ -154,7 +167,7 @@ private final class TestAudioNode: @unchecked Sendable {
     var installedFormat: AVAudioFormat?
     var audioUnit: AudioUnit? { TestHardware.hasAudioUnit ? AudioUnit(bitPattern: 1) : nil }
     func outputFormat(forBus: Int) -> AVAudioFormat {
-        MainActor.assertIsolated()
+        precondition(!Thread.isMainThread, "HAL must not run on main")
         outputReads += 1
         if outputReads == TestHardware.changeOutputOnRead {
             hardware = format(44_100, 1)
@@ -162,18 +175,18 @@ private final class TestAudioNode: @unchecked Sendable {
         }
         return output
     }
-    func inputFormat(forBus: Int) -> AVAudioFormat { MainActor.assertIsolated(); return hardware }
+    func inputFormat(forBus: Int) -> AVAudioFormat { precondition(!Thread.isMainThread, "HAL must not run on main"); return hardware }
     func installTap(onBus: Int, bufferSize: UInt32, format: AVAudioFormat?,
                     block: @escaping (AVAudioPCMBuffer, AVAudioTime) -> Void) {
-        MainActor.assertIsolated()
+        precondition(!Thread.isMainThread, "HAL must not run on main")
         precondition(callback == nil)
         precondition(format?.sampleRate == hardware.sampleRate && format?.channelCount == hardware.channelCount,
                      "Input node cannot convert hardware rate/channel count")
         installedFormat = format
+        oldCallback = callback ?? oldCallback
         callback = block
-        oldCallback = block
     }
-    func removeTap(onBus: Int) { MainActor.assertIsolated(); callback = nil }
+    func removeTap(onBus: Int) { precondition(!Thread.isMainThread, "HAL must not run on main"); oldCallback = callback; callback = nil }
     func deliver(stale: Bool = false, wrongFormat: Bool = false, silent: Bool = false) {
         precondition(!Thread.isMainThread, "Native callback must run off main actor")
         let selected = wrongFormat ? format(32_000, 1) : installedFormat!
@@ -182,23 +195,32 @@ private final class TestAudioNode: @unchecked Sendable {
         for channel in 0..<Int(selected.channelCount) {
             for index in 0..<4_800 { buffer.floatChannelData![channel][index] = silent ? 0 : 0.25 }
         }
+        Thread.current.threadDictionary["audioCallback"] = true
+        defer { Thread.current.threadDictionary["audioCallback"] = false }
         (stale ? oldCallback : callback)?(buffer, AVAudioTime(sampleTime: 0, atRate: selected.sampleRate))
     }
 }
 private final class TestAudioEngine: NSObject, @unchecked Sendable {
-    nonisolated(unsafe) static var latest: TestAudioEngine?
+    nonisolated(unsafe) static weak var latest: TestAudioEngine?
     private let plan: TestHardware.Plan
     var isRunning = false
-    let inputNode = TestAudioNode()
+    private let node = TestAudioNode()
+    var inputNode: TestAudioNode { TestHardware.checkpoint("inputNode"); return node }
     override init() {
         plan = TestHardware.plans.isEmpty ? .init() : TestHardware.plans.removeFirst()
+        TestHardware.checkpoint("init")
         super.init()
         TestHardware.enginesCreated += 1
         Self.latest = self
     }
-    func prepare() { if plan.prepareNotification { notify() } }
+    deinit {
+        precondition(!Thread.isMainThread, "Native engine destruction must stay on audio worker")
+        TestHardware.enginesDestroyed += 1
+    }
+    func prepare() { TestHardware.checkpoint("prepare"); if plan.prepareNotification { notify() } }
     func start() throws {
-        MainActor.assertIsolated()
+        TestHardware.checkpoint("start")
+        precondition(!Thread.isMainThread, "HAL must not run on main")
         if plan.throwsOnStart { throw TalklessError.message("Stub engine start failure") }
         TestClock.now += plan.startupSeconds
         isRunning = !plan.stoppedAfterStart
@@ -207,7 +229,8 @@ private final class TestAudioEngine: NSObject, @unchecked Sendable {
         if plan.deliverDuringStart { deliver() }
     }
     func stop() {
-        MainActor.assertIsolated()
+        TestHardware.checkpoint("stop")
+        precondition(!Thread.isMainThread, "HAL must not run on main")
         isRunning = false
         NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: self)
     }
@@ -238,376 +261,329 @@ private final class Observations: @unchecked Sendable {
     var buffers: Int { lock.withLock { count } }
 }
 extension AudioRecorder {
-    @MainActor fileprivate func testMonitor() -> Bool {
-        guard let session = lock.withLock({ sessionID }) else { return false }
-        return monitor(session: session)
+    @MainActor fileprivate func testBeginFinalization() { native.beginFinalization() }
+    @MainActor fileprivate func testNative(_ action: @escaping @Sendable (TestAudioEngine) -> Void) async throws {
+        try await operations.run(timeout: 1, onTimeout: {}) { [native] in
+            if let engine = native.engine { action(engine) }
+        }
+    }
+    @MainActor fileprivate func testMonitor() async throws -> Bool {
+        guard let session else { return false }
+        return try await operations.run(timeout: 1, onTimeout: {}) { [native] in native.monitor(session: session) }
+    }
+    @MainActor fileprivate func testDrain() async throws {
+        try await operations.run(timeout: 1, onTimeout: {}) {}
     }
 }
 @main struct Tests {
     @MainActor static func drain() async {
-        // Queue ordering, not wall-clock delays: scheduled handlers get an actor turn.
         for _ in 0..<20 { await Task.yield() }
     }
+    @MainActor static func expectFailure(_ fragment: String, _ action: () async throws -> Void) async {
+        do { try await action(); fatalError("Expected failure: \(fragment)") }
+        catch { precondition(error.localizedDescription.contains(fragment), "Unexpected error: \(error)") }
+    }
+    static func nativeEntered() -> Bool { TestHardware.entered.wait(timeout: .now()) == .success }
+    @MainActor static func waitForNative() async throws {
+        for _ in 0..<1000 {
+            if nativeEntered() { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        fatalError("Native operation did not enter blocking stub")
+    }
     @MainActor static func main() async throws {
-        let recorder = AudioRecorder()
         let observations = Observations()
+        let recorder = AudioRecorder()
         recorder.onBuffer = { observations.buffer($0) }
         recorder.onLevel = { observations.level($0) }
-        var errors = 0
-        recorder.onError = { _ in MainActor.assertIsolated(); errors += 1 }
         for unavailable in 0..<3 {
             TestHardware.device = unavailable == 0 ? 0 : 42
             TestHardware.channels = unavailable == 1 ? 0 : 2
             TestHardware.status = unavailable == 2 ? -1 : noErr
-            do { try recorder.start(); fatalError("Unavailable mic must throw") } catch is TalklessError {}
+            do { try await recorder.start(); fatalError("Unavailable mic must throw") } catch is TalklessError {}
+            try await recorder.testDrain()
             precondition(!recorder.isRunning && TestHardware.enginesCreated == 0)
         }
         TestHardware.device = 42; TestHardware.channels = 2; TestHardware.status = noErr
-        let listed = try AudioInputDevices.available()
-        precondition(listed.map(\.uid) == ["built-in", "usb-mic"])
-        precondition(listed.map(\.name) == ["Built-in Microphone", "USB Microphone"])
-        print("PASS pre-engine unavailable hardware checks and input-only enumeration")
-
         let reads = TestHardware.defaultReads
         TestHardware.devices = [42, 100]
-        do { try recorder.start(deviceUID: "usb-mic"); fatalError("Explicit mic cannot fall back") }
-        catch { precondition(error.localizedDescription.contains("selected microphone is unavailable")) }
-        precondition(TestHardware.enginesCreated == 0 && TestHardware.defaultReads == reads)
-        TestHardware.selectedID = 77; TestHardware.devices = [42, 77, 100]; TestHardware.device = 0
-        try recorder.start(deviceUID: "usb-mic")
-        precondition(TestAudioEngine.latest!.inputNode.actualDevice == 77)
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == format(48_000, 2))
-        TestAudioEngine.latest!.deliver()
-        precondition(!recorder.stop().isEmpty)
-        TestHardware.selectedID = 88; TestHardware.devices = [42, 88, 100]
-        try recorder.start(deviceUID: "usb-mic")
-        precondition(TestAudioEngine.latest!.inputNode.actualDevice == 88)
-        recorder.stop()
-        precondition(TestHardware.defaultReads == reads)
-        TestHardware.device = 42
-        print("PASS explicit selection without default, reconnect UID resolution, no fallback")
-
-        // Default HAL input may be a private autoaggregate rather than the physical default.
-        // Its public class is diagnostic only; even an unreadable class must not veto capture.
-        for classStatus: OSStatus in [noErr, -50] {
-            TestHardware.actualDevice = 314
-            TestHardware.aggregateClass = true
-            TestHardware.classStatus = classStatus
-            let operation = UUID()
-            let calls = TestHardware.setCalls
-            let engines = TestHardware.enginesCreated
-            try recorder.start(operationID: operation)
-            let aggregate = TestAudioEngine.latest!
-            for _ in 0..<20 {
-                TestClock.now += 0.1
-                aggregate.deliver()
-                aggregate.notify()
-                await drain()
-                precondition(recorder.testMonitor() && recorder.interruptionError == nil)
+        await expectFailure("selected microphone is unavailable") { try await recorder.start(deviceUID: "usb-mic") }
+        try await recorder.testDrain()
+        precondition(TestHardware.defaultReads == reads && TestHardware.enginesCreated == 0)
+        TestHardware.devices = [42, 99, 100]
+        let creations = TestHardware.enginesCreated, setters = TestHardware.setCalls
+        for turn in 0..<20 {
+            try await recorder.start(deviceUID: "usb-mic")
+            let before = observations.buffers
+            try await recorder.testNative { engine in
+                if turn > 0 { engine.deliver(stale: true) }
+                engine.deliver()
             }
-            precondition(recorder.duration > 1.5 && !recorder.stop().isEmpty)
-            precondition(TestHardware.setCalls == calls && TestHardware.enginesCreated == engines + 1)
-            let configuration = Diagnostics.shared.snapshot().first {
-                $0.0 == "audio_start_configuration" && $0.1["operation_id"] == operation.uuidString
-            }!.1
-            precondition(configuration["route_matches_requested"] == "true")
-            precondition(configuration["route_kind"] == (classStatus == noErr ? "aggregate" : "unknown"))
-            precondition(configuration["resolved_device_available"] == "true")
-            precondition(configuration["current_device_status"] == "0" && configuration["formats_compatible"] == "true")
+            precondition(observations.buffers == before + 1, "Stale tap from previous turn must be rejected")
+            let samples = try await recorder.stop()
+            precondition(!samples.isEmpty && samples.count < 2000, "Each utterance has isolated samples/converter")
+            precondition(samples.allSatisfy(\.isFinite))
+            precondition(AudioRecorder.wavData(from: samples).count == 44 + 2 * samples.count)
+            try await recorder.testNative { precondition(!$0.isRunning, "Idle microphone must be stopped") }
         }
-        TestHardware.classStatus = noErr
+        precondition(TestHardware.enginesCreated == creations + 1 && TestHardware.setCalls == setters + 1)
+        print("PASS 20 turns reuse one engine/one setter, stopped while idle, stale per-turn tap rejected, converter/WAV isolation")
+        recorder.cancel(); try await recorder.testDrain()
+
+        TestHardware.actualDevice = 99
+        let alreadyBound = TestHardware.setCalls
+        try await recorder.start(deviceUID: "usb-mic"); _ = try await recorder.stop()
+        precondition(TestHardware.setCalls == alreadyBound, "Already-bound explicit input must skip setter")
+        recorder.cancel(); try await recorder.testDrain()
+        TestHardware.actualDevice = nil
+        TestHardware.selectionStatus = 1852797029
+        await expectFailure("Cannot use the selected microphone") { try await recorder.start(deviceUID: "usb-mic") }
+        try await recorder.testDrain()
+        TestHardware.selectionStatus = noErr
+        print("PASS explicit no-fallback selection, preengine checks, already-bound setter skip and real nope error")
+
+        for classStatus: OSStatus in [noErr, -50] {
+            TestHardware.actualDevice = 314; TestHardware.aggregateClass = true; TestHardware.classStatus = classStatus
+            let calls = TestHardware.setCalls
+            try await recorder.start()
+            for _ in 0..<20 {
+                try await recorder.testNative { $0.deliver(); $0.notify() }
+                let monitored = try await recorder.testMonitor(); precondition(monitored)
+            }
+            let aggregateSamples = try await recorder.stop()
+            precondition(!aggregateSamples.isEmpty && TestHardware.setCalls == calls)
+            recorder.cancel(); try await recorder.testDrain()
+        }
         TestHardware.ignoresSelection = true
-        let explicitReads = TestHardware.defaultReads
-        for aggregateClass in [false, true] {
-            TestHardware.aggregateClass = aggregateClass
-            do { try recorder.start(deviceUID: "usb-mic"); fatalError("Explicit mismatch must fail regardless of route class") }
-            catch { precondition(error.localizedDescription.contains("did not switch to the selected microphone")) }
-            precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil && !recorder.isRunning)
-            precondition(TestHardware.defaultReads == explicitReads, "Never resolve default as fallback for explicit selection")
+        await expectFailure("did not switch to the selected microphone") { try await recorder.start(deviceUID: "usb-mic") }
+        try await recorder.testDrain()
+        TestHardware.ignoresSelection = false; TestHardware.actualDevice = nil
+        TestHardware.aggregateClass = false; TestHardware.classStatus = noErr
+        print("PASS sustained default aggregate, unreadable class tolerated, explicit aggregate mismatch rejected")
+
+        for test in 0..<4 {
+            if test == 0 { TestHardware.currentDeviceStatus = -50 }
+            if test == 1 { TestHardware.actualDevice = 0 }
+            if test == 2 { TestHardware.changeActualEveryRead = true }
+            if test == 3 { TestHardware.invalidFormat = true }
+            do { try await recorder.start(); fatalError("Invalid route must fail") } catch is TalklessError {}
+            try await recorder.testDrain()
+            TestHardware.currentDeviceStatus = noErr; TestHardware.actualDevice = nil
+            TestHardware.changeActualEveryRead = false; TestHardware.invalidFormat = false
         }
-        TestHardware.ignoresSelection = false
-        TestHardware.actualDevice = nil
-        TestHardware.aggregateClass = false
-        print("PASS stable default autoaggregate sustained buffers, class-read failure tolerated, explicit aggregate mismatch rejected")
-
-        TestHardware.currentDeviceStatus = -50
-        do { try recorder.start(); fatalError("Unreadable route must fail") }
-        catch { precondition(error.localizedDescription.contains("Cannot read the microphone audio input")) }
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
-        TestHardware.currentDeviceStatus = noErr
-        TestHardware.actualDevice = 0
-        do { try recorder.start(); fatalError("Unknown actual route must fail") }
-        catch { precondition(error.localizedDescription.contains("Cannot read the microphone audio input")) }
-        TestHardware.actualDevice = 314
-        TestHardware.changeActualEveryRead = true
-        do { try recorder.start(); fatalError("An unstable aggregate baseline must fail") }
-        catch { precondition(error.localizedDescription.contains("configuration changed while recording was starting")) }
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil && !recorder.isRunning)
-        TestHardware.changeActualEveryRead = false
-        TestHardware.currentDeviceReads = 0
-        TestHardware.changeActualOnRead = 2
-        try recorder.start() // A new actual ID is allowed only after two matching snapshots.
-        precondition(TestHardware.currentDeviceReads >= 5)
-        TestAudioEngine.latest!.deliver()
-        precondition(!recorder.stop().isEmpty)
-        TestHardware.currentDeviceReads = 0
-        TestHardware.changeActualOnRead = 3
-        do { try recorder.start(); fatalError("Actual route change at final preinstall check must fail") }
-        catch { precondition(error.localizedDescription.contains("configuration changed while recording was starting")) }
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
-        TestHardware.actualDevice = nil
-        TestHardware.changeActualOnRead = 0
-        print("PASS unreadable/unknown route distinguished, stable actual baseline required including final preinstall check")
-
-        TestHardware.selectionStatus = -50
-        do { try recorder.start(deviceUID: "usb-mic"); fatalError("Selection should fail") }
-        catch { precondition(error.localizedDescription.contains("Core Audio error -50")) }
-        TestHardware.selectionStatus = noErr; TestHardware.hasAudioUnit = false
-        do { try recorder.start(); fatalError("Missing unit should fail") } catch is TalklessError {}
-        TestHardware.hasAudioUnit = true; TestHardware.invalidFormat = true
-        do { try recorder.start(); fatalError("Invalid format should fail") }
-        catch { precondition(error.localizedDescription.contains("audio format is not ready")) }
-        TestHardware.invalidFormat = false
-        TestHardware.plans = [.init(throwsOnStart: true)]
-        do { try recorder.start(); fatalError("Engine start should fail") } catch is TalklessError {}
-        precondition(!recorder.isRunning)
-        print("PASS selection, missing unit, invalid format and engine start failures clean up")
+        TestHardware.plans = [.init(startNotification: true, stoppedAfterStart: true), .init()]
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver() }
+        _ = try await recorder.stop()
+        recorder.cancel(); try await recorder.testDrain()
+        TestHardware.plans = [.init(stoppedAfterStart: true), .init(stoppedAfterStart: true)]
+        let bounded = TestHardware.enginesCreated
+        do { try await recorder.start(); fatalError("Recovery must be bounded") } catch is TalklessError {}
+        try await recorder.testDrain()
+        precondition(TestHardware.enginesCreated == bounded + 2)
+        print("PASS invalid/unreadable/unstable formats/routes fail, startup recovery is strictly bounded")
 
         TestHardware.mismatchedFormat = true
-        TestHardware.actualDevice = 314
-        do { try recorder.start(); fatalError("Default aggregate cannot convert mismatched hardware/client formats") }
-        catch { precondition(error.localizedDescription.contains("audio format is not ready")) }
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == nil)
-        TestHardware.actualDevice = nil
+        await expectFailure("audio format is not ready") { try await recorder.start() }
+        try await recorder.testDrain()
+        try await recorder.start(deviceUID: "usb-mic")
+        try await recorder.testNative { engine in
+            engine.deliver()
+            engine.inputNode.output = format(48_000, 2)
+            engine.notify()
+        }
+        let explicitNegotiated = try await recorder.testMonitor()
+        precondition(explicitNegotiated)
+        _ = try await recorder.stop()
+        recorder.cancel(); try await recorder.testDrain()
         TestHardware.mismatchedFormat = false
         TestHardware.changeOutputOnRead = 2
-        try recorder.start()
-        precondition(TestAudioEngine.latest!.inputNode.installedFormat == format(44_100, 1))
-        recorder.stop()
-        TestHardware.changeOutputOnRead = 3 // Changes after coherent snapshot, during final preinstall check.
-        do { try recorder.start(); fatalError("Do not install a stale pre-negotiation tap format") }
-        catch is TalklessError {}
-        precondition(!recorder.isRunning && TestAudioEngine.latest!.inputNode.installedFormat == nil)
+        try await recorder.start()
+        try await recorder.testNative { precondition($0.inputNode.installedFormat == format(44_100, 1)) }
+        _ = try await recorder.stop()
+        recorder.cancel(); try await recorder.testDrain()
+        TestHardware.changeOutputOnRead = 3
+        do { try await recorder.start(); fatalError("Stale preinstall format must fail") } catch is TalklessError {}
+        try await recorder.testDrain()
         TestHardware.changeOutputOnRead = 0
-        print("PASS hardware/client compatibility, bounded format reacquisition, stale preinstall format rejected")
+        print("PASS coherent negotiated converter format, explicit stale client format tolerated, preinstall race rejected")
 
-        let calls = TestHardware.setCalls
-        let beforeBuffers = observations.buffers
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver() }
+        TestHardware.notifyBeforeFreeze = true
+        let healthyRaceSamples = try await recorder.stop()
+        precondition(!healthyRaceSamples.isEmpty && recorder.interruptionError == nil)
+        recorder.cancel(); try await recorder.testDrain()
         TestHardware.plans = [.init(prepareNotification: true, startNotification: true, deliverDuringStart: true)]
-        try recorder.start()
-        let defaultEngine = TestAudioEngine.latest!
-        precondition(TestHardware.setCalls == calls, "Default must never set CurrentDevice")
-        precondition(defaultEngine.inputNode.installedFormat == defaultEngine.inputNode.output, "Preserve default outputFormat")
-        await drain()
-        precondition(recorder.isRunning && recorder.interruptionError == nil && errors == 0)
-        defaultEngine.notify()
-        defaultEngine.deliver() // No lost audio while healthy notification awaits main validation.
-        await drain()
-        defaultEngine.deliver()
-        precondition(observations.buffers == beforeBuffers + 3)
-        let samples = recorder.stop()
-        precondition(!samples.isEmpty && samples.allSatisfy(\.isFinite))
-        precondition(AudioRecorder.wavData(from: samples).count == 44 + samples.count * 2)
-        print("PASS prepare/start notifications, healthy running notification, no default pinning, real resampling/WAV")
+        try await recorder.start()
+        let notifiedSamples = try await recorder.stop()
+        precondition(!notifiedSamples.isEmpty && recorder.interruptionError == nil)
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS harmless prepare/start/final-freeze notifications do not discard valid audio")
 
-        let count = TestHardware.enginesCreated
-        TestHardware.plans = [.init(startNotification: true, stoppedAfterStart: true), .init(startNotification: true)]
-        try recorder.start()
-        precondition(TestHardware.enginesCreated == count + 2)
-        TestAudioEngine.latest!.deliver()
-        precondition(!recorder.stop().isEmpty)
-        TestHardware.plans = [.init(startNotification: true, changeFormatAtStart: true), .init()]
-        try recorder.start()
-        precondition(recorder.isRunning)
-        recorder.stop()
-        let bounded = TestHardware.enginesCreated
-        TestHardware.plans = [.init(startNotification: true, stoppedAfterStart: true), .init(startNotification: true, stoppedAfterStart: true)]
-        do { try recorder.start(); fatalError("Recovery must be bounded") } catch is TalklessError {}
-        precondition(TestHardware.enginesCreated == bounded + 2 && !recorder.isRunning)
-        print("PASS stopped/changed startup recovery before audio and strict one-retry bound")
-
-        TestHardware.mismatchedFormat = true // Explicit selection may initially expose stale client output.
-        try recorder.start(deviceUID: "usb-mic")
-        TestHardware.mismatchedFormat = false
-        let explicit = TestAudioEngine.latest!
-        explicit.deliver()
-        explicit.inputNode.output = format(48_000, 2) // Cached client format catches up with selected hardware.
-        explicit.notify()
-        await drain()
-        precondition(recorder.isRunning && recorder.interruptionError == nil)
-        precondition(!recorder.stop().isEmpty)
-        print("PASS explicit client output negotiation does not falsely interrupt unchanged tap/hardware")
-
-        try recorder.start()
-        let beforeRecovery = TestAudioEngine.latest!
-        beforeRecovery.isRunning = false
-        beforeRecovery.notify()
-        await drain()
-        let afterRecovery = TestAudioEngine.latest!
-        precondition(beforeRecovery !== afterRecovery && recorder.isRunning)
-        let deliveredBeforeStale = observations.buffers
-        beforeRecovery.deliver(stale: true)
-        precondition(observations.buffers == deliveredBeforeStale, "Old attempt tap cannot use replacement converter")
-        afterRecovery.deliver()
-        precondition(!recorder.stop().isEmpty)
-        print("PASS asynchronous zero-audio recovery and same-session stale attempt tap rejection")
-
-        // A real interruption after ANY delivered audio cannot restart or preserve partial data.
-        // Exercise both a direct default and the private-aggregate default baseline.
-        for actual in [nil, AudioDeviceID(314)] {
-            TestHardware.actualDevice = actual
-            TestHardware.aggregateClass = actual != nil
-            for kind in 0..<5 {
-                try recorder.start(deviceUID: kind == 3 ? "usb-mic" : nil)
-                let engine = TestAudioEngine.latest!
+        for kind in 0..<5 {
+            try await recorder.start()
+            try await recorder.testNative { engine in
                 engine.deliver()
-                let engines = TestHardware.enginesCreated
                 switch kind {
                 case 0: engine.inputNode.output = format(32_000, 1)
                 case 1: TestHardware.device = 77
                 case 2: engine.isRunning = false
-                case 3: TestHardware.devices = [42, 100]
-                default: engine.inputNode.actualDevice = 77 // Actual route changed despite same system default.
+                case 3: engine.inputNode.actualDevice = 77
+                default: engine.deliver(wrongFormat: true)
                 }
                 engine.notify()
-                // Deliberately finish before queued validation. Must discard samples and
-                // retain interruptionError; queued work must not resurrect recording.
-                precondition(recorder.stop().isEmpty && recorder.interruptionError != nil)
-                await drain()
-                precondition(!recorder.isRunning && TestHardware.enginesCreated == engines)
-                TestHardware.device = 42; TestHardware.devices = [42, 88, 100]
             }
+            await expectFailure("interrupted") { _ = try await recorder.stop() }
+            try await recorder.testDrain()
+            precondition(recorder.duration == 0 && !recorder.isRunning)
+            TestHardware.device = 42
         }
-        TestHardware.actualDevice = nil
-        TestHardware.aggregateClass = false
-        print("PASS direct/aggregate format/default/actual-device/disconnect/stopped interruptions caught at stop before queued handler")
+        print("PASS finalization validates route/format/device/stopped/conversion before returning partial transcript samples")
 
-        try recorder.start()
-        let interrupted = TestAudioEngine.latest!
-        interrupted.deliver(); interrupted.isRunning = false; interrupted.notify()
-        let previousErrors = errors
+        var errors = 0
+        recorder.onError = { _ in MainActor.assertIsolated(); errors += 1 }
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver(); $0.isRunning = false; $0.notify() }
+        let monitored = try await recorder.testMonitor(); precondition(!monitored)
         await drain()
-        precondition(errors == previousErrors + 1 && recorder.interruptionError != nil)
-        precondition(recorder.duration == 0 && !recorder.isRunning)
-        interrupted.notify()
-        await drain()
-        precondition(errors == previousErrors + 1)
-        try recorder.start()
-        let current = TestAudioEngine.latest!
-        let oldCount = observations.buffers
-        interrupted.notify(); interrupted.deliver(stale: true)
-        await drain()
-        precondition(recorder.isRunning && observations.buffers == oldCount)
-        current.deliver()
-        precondition(observations.buffers == oldCount + 1)
-        current.isRunning = false; current.notify()
-        recorder.stop()
-        try recorder.start()
-        await drain()
-        precondition(recorder.isRunning && recorder.interruptionError == nil && errors == previousErrors + 1)
-        recorder.stop()
-        print("PASS one-shot main-actor error, stale notification/tap/deferred teardown session protection")
-
-        try recorder.start()
-        let wrong = TestAudioEngine.latest!
-        wrong.deliver(); wrong.deliver(wrongFormat: true)
-        precondition(recorder.stop().isEmpty && recorder.interruptionError != nil)
-        print("PASS incompatible tap buffers rejected before AVAudioConverter and partial samples discarded")
-
-        try recorder.start()
-        let stoppedSilently = TestAudioEngine.latest!
-        stoppedSilently.deliver(); stoppedSilently.isRunning = false
-        precondition(!recorder.testMonitor() && recorder.interruptionError != nil)
-        precondition(recorder.stop().isEmpty)
-        try recorder.start()
-        let firstFormat = TestAudioEngine.latest!
-        firstFormat.deliver(wrongFormat: true)
-        precondition(recorder.testMonitor() && TestAudioEngine.latest! !== firstFormat)
-        TestAudioEngine.latest!.deliver()
-        precondition(!recorder.stop().isEmpty)
-        print("PASS engine stop without notification and initial incompatible-buffer recovery")
-
-        try recorder.start()
-        let late = TestAudioEngine.latest!
+        precondition(errors == 1)
+        recorder.cancel(); try await recorder.testDrain()
+        try await recorder.start()
         TestClock.now += 3.01
-        late.isRunning = false
-        precondition(recorder.testMonitor(), "Late recovery must get a fresh first-buffer deadline")
-        precondition(TestAudioEngine.latest! !== late && recorder.interruptionError == nil)
-        TestClock.now += 2.99
-        precondition(recorder.testMonitor())
-        TestClock.now += 0.02
-        precondition(!recorder.testMonitor() && recorder.interruptionError != nil)
-        print("PASS late zero-audio recovery receives its own bounded first-buffer deadline")
-
-        TestHardware.plans = [.init(startupSeconds: 4)]
-        try recorder.start()
-        precondition(recorder.testMonitor(), "Slow native start must not consume first-buffer allowance")
-        TestClock.now += 2.99
-        precondition(recorder.testMonitor())
-        TestAudioEngine.latest!.deliver()
-        precondition(!recorder.stop().isEmpty)
-        print("PASS first-buffer deadline begins after successful native startup")
-
-        let operation = UUID()
-        try recorder.start(operationID: operation)
-        TestClock.now += 2.99
-        precondition(recorder.testMonitor())
-        TestClock.now += 0.02
-        precondition(!recorder.testMonitor() && !recorder.isRunning)
+        let noAudioMonitored = try await recorder.testMonitor(); precondition(!noAudioMonitored)
+        await drain()
         precondition(recorder.interruptionError!.contains("did not deliver audio"))
-        try recorder.start()
-        TestAudioEngine.latest!.deliver(silent: true)
+        recorder.cancel(); try await recorder.testDrain()
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver(silent: true) }
         TestClock.now += 10
-        precondition(recorder.testMonitor() && recorder.interruptionError == nil, "Silence PCM is still audio")
-        recorder.stop()
-        print("PASS deterministic initial no-buffer timeout and silent PCM stays healthy")
+        let silentMonitored = try await recorder.testMonitor(); precondition(silentMonitored)
+        _ = try await recorder.stop()
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS one-shot MainActor error, bounded no-buffer watchdog, silent PCM accepted")
 
-        // Recovery scheduled by notification must be cancelled by an immediate user stop,
-        // even when zero buffers were delivered and restarting would otherwise be allowed.
-        try recorder.start()
-        let pending = TestAudioEngine.latest!
-        pending.isRunning = false; pending.notify()
-        let total = TestHardware.enginesCreated
-        precondition(recorder.stop().isEmpty && recorder.interruptionError != nil)
-        await drain()
-        precondition(!recorder.isRunning && TestHardware.enginesCreated == total)
-        try recorder.start()
-        recorder.stop() // Stub emits its own notification during normal teardown.
-        precondition(recorder.interruptionError == nil)
-        print("PASS stop cancels pending recovery and normal teardown notifications are harmless")
+        try await recorder.start()
+        try await recorder.testNative { $0.isRunning = false; $0.notify() }
+        TestHardware.plans = [.init(deliverDuringStart: true)]
+        TestHardware.block = "init"
+        let recovering = Task { @MainActor in try await recorder.testMonitor() }
+        try await waitForNative() // Recovery decision was made before finalization.
+        let beforeFinish = observations.buffers
+        recorder.testBeginFinalization()
+        TestHardware.block = nil; TestHardware.release.signal()
+        _ = try await recovering.value
+        precondition(observations.buffers == beforeFinish && recorder.duration == 0,
+                     "Already-running recovery must not reopen capture after finalization")
+        let finishedDuringRecovery = try await recorder.stop()
+        precondition(finishedDuringRecovery.isEmpty)
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS finalization racing already-running recovery never admits post-finish audio")
 
-        try recorder.start()
-        TestAudioEngine.latest!.deliver()
-        TestHardware.notifyBeforeFreeze = true
-        precondition(!recorder.stop().isEmpty && recorder.interruptionError == nil,
-                     "Healthy notification between assessment and final lock must be revalidated")
-        await drain()
-        precondition(!recorder.isRunning)
-        print("PASS harmless notification racing stop's final freeze is revalidated, not discarded")
+        // A HAL call is intentionally blocked; the MainActor must keep scheduling
+        // heartbeats, cancellation must resolve immediately, and timeout must poison
+        // the SAME serial worker even though the native call cannot be interrupted.
+        for stage in ["inputNode", "start", "stop"] {
+            let hung = AudioRecorder()
+            if stage == "stop" { try await hung.start() }
+            TestHardware.block = stage
+            let pending = Task { @MainActor in
+                if stage == "stop" { _ = try await hung.stop() }
+                else { try await hung.start() }
+            }
+            try await waitForNative()
+            var heartbeat = 0
+            for _ in 0..<10 { await Task.yield(); heartbeat += 1 }
+            precondition(heartbeat == 10, "MainActor heartbeat blocked by HAL")
+            await expectFailure("Quit and reopen Talkless") { try await pending.value }
+            let total = TestHardware.enginesCreated
+            await expectFailure("Quit and reopen Talkless") { try await hung.start() }
+            precondition(TestHardware.enginesCreated == total)
+            TestHardware.block = nil; TestHardware.release.signal()
+            await drain()
+        }
+        print("PASS inputNode/start/stop hangs time out independently, UI heartbeat runs, poisoned worker cannot restart")
+
+        for stage in ["inputNode", "start", "stop"] {
+            let cancelled = AudioRecorder()
+            if stage == "stop" { try await cancelled.start() }
+            TestHardware.block = stage
+            let pending = Task { @MainActor in
+                if stage == "stop" { _ = try await cancelled.stop() }
+                else { try await cancelled.start() }
+            }
+            try await waitForNative()
+            cancelled.cancel()
+            do { try await pending.value; fatalError("Cancel must throw immediately") } catch is CancellationError {}
+            precondition(!cancelled.isRunning)
+            TestHardware.block = nil; TestHardware.release.signal()
+            try await cancelled.testDrain()
+            try await cancelled.start()
+            try await cancelled.testNative { $0.deliver() }
+            let recoveredSamples = try await cancelled.stop(); precondition(!recoveredSamples.isEmpty)
+            cancelled.cancel(); try await cancelled.testDrain()
+        }
+        print("PASS immediate cancellation during blocked inputNode/start/stop; eventual cleanup and healthy restart on same worker")
+
+        for stage in ["inputNode", "start", "stop"] {
+            let rapid = AudioRecorder()
+            if stage == "stop" { try await rapid.start() }
+            TestHardware.block = stage
+            let old = Task { @MainActor in
+                if stage == "stop" { _ = try await rapid.stop() }
+                else { try await rapid.start() }
+            }
+            try await waitForNative()
+            rapid.cancel()
+            let new = Task { @MainActor in try await rapid.start(deviceUID: "usb-mic") }
+            await drain() // Reserve the new generation BEFORE old native work returns.
+            old.cancel() // Its late task cancellation must not invalidate the new session.
+            TestHardware.block = nil; TestHardware.release.signal()
+            do { try await old.value; fatalError("Old generation must be cancelled") } catch is CancellationError {}
+            try await new.value
+            precondition(rapid.isRunning && rapid.interruptionError == nil)
+            try await rapid.testNative { $0.deliver(stale: true); $0.deliver() }
+            let freshSamples = try await rapid.stop()
+            precondition(!freshSamples.isEmpty && freshSamples.count < 2000)
+            rapid.cancel(); try await rapid.testDrain()
+        }
+        print("PASS immediate cancel-to-new-start survives late old task cancellation and native completion")
+
+        var disposable: AudioRecorder? = AudioRecorder()
+        try await disposable!.start()
+        _ = try await disposable!.stop()
+        let destroyed = TestHardware.enginesDestroyed
+        weak let weakRecorder = disposable
+        disposable = nil
+        for _ in 0..<100 {
+            if TestHardware.enginesDestroyed > destroyed { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        precondition(weakRecorder == nil && TestHardware.enginesDestroyed > destroyed)
+        print("PASS dropping recorder schedules native teardown/destruction off MainActor")
+
+        let stuck = AudioRecorder()
+        TestHardware.block = "start"
+        let pending = Task { @MainActor in try await stuck.start() }
+        try await waitForNative()
+        pending.cancel()
+        do { try await pending.value; fatalError("Task cancellation must resolve") } catch is CancellationError {}
+        try await Task.sleep(for: .milliseconds(300))
+        await expectFailure("Quit and reopen Talkless") { try await stuck.start() }
+        TestHardware.block = nil; TestHardware.release.signal()
+        print("PASS cancelled-but-still-hung native operation keeps deadline and poisons recorder")
 
         let logs = Diagnostics.shared.snapshot()
         for event in ["audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
                       "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
-                      "audio_interruption", "audio_recovery"] {
-            precondition(logs.contains { $0.0 == event }, "Missing diagnostic event \(event)")
+                      "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused"] {
+            precondition(logs.contains { $0.0 == event }, "Missing event \(event)")
         }
-        precondition(logs.contains { $0.1["operation_id"] == operation.uuidString && $0.1["reason"] == "no_audio_timeout" })
-        precondition(logs.contains { $0.1["device_changed"] == "true" })
-        precondition(logs.contains { $0.1["selected_device_changed"] == "true" && $0.1["actual_device_changed"] == "false" })
-        precondition(logs.contains { $0.1["actual_device_changed"] == "true" && $0.1["selected_device_changed"] == "false" })
-        precondition(logs.contains { $0.1["reason"] == "device_unavailable" && $0.1["resolved_device_available"] == "false" })
-        precondition(logs.contains { $0.1["reason"] == "route_mismatch" && $0.1["route_matches_requested"] == "false" })
-        precondition(logs.contains { $0.1["reason"] == "route_unavailable" && $0.1["current_device_status"] == "-50" })
-        precondition(logs.contains { $0.1["reason"] == "invalid_format" && $0.1["formats_compatible"] == "false" })
-        precondition(logs.contains { $0.1["reason"] == "configuration_race" })
-        precondition(logs.contains { $0.1["format_changed"] == "true" })
-        precondition(logs.contains { $0.0 == "audio_first_buffer" && $0.1["first_buffer_ms"] != nil })
         for (_, fields) in logs {
             precondition(UUID(uuidString: fields["operation_id"]!) != nil)
-            precondition(fields["elapsed_ms"] != nil && fields["attempt"] != nil)
             precondition(!fields.values.contains { $0.contains("usb-mic") || $0.contains("Built-in") || $0.contains("Microphone") })
         }
-        print("PASS diagnostics correlation/timing/formats/device booleans/summary, no identifying content or callback logging")
+        print("PASS privacy-safe diagnostics, no HAL/engine work on main, no diagnostics on realtime callback")
     }
 }
 '''
@@ -617,38 +593,24 @@ def run(*args):
     subprocess.run(args, check=True, env=ENV)
 
 
-def tap_sil(source, directory, name):
-    swift = directory / (name + ".swift")
-    sil = directory / (name + ".sil")
-    swift.write_text(source)
-    run("xcrun", "swiftc", "-swift-version", "6", "-O", "-emit-sil", str(swift), "-o", str(sil))
-    text = sil.read_text()
-    matches = re.findall(r"^// closure #\d+ in AudioRecorder\.installAndStart\(session:\)\n.*?^} // end sil function[^\n]*", text, re.M | re.S)
-    taps = [body for body in matches if "AVAudioPCMBuffer" in body.split("\nbb0(", 1)[0]]
-    assert len(taps) == 1, "Could not identify production audio tap in compiler SIL"
-    return taps[0]
-
-
 ENV = os.environ.copy()
 ENV.setdefault("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer")
 ENV["SDKROOT"] = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], env=ENV, text=True).strip()
 with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
     directory = Path(work)
-    source = SOURCE.read_text() + "\n" + DEVICES.read_text() + STUBS
-    current = tap_sil(source, directory, "current")
-    assert "// Isolation: nonisolated" in current
-    assert "swift_task_isCurrentExecutor" not in current
-    assert "swift_task_reportUnexpectedExecutor" not in current
+    source = SOURCE.read_text() + "\n" + OPERATIONS.read_text() + "\n" + DEVICES.read_text() + STUBS
+    # Typecheck the unmodified production native APIs separately from stubbed runtime.
+    production = directory / "production.swift"
+    production.write_text(source.replace('precondition(!TestContext.inCallback, "No diagnostics on the realtime audio callback")', ''))
+    run("xcrun", "swiftc", "-swift-version", "6", "-typecheck", str(production))
+    sil = directory / "production.sil"
+    run("xcrun", "swiftc", "-swift-version", "6", "-O", "-emit-sil", str(production), "-o", str(sil))
+    closures = re.findall(r"^// closure #\d+ in NativeAudioRecorder\.installAndStart\(session:\)\n.*?^} // end sil function[^\n]*", sil.read_text(), re.M | re.S)
+    taps = [body for body in closures if "AVAudioPCMBuffer" in body.split("\nbb0(", 1)[0]]
+    assert len(taps) == 1 and "// Isolation: nonisolated" in taps[0]
+    assert "swift_task_isCurrentExecutor" not in taps[0]
+    assert "swift_task_reportUnexpectedExecutor" not in taps[0]
     print("PASS production tap has no MainActor executor assertion", flush=True)
-    original = source.replace("{ @Sendable [weak self] buffer, _ in", "{ [weak self] buffer, _ in")
-    assert original != source
-    baseline = tap_sil(original, directory, "baseline")
-    assert "// Isolation: global_actor. type: MainActor" in baseline
-    assert "swift_task_isCurrentExecutor" in baseline
-    assert "swift_task_reportUnexpectedExecutor" in baseline
-    print("PASS negative control detects original main-actor tap assertion", flush=True)
-
-    runtime = directory / "runtime.swift"
     stubbed = re.sub(r"\bAVAudioEngine\b", "TestAudioEngine", source)
     for native, test in [("AudioObjectGetPropertyDataSize", "TestGetPropertyDataSize"),
                          ("AudioObjectGetPropertyData", "TestGetPropertyData"),
@@ -656,7 +618,8 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
                          ("AudioUnitGetProperty", "TestGetProperty")]:
         stubbed = stubbed.replace(native, test)
     stubbed = stubbed.replace("ProcessInfo.processInfo.systemUptime", "TestClock.now")
-    # Inject exactly between stop's snapshot and final freeze; no sleeps or live driver race.
+    # Same independent timer path, shortened only for deterministic blocked-HAL tests.
+    stubbed = stubbed.replace(".now() + seconds", ".now() + min(seconds, 0.2)")
     freeze = "                    let result = lock.withLock { () -> (Bool, String?) in"
     assert freeze in stubbed
     stubbed = stubbed.replace(freeze, """                    if TestHardware.notifyBeforeFreeze {
@@ -664,6 +627,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
                         TestAudioEngine.latest!.notify()
                     }
 """ + freeze)
+    runtime = directory / "runtime.swift"
     runtime.write_text(stubbed + HARNESS)
     executable = directory / "audio-tests"
     run("xcrun", "swiftc", "-swift-version", "6", "-O", "-parse-as-library", str(runtime), "-o", str(executable))

@@ -106,6 +106,8 @@ struct HistoryEntry {
     }
 }
 @MainActor final class FlowHarness {
+    enum State { case idle, recording, processing }
+    var state: State = .idle
     let settings = FakeSettings()
     let hud = FakeHUD()
     let history = FakeHistory()
@@ -132,6 +134,18 @@ TESTS = r'''
         // No real settings, clipboard, application activation, provider, or network is touched.
         let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
         localization.interfaceLanguage = .english
+        for activeState in [FlowHarness.State.recording, .processing] {
+            let active = FlowHarness()
+            active.state = activeState
+            active.settings.llmConfigured = false
+            await active.translateSelection()
+            precondition(active.hud.errors.isEmpty, "Translation setup errors must not replace an active dictation HUD")
+            active.settings.llmConfigured = true
+            TextIO.selection = ""
+            await active.translateSelection()
+            precondition(active.hud.errors.isEmpty, "Missing selection must not dismiss the active transcript")
+        }
+        TextIO.selection = "The original selected sentence."
         let flow = FlowHarness()
         precondition(LLMClient.requests.isEmpty, "Constructing UI/settings never translates")
         flow.settings.llmConfigured = false

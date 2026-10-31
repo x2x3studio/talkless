@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef4f8">
+  <meta name="description" content="Speak, and your words appear where you type. Talkless is a quiet, local-first voice input app for Apple Silicon Macs. Download the beta and explore the code on GitHub.">
+  <meta property="og:title" content="Talkless — Your voice. Right where you type.">
+  <meta property="og:description" content="A little less typing. A little more you. Local-first voice input for macOS, with optional AI using your own keys.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://typeless.x2x3.com/">
+  <meta name="color-scheme" content="light">
+  <link rel="canonical" href="https://typeless.x2x3.com/">
+  <link rel="icon" href="/assets/pip.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+  <title>Talkless — Your voice. Right where you type.</title>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/" data-site-link aria-label="Talkless home"><img src="/assets/pip.svg" alt="" width="37" height="37"><span>Talkless</span></a>
+    <nav class="main-nav" aria-label="Main navigation" data-i18n-aria="nav.label">
+      <a href="/guide" data-site-link data-i18n="footer.guide">How it works</a>
+      <a href="/privacy" data-site-link data-i18n="nav.privacy">Privacy</a>
+      <a href="https://github.com/x2x3studio/talkless" class="source-link">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+    <div class="language-switch" role="group" aria-label="Website language" data-i18n-aria="language.label">
+      <button type="button" data-locale="en" aria-pressed="true" lang="en">EN</button>
+      <span aria-hidden="true">/</span>
+      <button type="button" data-locale="zh-Hans" aria-pressed="false" lang="zh-Hans" aria-label="Simplified Chinese">&#x7B80;&#x4F53;</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <a class="release-badge" href="/updates" data-site-link data-release-notes><span class="status-dot" aria-hidden="true"></span><span data-i18n="hero.badge">A small app. A fresh beta.</span><span aria-hidden="true">↗</span></a>
+        <h1 id="hero-title"><span data-i18n="hero.line1">Your voice.</span><span data-i18n="hero.line2">Right where</span><span class="accent-line" data-i18n="hero.line3">you type.</span></h1>
+        <p class="hero-description" data-i18n="hero.description">A thought, a message, a whole first draft. Just say it. Talkless puts your words into the Mac app you're already using.</p>
+        <a class="button button-primary download-link" href="/download"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5"/></svg><span data-i18n="download.label">Download for Mac</span><span class="button-tag">Beta</span></a>
+        <p class="download-requirements" data-i18n="download.requirements">Apple Silicon · macOS 26+ · Source available</p>
+      </div>
+
+      <div class="demo" aria-label="Simulated Talkless dictation demo" data-i18n-aria="demo.label">
+        <div class="desk-label"><span class="tiny-rule" aria-hidden="true"></span><span data-i18n="demo.desk">A little space to think out loud</span></div>
+        <div class="note-window">
+          <div class="window-toolbar"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span data-i18n="demo.app">A new note</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5v14h14v-3M11 13l2-5 6-6 3 3-6 6-5 2Z"/></svg></div>
+          <div class="note-content">
+            <p class="note-date" data-i18n="demo.date">MONDAY, A FRESH START</p>
+            <h2 data-i18n="demo.title">Less busywork.<br>More good ideas.</h2>
+            <p class="note-intro" data-i18n="demo.intro">A thought for the next version:</p>
+            <div id="demo-output" class="note-output" role="textbox" aria-multiline="true" aria-label="Editable demo note" data-i18n-aria="demo.editable" contenteditable="plaintext-only" spellcheck="false"><span class="note-placeholder" data-i18n="demo.placeholder">Your next thought goes here.</span></div>
+          </div>
+          <div class="note-footer"><span data-i18n="demo.noteFooter">Your words, in your own space.</span><span aria-hidden="true">↵</span></div>
+        </div>
+        <div class="dictation-pill" id="dictation-pill" data-state="idle" aria-hidden="true">
+          <img src="/assets/pip.svg" width="32" height="32" alt="">
+          <p id="demo-transcript" data-i18n="demo.idle">A good idea starts with your voice.</p>
+          <span class="pill-state" aria-hidden="true"></span>
+        </div>
+        <div class="demo-bottom">
+          <button id="play-demo" class="demo-trigger" type="button" disabled><span class="keycap" aria-hidden="true">fn<span>⌁</span></span><span><strong data-i18n="demo.play">Try a little dictation</strong><small data-i18n="demo.playHint">Click to play the demo <span aria-hidden="true">↗</span></small></span></button>
+          <p class="demo-disclaimer" data-i18n="demo.disclaimer">Simulated, not a recording.<br>No microphone access.</p>
+        </div>
+        <p id="demo-announcement" class="sr-only" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <div class="quiet-strip wrap"><span data-i18n="strip.intro">Made for the moment you have something to say.</span><div><span data-i18n="strip.notes">Notes</span><span aria-hidden="true">·</span><span data-i18n="strip.messages">Messages</span><span aria-hidden="true">·</span><span data-i18n="strip.mail">Mail</span><span aria-hidden="true">·</span><span data-i18n="strip.documents">Documents</span></div></div>
+
+    <section class="how-section wrap section-space" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-heading"><p class="eyebrow" data-i18n="how.eyebrow">LESS BETWEEN YOU AND YOUR WORDS</p><h2 id="how-title" data-i18n="how.title">Keep your train of thought.<br>Lose the typing.</h2><p data-i18n="how.description">No new editor. No copy-and-paste routine. Just a quiet little app in your menu bar, ready when you are.</p></div>
+      <div class="steps">
+        <article class="step"><div class="step-art cursor-art" aria-hidden="true"><span class="text-field">Aa<span class="static-caret"></span></span><svg viewBox="0 0 30 38"><path d="m4 3 21 21-10 1-5 9Z"/></svg></div><span class="step-number">1</span><h3 data-i18n="how.step1.title">Put your cursor down.</h3><p data-i18n="how.step1.body">Click into a text field in the app you're using. Stay right there.</p></article>
+        <article class="step"><div class="step-art" aria-hidden="true"><span class="large-key">fn<small>⌁</small></span><span class="key-caption" data-i18n="how.defaultKey">YOUR KEY, YOUR CALL</span></div><span class="step-number">2</span><h3 data-i18n="how.step2.title">Hold. Speak. Let go.</h3><p data-i18n="how.step2.body">Hold Fn to talk and release to finish. Prefer a tap? Switch to tap-to-toggle or choose another key.</p></article>
+        <article class="step"><div class="step-art words-art" aria-hidden="true"><span data-i18n="how.sample1">One good idea,</span><span data-i18n="how.sample2">ready to go.</span><span class="words-check">✓</span></div><span class="step-number">3</span><h3 data-i18n="how.step3.title">And there's your thought.</h3><p data-i18n="how.step3.body">See a live preview with local recognition. Your finished words appear at the current cursor.</p></article>
+      </div>
+      <p class="shortcut-note"><kbd>fn</kbd><span data-i18n="how.shortcutNote">is the default, not a requirement. Make the shortcuts your own.</span><a href="/guide#shortcuts" data-site-link data-i18n="how.guide">Meet the controls →</a></p>
+    </section>
+
+    <section class="extras-section wrap section-space" aria-labelledby="extras-title">
+      <div class="section-heading compact"><p class="eyebrow" data-i18n="extras.eyebrow">A LITTLE HELP, WHEN YOU WANT IT</p><h2 id="extras-title" data-i18n="extras.title">Still your words.<br>Just a little more considered.</h2></div>
+      <div class="feature-grid">
+        <article class="feature-card ai-card">
+          <div class="feature-visual polish-visual"><div class="visual-label"><span class="mini-spark" aria-hidden="true">✧</span><span data-i18n="ai.exampleLabel">AN OPTIONAL SECOND PASS</span></div><p class="rough-text" data-i18n="ai.before">so um let's keep the next version simple just the things that matter</p><span class="edit-arrow" aria-hidden="true">↓</span><p class="clean-text" data-i18n="ai.after">Let's keep the next version simple. Just the things that matter.</p><div class="choice-tags"><span data-i18n="ai.use">Use AI polishing</span><span data-i18n="ai.skip">Skip AI polishing</span></div></div>
+          <div class="feature-copy"><p class="eyebrow" data-i18n="ai.tag">OPTIONAL AI · YOUR OWN KEYS</p><h3 data-i18n="ai.title">A polish, not a takeover.</h3><p data-i18n="ai.body">Keep the original, or ask AI to tidy it up. Polishing is off by default. Use or skip it for one input without changing your default.</p><p class="feature-footnote" data-i18n="ai.note">Selected-text translation and voice editing are here too. AI requests send the needed text to your chosen provider; provider charges may apply.</p></div>
+        </article>
+        <article class="feature-card dictionary-card">
+          <div class="feature-visual dictionary-visual"><div class="visual-label"><span class="dictionary-symbol" aria-hidden="true">Aa</span><span data-i18n="dictionary.exampleLabel">A FAMILIAR SPELLING, IN SIGHT</span></div><p class="dictionary-sentence"><span data-i18n="dictionary.before">I've been building </span><mark>Talkless</mark><span data-i18n="dictionary.after"> to leave a little more room for thought.</span></p><div class="dictionary-entry"><span class="entry-icon" aria-hidden="true">Aa</span><div><strong>Talkless</strong><small data-i18n="dictionary.saved">In your personal dictionary</small></div><span class="entry-check" aria-hidden="true">✓</span></div></div>
+          <div class="feature-copy"><p class="eyebrow" data-i18n="dictionary.tag">YOUR PERSONAL DICTIONARY</p><h3 data-i18n="dictionary.title">Names worth getting right.</h3><p data-i18n="dictionary.body">Add your names, projects, and everyday vocabulary. Confirmed spellings stand out when they appear in the live transcript.</p><p class="feature-footnote" data-i18n="dictionary.note">Highlights show a matching spelling, not a guaranteed correction. Dictionary hints help guide recognition; you stay the final judge.</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="privacy-section section-space" id="privacy" aria-labelledby="privacy-title"><div class="wrap privacy-grid">
+      <div class="privacy-intro"><div class="privacy-emblem" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="20" width="28" height="23" rx="7"/><path d="M16 20v-7a8 8 0 0 1 16 0v7M24 29v5"/></svg></div><p class="eyebrow" data-i18n="privacy.eyebrow">LOCAL FIRST. CLEAR BY DESIGN.</p><h2 id="privacy-title" data-i18n="privacy.title">Your Mac.<br>Your voice.<br>Your choice.</h2><p data-i18n="privacy.intro">Voice input doesn't need a round trip to the cloud. Start local, and decide what else you want to connect.</p><a class="text-link" href="/privacy" data-site-link data-i18n="privacy.link">Read the details, not just the promise →</a></div>
+      <div class="privacy-facts">
+        <article><span class="fact-icon" aria-hidden="true">⌂</span><div><h3 data-i18n="privacy.local.title">Local speech stays local.</h3><p data-i18n="privacy.local.body">With local Qwen recognition, audio is processed on your Mac, not uploaded. Download the speech model separately, then dictate offline.</p></div></article>
+        <article><span class="fact-icon" aria-hidden="true">↗</span><div><h3 data-i18n="privacy.cloud.title">Cloud is a choice, not a catch.</h3><p data-i18n="privacy.cloud.body">Optional cloud recognition sends audio to the speech provider you configure. Optional AI sends the text needed for polishing, editing, or translation to your own AI provider.</p></div></article>
+        <article><span class="fact-icon" aria-hidden="true">◎</span><div><h3 data-i18n="privacy.history.title">Your history lives with you.</h3><p data-i18n="privacy.history.body">Dictation history and diagnostic logs stay on your Mac. Logs are bounded to 15 MB and exclude audio, transcripts, API keys, and prompts. Nothing is automatically uploaded.</p></div></article>
+        <article><span class="fact-icon" aria-hidden="true">⌘</span><div><h3 data-i18n="privacy.open.title">An app you can look inside.</h3><p data-i18n="privacy.open.body">Talkless is source available and distributed directly on GitHub. The app does not collect telemetry. This website has no analytics or tracking scripts; its host may keep standard request logs.</p></div></article>
+      </div>
+    </div></section>
+
+    <section class="faq-section wrap section-space" id="questions" aria-labelledby="faq-title"><div class="section-heading"><p class="eyebrow" data-i18n="faq.eyebrow">BEFORE YOU SAY HELLO</p><h2 id="faq-title" data-i18n="faq.title">A few good questions.</h2></div><div class="faq-list">
+      <details><summary data-i18n="faq.mac.q">Will it work on my Mac?</summary><p data-i18n="faq.mac.a">Talkless requires an Apple Silicon Mac running macOS 26 or later. Intel Macs and older macOS versions aren't supported. The current release is a beta, so expect a few rough edges.</p></details>
+      <details><summary data-i18n="faq.setup.q">What does getting started look like?</summary><p data-i18n="faq.setup.a">Download the DMG, drag Talkless into Applications, and open it. The setup guide walks you through Microphone and Accessibility permissions. Then download the local speech model in Settings → Speech recognition. AI setup is entirely optional.</p></details>
+      <details><summary data-i18n="faq.offline.q">Do I need an account or a subscription?</summary><p data-i18n="faq.offline.a">No Talkless account is required. Local recognition runs on your Mac after the model download, with no hosted Talkless service. If you choose cloud speech or AI features, bring your own provider credentials and check that provider's pricing and privacy policy.</p></details>
+      <details><summary data-i18n="faq.apps.q">Does it replace my keyboard or input method?</summary><p data-i18n="faq.apps.a">Neither. Talkless lives in the menu bar and inserts text into the field you're using. Keep that field focused until the result arrives. Some apps restrict text insertion or access to selected text; the user guide explains the controls and limitations.</p></details>
+      <details><summary data-i18n="faq.language.q">Can I use it in English and Chinese?</summary><p data-i18n="faq.language.a">The app interface supports English and Simplified Chinese. Recognition language support depends on your selected speech engine and model. Optional AI translation and output language settings are separate from the interface language.</p></details>
+      <details><summary data-i18n="faq.help.q">Where do I find help or report a bug?</summary><p><span data-i18n="faq.help.a">Start with the user guide for setup and shortcuts. Our support page covers common problems and what to include when reporting a bug.</span> <a href="/guide" data-site-link data-i18n="faq.help.guide">User guide →</a> <a href="/support" data-site-link data-i18n="faq.help.issues">Get help →</a></p></details>
+    </div></section>
+
+    <section class="download-section wrap" id="download" aria-labelledby="download-title"><div class="download-panel"><div><p class="eyebrow" data-i18n="closing.eyebrow">A LITTLE LESS TYPING. A LITTLE MORE YOU.</p><h2 id="download-title" data-i18n="closing.title">Got a thought?<br>Let it out.</h2><a class="button button-white download-link" href="/download"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5"/></svg><span data-i18n="download.label">Download for Mac</span><span class="button-tag">Beta</span></a><p class="closing-meta"><span data-i18n="download.requirements">Apple Silicon · macOS 26+ · Source available</span><br><a href="/updates" data-site-link data-release-notes><span data-i18n="closing.release">Release notes</span> <span aria-hidden="true">↗</span></a><span class="release-version" id="release-version" data-release-version>2026.1031.26846</span></p></div><div class="closing-pip" aria-hidden="true"><img src="/assets/pip.svg" alt="" width="270" height="270"><span class="pip-caption" data-i18n="closing.pip">Small app. All ears.</span></div></div></section>
+  </main>
+
+  <footer class="site-footer wrap"><div><a class="brand" href="#"><img src="/assets/pip.svg" alt="" width="28" height="28"><span>Talkless</span></a><p data-i18n="footer.note">Made by x2x3studio. Made for your Mac.</p></div><nav aria-label="Footer navigation" data-i18n-aria="footer.nav"><a href="/guide" data-site-link data-i18n="footer.guide">User guide</a><a href="/privacy" data-site-link data-i18n="nav.privacy">Privacy</a><a href="/updates" data-site-link data-i18n="closing.release">Release notes</a><a href="/support" data-site-link data-i18n="nav.support">Support</a></nav><a class="back-top" href="#" data-i18n="footer.top">Back to top ↑</a></footer>
+</body>
+</html>

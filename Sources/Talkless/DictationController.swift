@@ -53,7 +53,12 @@ final class DictationController: ObservableObject {
     @Published private(set) var translationShortcutError: String?
 
     private var session: TranscriptionSession?
+    /// `.recording` includes asynchronous device startup so every existing busy guard applies.
+    /// Hold release cancels this task; explicit finish waits for it exactly once.
+    private var startupTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
+    /// Late recognizer previews/status must not overwrite final raw or inserted output.
+    private var acceptsRecognitionHUDUpdates = false
     /// Incremented on each start/cancel to discard stale asynchronous results.
     private var generation = 0
     private var diagnosticOperation: DictationOperation?
@@ -267,7 +272,13 @@ final class DictationController: ObservableObject {
         let duration = timestamp - start
         diagnosticOperation?.record("hotkey_release", ["duration_ms": String(duration / 1_000_000)])
         guard state == .recording, !handsFree else { return }
-        stopAndProcess()
+        // A short hold may end before the device opens. Do not record after key-up
+        // or submit empty/late audio just because native startup eventually returns.
+        if startupTask != nil {
+            cancel(reason: "startup_release")
+        } else {
+            stopAndProcess()
+        }
     }
 
     private func alternateFinishPressed(at timestamp: CGEventTimestamp) {
@@ -316,12 +327,13 @@ final class DictationController: ObservableObject {
     // MARK: - Recording
 
     private func startRecording() {
-        guard !shortcutCaptureActive else { return }
+        guard !shortcutCaptureActive, state == .idle else { return }
         let audioInputDeviceUID = settings.audioInputDeviceUID
         // One confirmed-term snapshot for this recognizer and its live HUD. Pending
         // suggestions are not in dictionaryTerms; later Settings edits wait until next time.
         let dictionaryTerms = settings.dictionaryTerms
         hud.model.setDictionaryTerms([])
+        hud.model.revisionOriginal = nil
         generation += 1
         var operation = DictationOperation(generation: generation, engine: settings.asrEngine.rawValue,
                                            recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
@@ -375,6 +387,7 @@ final class DictationController: ObservableObject {
         operation.mode = editSelection == nil ? "dictation" : "edit"
         diagnosticOperation = operation
         let generation = self.generation
+        acceptsRecognitionHUDUpdates = true
         let session: any TranscriptionSession
         switch settings.asrEngine {
         case .qwen:
@@ -384,12 +397,12 @@ final class DictationController: ObservableObject {
                 language: nil,
                 contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation,
+                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                           self.state == .recording || self.state == .processing else { return }
                     self.hud.show(.working)
                 },
                 onError: { [weak self] message in
-                    guard let self, self.generation == generation,
+                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                           self.state == .recording || self.state == .processing else { return }
                     self.diagnosticOperation?.record("recognition_error", ["stage": "recognition", "reason": "recognition_error"])
                     self.cancel(reason: "recognition_error")
@@ -401,7 +414,7 @@ final class DictationController: ObservableObject {
                 locale: Locale(identifier: settings.speechLocale),
                 contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation,
+                    guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                           self.state == .recording || self.state == .processing else { return }
                     self.hud.show(.working)
                 }
@@ -421,7 +434,7 @@ final class DictationController: ObservableObject {
             ))
         }
         session.onPartial = { [weak self] text in
-            guard let self, self.generation == generation,
+            guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                   self.state == .recording || self.state == .processing else { return }
             self.previewText = text
             self.hud.model.preview = text
@@ -443,23 +456,30 @@ final class DictationController: ObservableObject {
             self.cancel(reason: "recorder_interruption")
             self.hud.show(.error(message))
         }
-        do {
-            try recorder.start(deviceUID: audioInputDeviceUID, operationID: operation.id)
-            operation.record("recording_started", ["startup_ms": DictationOperation.milliseconds(since: operation.startedAt)])
-        } catch {
-            operation.record("recording_error", ["error_code": String((error as NSError).code), "reason": "start_failed", "stage": "startup"])
-            session.cancel()
-            self.session = nil
-            hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
-            return
-        }
-
+        // Publish busy state and capture the finish choice before yielding. Event-tap
+        // callbacks must never wait for engine/input-node/HAL startup or teardown.
         state = .recording
         configureRecordingFinish()
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
         hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])
         hud.show(.listening(handsFree: handsFree))
+        startupTask = Task { [weak self] in
+            guard let self, self.generation == generation, !Task.isCancelled else { return }
+            do {
+                try await self.recorder.start(deviceUID: audioInputDeviceUID, operationID: operation.id)
+                guard self.generation == generation, !Task.isCancelled else { return }
+                self.startupTask = nil
+                operation.record("recording_started", ["startup_ms": DictationOperation.milliseconds(since: operation.startedAt)])
+                // An explicit finish may already be awaiting this task in .processing.
+                // Do not restore listening UI or recapture settings after the await.
+            } catch {
+                guard self.generation == generation, !Task.isCancelled else { return }
+                operation.record("recording_error", ["error_code": String((error as NSError).code), "reason": "start_failed", "stage": "startup"])
+                self.cancel(reason: "startup_failed")
+                self.hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
+            }
+        }
     }
 
     private func configureRecordingFinish() {
@@ -475,9 +495,13 @@ final class DictationController: ObservableObject {
         if editSelection != nil {
             hud.model.recordingHint = nil
         } else {
-            let mode = recordingPolishEnabled ? L10n.tr("Default: Use AI polishing") : L10n.tr("Default: Skip AI polishing")
-            let action = recordingPolishEnabled ? L10n.tr("Skip AI polishing") : L10n.tr("Use AI polishing")
-            hud.model.recordingHint = recordingAlternateFinishKey.map { L10n.format("%@ · %@: %@", mode, $0.title, action) } ?? mode
+            let mode = recordingPolishEnabled ? L10n.tr("This input: AI polishing") : L10n.tr("This input: no AI polishing")
+            hud.model.recordingHint = recordingAlternateFinishKey.map { key in
+                let action = recordingPolishEnabled
+                    ? L10n.format("Press %@ to skip polishing", key.title)
+                    : L10n.format("Press %@ to use polishing", key.title)
+                return L10n.format("%@ · %@", mode, action)
+            } ?? mode
         }
     }
 
@@ -490,17 +514,9 @@ final class DictationController: ObservableObject {
         let operation = diagnosticOperation
         let processingStarted = DispatchTime.now().uptimeNanoseconds
         operation?.record("recording_stop", ["opposite_finish": String(opposite), "polish_enabled": String(shouldPolish)])
-        let samples = recorder.stop()
-        if let interruption = recorder.interruptionError {
-            cancel(reason: "stop_interruption")
-            hud.show(.error(interruption))
-            return
-        }
-        let duration = Double(samples.count) / AudioRecorder.sampleRate
-        operation?.record("recording_stopped", ["num_samples": String(samples.count),
-            "duration_ms": String(Int(duration * 1_000)), "sample_rate": String(AudioRecorder.sampleRate)])
-        if samples.isEmpty { operation?.record("recording_empty", ["reason": "empty_audio"]) }
-        operation?.record("processing_start")
+        let startupTask = self.startupTask
+        // Stop requests become busy immediately; repeated presses/releases cannot
+        // start another stop, even while native startup or teardown is pending.
         state = .processing
         hud.show(.recognizing)
 
@@ -511,14 +527,27 @@ final class DictationController: ObservableObject {
         let modelPreparation = recordingPreparationGeneration
 
         processingTask = Task { [weak self] in
-            guard let self else { return }
-            var stage = "recognition"
+            guard let self, generation == self.generation, !Task.isCancelled else { return }
+            var stage = "stop"
             var stageStarted = DispatchTime.now().uptimeNanoseconds
             do {
+                await startupTask?.value
+                guard generation == self.generation, !Task.isCancelled else { return }
+                let samples = try await self.recorder.stop()
+                guard generation == self.generation, !Task.isCancelled else { return }
+                let duration = Double(samples.count) / AudioRecorder.sampleRate
+                operation?.record("recording_stopped", ["num_samples": String(samples.count),
+                    "duration_ms": String(Int(duration * 1_000)), "sample_rate": String(AudioRecorder.sampleRate)])
+                if samples.isEmpty { operation?.record("recording_empty", ["reason": "empty_audio"]) }
+                operation?.record("processing_start")
+                stage = "recognition"
+                stageStarted = DispatchTime.now().uptimeNanoseconds
                 operation?.record("recognition_finish", ["num_samples": String(samples.count)])
                 let raw = try await session.finish(samples: samples)
                 operation?.record("recognition_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "empty": String(raw.isEmpty)])
                 guard generation == self.generation, !Task.isCancelled else { return }
+                self.acceptsRecognitionHUDUpdates = false
+                self.hud.model.preview = raw
                 self.markModelReadyAfterRecognition(directory: modelDirectory, generation: generation, preparation: modelPreparation)
                 guard !raw.isEmpty else {
                     operation?.record("recognition_empty", ["reason": "empty_result"])
@@ -579,6 +608,11 @@ final class DictationController: ObservableObject {
                 stage = "insertion"
                 stageStarted = DispatchTime.now().uptimeNanoseconds
                 operation?.record("paste_attempt", ["empty": String(output.isEmpty)])
+                // Show the final words during the existing insertion await without
+                // delaying input or claiming that cleanup is still running.
+                self.hud.model.revisionOriginal = editSelection == nil ? raw : nil
+                self.hud.model.preview = output
+                self.hud.show(.inserting)
                 await TextIO.insert(output)
                 operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted)])
                 guard generation == self.generation, !Task.isCancelled else { return }
@@ -587,12 +621,24 @@ final class DictationController: ObservableObject {
                 ))
                 operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
                     "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
-                self.finish(polishError.map { .error($0) } ?? .hidden)
+                self.finish(polishError.map { .error($0) } ?? .completed)
             } catch is CancellationError {
                 operation?.record("processing_cancelled", ["stage": stage, "reason": "cancelled",
                     "duration_ms": DictationOperation.milliseconds(since: processingStarted)])
-                if generation == self.generation { self.finish(.hidden) }
+                if generation == self.generation {
+                    session.cancel()
+                    self.finish(.hidden)
+                }
             } catch {
+                if stage == "stop" {
+                    operation?.record("recording_error", ["stage": stage, "reason": "stop_failed",
+                        "error_code": String((error as NSError).code)])
+                    guard generation == self.generation, !Task.isCancelled else { return }
+                    // Never finish recognition or paste a partial after failed teardown.
+                    self.cancel(reason: "stop_interruption")
+                    self.hud.show(.error(error.localizedDescription))
+                    return
+                }
                 operation?.record(stage == "recognition" ? "recognition_error" : "edit_error", ["stage": stage,
                     "error_code": String((error as NSError).code), "duration_ms": DictationOperation.milliseconds(since: stageStarted)])
                 operation?.record("processing_error", ["stage": stage, "error_code": String((error as NSError).code),
@@ -604,20 +650,23 @@ final class DictationController: ObservableObject {
     }
 
     private func finish(_ phase: HUDModel.Phase) {
+        acceptsRecognitionHUDUpdates = false
         recordingModelDirectory = nil
         diagnosticOperation = nil
         state = .idle
         session = nil
+        startupTask = nil
         processingTask = nil
         pressedAt = nil
         hotkeys.armAlternateFinish(nil)
         hud.model.recordingHint = nil
-        hud.model.setDictionaryTerms([])
+        if phase != .completed { hud.model.setDictionaryTerms([]) }
         updateTriggerKey()
         hud.show(phase)
     }
 
     func cancel(reason: String = "user") {
+        acceptsRecognitionHUDUpdates = false
         let fields = ["reason": reason, "state": String(describing: state)]
         if let diagnosticOperation {
             diagnosticOperation.record("dictation_cancel", fields)
@@ -628,7 +677,9 @@ final class DictationController: ObservableObject {
         recordingModelDirectory = nil
         pressedAt = nil
         generation += 1
-        recorder.stop()
+        startupTask?.cancel()
+        startupTask = nil
+        recorder.cancel()
         session?.cancel()
         session = nil
         processingTask?.cancel()
@@ -644,7 +695,9 @@ final class DictationController: ObservableObject {
     private func paste(_ text: String, into app: NSRunningApplication?) async {
         guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
             lastTranscript = text
-            hud.show(.error(L10n.tr("Target app changed; result saved")))
+            if state == .idle {
+                hud.show(.error(L10n.tr("Target app changed; result saved")))
+            }
             return
         }
         await TextIO.insert(text)
@@ -662,9 +715,13 @@ final class DictationController: ObservableObject {
         try file.read(into: audio)
         guard let source = audio.floatChannelData?[0] else { throw TalklessError.message(L10n.tr("Cannot read test audio")) }
         let samples = Array(UnsafeBufferPointer(start: source, count: Int(audio.frameLength)))
+        let pollingGeneration = generation
         while ModelManager.shared.isChecking {
             try await Task.sleep(for: .milliseconds(50))
+            guard generation == pollingGeneration, state == .idle, !changingModel else { throw CancellationError() }
         }
+        try Task.checkCancellation()
+        guard generation == pollingGeneration, state == .idle, !changingModel else { throw CancellationError() }
         guard ModelManager.shared.operationModelID == nil else {
             throw TalklessError.message(L10n.tr("Wait for the model operation to finish before testing dictation."))
         }
@@ -678,19 +735,20 @@ final class DictationController: ObservableObject {
         hud.model.isEditMode = false
         hud.model.setDictionaryTerms(dictionaryTerms)
         state = .recording
+        acceptsRecognitionHUDUpdates = true
         let session = QwenTranscriptionSession(
             modelDirectory: modelDirectory,
             language: nil,
             contextualStrings: dictionaryTerms,
             onStatus: { [weak self] _ in
-                guard let self, self.generation == generation,
+                guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                       self.state == .recording || self.state == .processing else { return }
                 self.hud.show(.working)
             }
         )
         self.session = session
         session.onPartial = { [weak self] text in
-            guard let self, self.generation == generation,
+            guard let self, self.generation == generation, self.acceptsRecognitionHUDUpdates,
                   self.state == .recording || self.state == .processing else { return }
             self.previewText = text
             self.hud.model.preview = text
@@ -710,6 +768,7 @@ final class DictationController: ObservableObject {
                 let count = min(800, samples.count - offset)
                 let deadline = started.advanced(by: .seconds(Double(offset + count) / AudioRecorder.sampleRate))
                 try await clock.sleep(until: deadline)
+                guard self.generation == generation, !Task.isCancelled else { throw CancellationError() }
                 guard let frame = AVAudioPCMBuffer(pcmFormat: AudioRecorder.format, frameCapacity: AVAudioFrameCount(count)),
                       let target = frame.floatChannelData?[0] else { throw TalklessError.message(L10n.tr("Cannot allocate a test audio buffer")) }
                 frame.frameLength = AVAudioFrameCount(count)
@@ -747,7 +806,9 @@ final class DictationController: ObservableObject {
         cancelTranslation()
         let token = translationGeneration
         guard settings.llmConfigured else {
-            hud.show(.error(L10n.tr("Configure an AI service in Settings to translate selected text")))
+            if state == .idle {
+                hud.show(.error(L10n.tr("Configure an AI service in Settings to translate selected text")))
+            }
             return
         }
         // Capture the destination before the clipboard fallback can suspend.
@@ -757,7 +818,9 @@ final class DictationController: ObservableObject {
         let selected = await TextIO.selectedText()
         guard token == translationGeneration, !Task.isCancelled else { return }
         guard let text = selected, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            hud.show(.error(L10n.tr("Could not read any selected text")))
+            if state == .idle {
+                hud.show(.error(L10n.tr("Could not read any selected text")))
+            }
             return
         }
         translationSource = text
