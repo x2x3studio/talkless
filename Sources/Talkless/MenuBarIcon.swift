@@ -26,7 +26,7 @@ enum MenuBarIcon {
     }
 
     /// One fixed width for every state, so the menu bar item never shifts.
-    static let size = NSSize(width: 31, height: 18)
+    static let size = NSSize(width: 28, height: 18)
 
     static func image(for state: State) -> NSImage {
         let image = NSImage(size: size, flipped: true) { _ in
@@ -44,14 +44,15 @@ enum MenuBarIcon {
             if let badge = state.badge {
                 // "@" is much wider than "?" and "!", so it is set smaller to share the column.
                 let mark = NSAttributedString(string: badge, attributes: [
-                    .font: NSFont.systemFont(ofSize: badge == "@" ? 9.5 : 11, weight: .heavy),
+                    .font: NSFont.systemFont(ofSize: badge == "@" ? 8.5 : 11, weight: .heavy),
                     .foregroundColor: NSColor.black,
                 ])
-                // Center the glyph's ink, not its line box, in the 9-point badge column
-                // (x 21–30); antialiasing needs about half a point of clearance.
+                // Start every mark's ink right after a one-point gap from Pip (whose ink ends
+                // near x 17.3), so the pair reads as one compact icon; antialiasing needs
+                // about half a point of clearance from the gap.
                 let ink = mark.boundingRect(with: NSSize(width: 20, height: 20),
                                             options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
-                mark.draw(at: NSPoint(x: 25.5 - ink.width / 2 - ink.minX, y: badge == "@" ? 2 : 1))
+                mark.draw(at: NSPoint(x: 19.5 - ink.minX, y: badge == "@" ? 2 : 1))
             }
             return true
         }

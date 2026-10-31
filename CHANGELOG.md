@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Improved
+- The menu bar status mark now sits right beside the cat, so the icon stays compact instead of stretching wide.
+
+## 2026.1031.59966
+
+### Improved
 - The menu bar icon shows what Talkless is doing: ? while listening, ! while recognizing, and @ while AI polishes or edits. The marks are larger and easier to see than the old dots.
 
 ## 2026.1031.58935
