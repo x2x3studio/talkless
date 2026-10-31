@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Improved
+- When a missing permission blocks dictation or translation, Talkless opens the matching System Settings page (Accessibility or Microphone). Microphone access restricted by a management profile only shows a message.
+
+## 2026.1031.50025
+
 ### Fixed
 - Without Accessibility permission, dictation started from the menu no longer loses its text: Talkless copies it and explains the missing permission. Translating from the menu also names the missing permission instead of only saying no text was selected.
 
