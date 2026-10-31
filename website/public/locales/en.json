@@ -178,8 +178,5 @@
   "support.report.title": "Report a reproducible problem",
   "support.report.body": "Use the GitHub repository link in the header, then choose Issues. Include your Talkless version and build, macOS version, Mac model, speech engine, microphone and clear steps to reproduce. Say what you expected and what actually happened. This website does not collect or submit reports.",
   "support.report.diagnostics": "If diagnostics would help, use Settings \u2192 System \u2192 Diagnostics to export a local ZIP. Review its contents before attaching it; optional crash reports may include personal information and file paths. Nothing is automatically uploaded. Avoid sharing private dictation or selected text.",
-  "release.note.0": "Dictionary review merges suggestions without regard to case, skips capitalization-only changes, and avoids recommending existing terms again while preserving saved spellings.",
-  "release.note.1": "Removed the explanatory language-change hint from the translation panel.",
-  "release.note.2": "Translation shortcut capture now asks for a key combination, while dictation capture still asks for a single key.",
-  "release.note.3": "The completion checkmark now stays for 50 milliseconds after insertion instead of two seconds."
+  "release.note.0": "Setup Guide now offers an optional Launch at login step using the same macOS-controlled setting as System preferences. Nothing is enabled automatically."
 }

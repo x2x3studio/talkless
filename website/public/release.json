@@ -1,24 +1,18 @@
 {
-  "version": "2026.1031.36630",
-  "build": "1793441430",
+  "version": "2026.1031.38693",
+  "build": "1793443493",
   "channel": "beta",
   "architecture": "arm64",
   "minimumMacOS": "26",
-  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.36630-beta.1793441430/Talkless-2026.1031.36630-1793441430-arm64.dmg",
-  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.36630-beta.1793441430",
+  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.38693-beta.1793443493/Talkless-2026.1031.38693-1793443493-arm64.dmg",
+  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.38693-beta.1793443493",
   "publishedDate": "2026-10-31",
   "notes": {
     "en": [
-      "Dictionary review merges suggestions without regard to case, skips capitalization-only changes, and avoids recommending existing terms again while preserving saved spellings.",
-      "Removed the explanatory language-change hint from the translation panel.",
-      "Translation shortcut capture now asks for a key combination, while dictation capture still asks for a single key.",
-      "The completion checkmark now stays for 50 milliseconds after insertion instead of two seconds."
+      "Setup Guide now offers an optional Launch at login step using the same macOS-controlled setting as System preferences. Nothing is enabled automatically."
     ],
     "zh-Hans": [
-      "\u8bcd\u5178\u5ba1\u6838\u5ffd\u7565\u5927\u5c0f\u5199\u5dee\u5f02\uff0c\u5408\u5e76\u91cd\u590d\u5efa\u8bae\uff0c\u4e0d\u518d\u63a8\u8350\u5df2\u6709\u8bcd\u6761\uff0c\u5e76\u4fdd\u7559\u4fdd\u5b58\u7684\u539f\u59cb\u5199\u6cd5\u3002",
-      "\u79fb\u9664\u7ffb\u8bd1\u9762\u677f\u4e2d\u66f4\u6539\u8bed\u8a00\u4f1a\u91cd\u65b0\u7ffb\u8bd1\u7684\u8bf4\u660e\u6587\u5b57\u3002",
-      "\u7ffb\u8bd1\u5feb\u6377\u952e\u5f55\u5165\u660e\u786e\u63d0\u793a\u6309\u4e0b\u7ec4\u5408\u952e\uff0c\u542c\u5199\u5355\u952e\u5f55\u5165\u4ecd\u4fdd\u7559\u5355\u952e\u63d0\u793a\u3002",
-      "\u8f93\u5165\u5b8c\u6210\u540e\u7684\u6253\u94a9\u63d0\u793a\u7f29\u77ed\u4e3a 50 \u6beb\u79d2\uff0c\u4e0d\u518d\u505c\u7559\u4e24\u79d2\u3002"
+      "\u8bbe\u7f6e\u5f15\u5bfc\u589e\u52a0\u53ef\u9009\u7684\u201c\u767b\u5f55\u65f6\u542f\u52a8\u201d\uff0c\u4e0e\u7cfb\u7edf\u8bbe\u7f6e\u9875\u5171\u7528\u540c\u4e00\u9879 macOS \u767b\u5f55\u9879\u8bbe\u7f6e\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5f00\u542f\u3002"
     ]
   }
 }
