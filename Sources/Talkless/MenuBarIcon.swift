@@ -3,19 +3,30 @@ import AppKit
 @MainActor
 enum MenuBarIcon {
     enum State: CaseIterable {
-        case idle, recording, processing
+        /// Listening shows "?", recognition "!", and AI polishing or editing "@".
+        case idle, recording, processing, aiProcessing
 
         var accessibilityDescription: String {
             switch self {
             case .idle: "Talkless"
             case .recording: L10n.tr("Talkless — Recording")
             case .processing: L10n.tr("Talkless — Processing")
+            case .aiProcessing: L10n.tr("Talkless — AI processing")
+            }
+        }
+
+        var badge: String? {
+            switch self {
+            case .idle: nil
+            case .recording: "?"
+            case .processing: "!"
+            case .aiProcessing: "@"
             }
         }
     }
 
-    /// The badge column is wide enough for a legible glyph next to Pip.
-    static let size = NSSize(width: 28, height: 18)
+    /// One fixed width for every state, so the menu bar item never shifts.
+    static let size = NSSize(width: 31, height: 18)
 
     static func image(for state: State) -> NSImage {
         let image = NSImage(size: size, flipped: true) { _ in
@@ -30,24 +41,17 @@ enum MenuBarIcon {
             context.addPath(PipArtwork.path(small: true))
             context.fillPath(using: .evenOdd)
             context.restoreGState()
-            switch state {
-            case .idle:
-                break
-            case .recording:
-                // Listening: a solid dot at Pip's ear.
-                context.setFillColor(NSColor.black.cgColor)
-                context.fillEllipse(in: CGRect(x: 21.5, y: 1.5, width: 5, height: 5))
-            case .processing:
-                // Thinking: Pip wonders what you said.
-                let mark = NSAttributedString(string: "?", attributes: [
-                    .font: NSFont.systemFont(ofSize: 10.5, weight: .heavy),
+            if let badge = state.badge {
+                // "@" is much wider than "?" and "!", so it is set smaller to share the column.
+                let mark = NSAttributedString(string: badge, attributes: [
+                    .font: NSFont.systemFont(ofSize: badge == "@" ? 9.5 : 11, weight: .heavy),
                     .foregroundColor: NSColor.black,
                 ])
-                // Center the glyph's ink, not its line box, in the 6-point badge column;
-                // antialiasing needs about half a point of clearance on each side.
+                // Center the glyph's ink, not its line box, in the 9-point badge column
+                // (x 21–30); antialiasing needs about half a point of clearance.
                 let ink = mark.boundingRect(with: NSSize(width: 20, height: 20),
                                             options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
-                mark.draw(at: NSPoint(x: 24.2 - ink.width / 2 - ink.minX, y: 1))
+                mark.draw(at: NSPoint(x: 25.5 - ink.width / 2 - ink.minX, y: badge == "@" ? 2 : 1))
             }
             return true
         }

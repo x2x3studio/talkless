@@ -76,6 +76,8 @@ final class DictationController: ObservableObject {
     private var editSelection: String?
     private var targetApp: NSRunningApplication?
     @Published private(set) var lastTranscript = ""
+    /// True while polishing or voice editing waits on the AI service (menu bar shows "@").
+    @Published private(set) var aiInProgress = false
     @Published private(set) var previewText = ""
     private var context: AppContext?
     var onModelSetupRequested: (() -> Void)?
@@ -550,6 +552,7 @@ final class DictationController: ObservableObject {
                     stage = "edit"
                     stageStarted = DispatchTime.now().uptimeNanoseconds
                     operation?.record("edit_start", ["stage": stage])
+                    self.aiInProgress = true
                     self.hud.show(.editing)
                     output = try await LLMClient.complete(
                         system: Prompts.voiceEdit(settings: self.settings),
@@ -561,6 +564,7 @@ final class DictationController: ObservableObject {
                     stage = "polish"
                     stageStarted = DispatchTime.now().uptimeNanoseconds
                     operation?.record("polish_start", ["stage": stage])
+                    self.aiInProgress = true
                     self.hud.show(.polishing)
                     do {
                         output = try await LLMClient.complete(
@@ -647,6 +651,7 @@ final class DictationController: ObservableObject {
 
     private func finish(_ phase: HUDModel.Phase) {
         acceptsRecognitionHUDUpdates = false
+        aiInProgress = false
         recordingModelDirectory = nil
         diagnosticOperation = nil
         state = .idle
@@ -661,6 +666,7 @@ final class DictationController: ObservableObject {
 
     func cancel(reason: String = "user") {
         acceptsRecognitionHUDUpdates = false
+        aiInProgress = false
         let fields = ["reason": reason, "state": String(describing: state)]
         if let diagnosticOperation {
             diagnosticOperation.record("dictation_cancel", fields)

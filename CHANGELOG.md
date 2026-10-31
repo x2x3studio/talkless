@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Improved
+- The menu bar icon shows what Talkless is doing: ? while listening, ! while recognizing, and @ while AI polishes or edits. The marks are larger and easier to see than the old dots.
+
+## 2026.1031.58935
+
 ### Changed
 - Removed the per-dictation AI polishing shortcut. AI polishing now simply follows the Polish dictation with AI switch: on polishes every dictation, off polishes none. The dictation key is the only recording shortcut.
 

@@ -21,10 +21,10 @@ import AppKit
 
 @main struct MenuIconTests {
     @MainActor static func raster(_ image: NSImage, scale: Int) -> NSBitmapImageRep {
-        let bitmap = bitmap(width: 28 * scale, height: 18 * scale)
+        let bitmap = bitmap(width: 31 * scale, height: 18 * scale)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        image.draw(in: CGRect(x: 0, y: 0, width: 28 * scale, height: 18 * scale))
+        image.draw(in: CGRect(x: 0, y: 0, width: 31 * scale, height: 18 * scale))
         NSGraphicsContext.restoreGraphicsState()
         return bitmap
     }
@@ -83,13 +83,13 @@ import AppKit
     @MainActor static func checkRaster(_ bitmap: NSBitmapImageRep, state: MenuBarIcon.State, scale: Int) {
         var bodyPixels = 0
         for y in 0..<18 * scale {
-            for x in 0..<28 * scale {
+            for x in 0..<31 * scale {
                 let a = alpha(bitmap, x, y)
                 if x < 18 * scale && a > 0.5 { bodyPixels += 1 }
                 if x >= 18 * scale && x < 21 * scale {
                     precondition(a == 0, "State badge needs an uninterrupted transparent gutter")
                 }
-                if x < scale || x >= 27 * scale || y < scale || y >= 17 * scale {
+                if x < scale || x >= 30 * scale || y < scale || y >= 17 * scale {
                     precondition(a < 0.05, "Artwork must not clip or introduce a background tile")
                 }
             }
@@ -109,28 +109,24 @@ import AppKit
         }
         precondition(minAlpha(around: CGPoint(x: 505, y: 649), radius: 0.5) < 0.6,
                      "Optical smile must remain open at native size")
-        // Badge column x 21..<27 pt: a solid dot near the top while recording, a taller
-        // question mark while processing, nothing while idle.
-        func ink(rows: Range<Int>) -> Int {
-            rows.flatMap { y in (21 * scale..<27 * scale).map { x in alpha(bitmap, x, y) } }.filter { $0 > 0.5 }.count
-        }
-        let upper = ink(rows: 0..<7 * scale), lower = ink(rows: 8 * scale..<17 * scale)
+        // Badge column x 21..<30 pt: "?" while listening, "!" while recognizing, a wider "@"
+        // while AI works, nothing while idle. Measure the ink's horizontal extent.
+        var columns = Set<Int>(), rows = Set<Int>()
+        for y in 0..<18 * scale { for x in 21 * scale..<30 * scale where alpha(bitmap, x, y) > 0.5 { columns.insert(x); rows.insert(y) } }
+        let width = CGFloat(columns.count) / CGFloat(scale), height = CGFloat(rows.count) / CGFloat(scale)
         switch state {
-        case .idle: precondition(upper == 0 && lower == 0, "Idle has no badge")
-        case .recording:
-            precondition(alpha(bitmap, 24 * scale, 4 * scale) > 0.9 && upper > 12 * scale * scale && lower == 0,
-                         "Recording uses a solid, enlarged dot at the top")
-        case .processing:
-            precondition(upper > 4 * scale * scale && lower > 2 * scale * scale,
-                         "Processing uses a question mark that reaches below the dot's rows")
+        case .idle: precondition(columns.isEmpty, "Idle has no badge")
+        case .recording: precondition(width >= 3.5 && width <= 6.5 && height >= 6, "Listening shows a legible question mark")
+        case .processing: precondition(width >= 1 && width <= 3.5 && height >= 6, "Recognition shows a narrow exclamation mark")
+        case .aiProcessing: precondition(width >= 6 && height >= 5.5, "AI processing shows a wide at sign")
         }
     }
 
     // Native AppKit template rendering (not manually recolored mask art).
     @MainActor static func nativePreview(state: MenuBarIcon.State, scale: Int, dark: Bool, selected: Bool) -> NSBitmapImageRep {
-        let bitmap = bitmap(width: 28 * scale, height: 18 * scale)
+        let bitmap = bitmap(width: 31 * scale, height: 18 * scale)
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
-        let button = NSButton(frame: CGRect(x: 0, y: 0, width: 28, height: 18))
+        let button = NSButton(frame: CGRect(x: 0, y: 0, width: 31, height: 18))
         button.image = MenuBarIcon.image(for: state)
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleNone
@@ -145,7 +141,7 @@ import AppKit
             NSGraphicsContext.current = NSGraphicsContext(cgContext: graphics.cgContext, flipped: true)
             button.contentTintColor = selected ? .selectedMenuItemTextColor : .labelColor
             (selected ? NSColor.selectedContentBackgroundColor : (dark ? NSColor(calibratedWhite: 0.15, alpha: 1) : NSColor(calibratedWhite: 0.96, alpha: 1))).setFill()
-            CGRect(x: 0, y: 0, width: 28, height: 18).fill()
+            CGRect(x: 0, y: 0, width: 31, height: 18).fill()
             button.cell!.draw(withFrame: button.bounds, in: button)
             NSGraphicsContext.restoreGraphicsState()
         }
@@ -190,17 +186,17 @@ import AppKit
                 draw(app, CGRect(x: px, y: 414 + CGFloat(64 - size) / 2, width: CGFloat(size), height: CGFloat(size)))
                 text("\(size) px", px, 486, 11, dark: dark)
             }
-            text("Menu bar · actual 28 × 18 pt", x + 22, 523, 13, dark: dark, bold: true)
+            text("Menu bar · actual 31 × 18 pt", x + 22, 523, 13, dark: dark, bold: true)
             for (index, state) in MenuBarIcon.State.allCases.enumerated() {
-                let px = x + 26 + CGFloat(index * 146)
+                let px = x + 22 + CGFloat(index * 110)
                 text("\(state)", px, 552, 12, dark: dark)
                 for scale in [1, 2] {
                     let preview = nativePreview(state: state, scale: scale, dark: dark, selected: false)
-                    drawBitmap(preview, CGRect(x: px + CGFloat((scale-1) * 46), y: 579, width: 28, height: 18))
+                    drawBitmap(preview, CGRect(x: px + CGFloat((scale-1) * 35), y: 579, width: 31, height: 18))
                 }
                 let selected = nativePreview(state: state, scale: 2, dark: dark, selected: true)
-                drawBitmap(selected, CGRect(x: px + 92, y: 579, width: 28, height: 18))
-                text("1x     2x     selected", px, 607, 10, dark: dark)
+                drawBitmap(selected, CGRect(x: px + 70, y: 579, width: 31, height: 18))
+                text("1x", px, 607, 10, dark: dark); text("2x", px + 35, 607, 10, dark: dark); text("sel.", px + 70, 607, 10, dark: dark)
                 let enlarged = nativePreview(state: state, scale: 2, dark: dark, selected: false)
                 drawBitmap(enlarged, CGRect(x: px, y: 640, width: 75, height: 54))
             }
@@ -240,7 +236,7 @@ import AppKit
             for state in MenuBarIcon.State.allCases {
                 let image = MenuBarIcon.image(for: state)
                 precondition(image.isTemplate)
-                precondition(image.size == NSSize(width: 28, height: 18))
+                precondition(image.size == NSSize(width: 31, height: 18))
                 precondition(image.accessibilityDescription == state.accessibilityDescription)
                 let bitmap = raster(image, scale: scale)
                 checkRaster(bitmap, state: state, scale: scale)
@@ -279,7 +275,7 @@ import AppKit
                 precondition(appearances[0] != appearances[2], "Native light and dark appearances must differ")
                 precondition(appearances[0] != appearances[1], "Native selected appearance must differ")
             }
-            precondition(Set(rendered).count == 3, "States need distinct badges at both native scales")
+            precondition(Set(rendered).count == MenuBarIcon.State.allCases.count, "States need distinct badges at both native scales")
         }
         if let output {
             // ICNS supplies the actual optical-size variants in the review sheet.

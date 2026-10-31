@@ -125,7 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
             .store(in: &cancellables)
 
-        controller.$state
+        // Both publishers fire before the stored value changes; update on the next run-loop turn.
+        controller.$state.map { _ in () }.merge(with: controller.$aiInProgress.map { _ in () })
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
@@ -268,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         switch controller.state {
         case .idle: state = .idle
         case .recording: state = .recording
-        case .processing: state = .processing
+        case .processing: state = controller.aiInProgress ? .aiProcessing : .processing
         }
         statusItem.button?.image = MenuBarIcon.image(for: state)
         statusItem.button?.toolTip = state.accessibilityDescription

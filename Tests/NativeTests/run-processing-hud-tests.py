@@ -171,6 +171,7 @@ struct HistoryEntry {
     let history = FakeHistory()
     var cancelled = false
     var targetApp: Int? = 1
+    var aiInProgress = false
     var recordingReplacements: [DictionaryReplacement] = []
     var appChanged = false
     var accessibilityMissing = false
@@ -235,6 +236,7 @@ TESTS = r'''
                          "Final recognition replaces partial words while polishing/editing runs")
             precondition(!test.acceptsRecognitionHUDUpdates, "Late ASR callbacks cannot replace final raw words")
             precondition(TextIO.inserted.isEmpty)
+            precondition(test.aiInProgress, "The menu bar shows AI work for the whole polish/edit call")
         }
         TextIO.onInsert = { output in
             precondition(test.hud.model.phase == .inserting && test.hud.model.displayText == output,
@@ -267,6 +269,7 @@ TESTS = r'''
         precondition(entry.kind == (editing ? .edit : .dictation))
         precondition(test.state == .idle && test.session == nil && test.processingTask == nil,
                      "Production finish must clear processing state")
+        precondition(!test.aiInProgress, "Finishing clears the AI indicator")
         let diagnostics = Diagnostics.shared.events
         let ids = Set(diagnostics.compactMap { $0.1["operation_id"] })
         precondition(ids.count == 1 && UUID(uuidString: ids.first!) != nil, "Operation correlation lost")
@@ -650,6 +653,7 @@ typealias AudioRecorder = FakeRecorder
     let recorder = FakeRecorder()
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
+    var aiInProgress = false
     var recordingReplacements: [DictionaryReplacement] = []
     func insertionBlocker(for app: FakeApp?) -> (reason: String, message: String)? { nil }
     enum PermissionPane { case accessibility, microphone }

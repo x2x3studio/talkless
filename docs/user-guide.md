@@ -165,7 +165,7 @@ Whitespace-only changes and whole-word deletions leave no colored span in the re
 
 ### Appearance and preview
 
-By default the overlay stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. The menu bar icon adds a filled dot while recording and an outlined dot while processing.
+By default the overlay stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. Next to the menu bar cat, **?** means Talkless is listening, **!** means it is recognizing what you said, and **@** means the AI service is polishing or editing. The mark disappears when Talkless is idle.
 
 **Settings > Overlay** includes a sample-only live preview with **Dictating**, **Polishing**, **Editing** and **Completed** stages. Dictating represents recording and final recognition together. Choose **Short**, **Long** or **Dictionary match** text; Completed demonstrates final changes in the short and dictionary samples. The dictionary sample uses a fixed demo word, not your saved terms. No audio is recorded and no provider is contacted by the preview.
 
