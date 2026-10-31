@@ -16,14 +16,28 @@ func section(from start: String, to end: String? = nil) -> String {
 }
 // Both app entry points must opt in; the session's default is deliberately empty.
 let controller = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/DictationController.swift"), encoding: .utf8)
-let qwenInitializers = controller.components(separatedBy: "QwenTranscriptionSession(").dropFirst()
-precondition(qwenInitializers.count == 2, "Check normal dictation and runAudioTest Qwen wiring")
-for initializer in qwenInitializers {
-    let arguments = initializer.components(separatedBy: "onStatus:")[0]
-    precondition(arguments.contains("contextualStrings: settings.dictionaryTerms"),
-                 "Every controller Qwen session must receive the dictionary")
+let entryPoints = [
+    String(controller.components(separatedBy: "private func startRecording() {")[1]
+        .components(separatedBy: "private func configureRecordingFinish()")[0]),
+    String(controller.components(separatedBy: "func runAudioTest(url: URL)")[1]
+        .components(separatedBy: "// MARK: - Selected-text translation")[0]),
+]
+for entryPoint in entryPoints {
+    precondition(entryPoint.components(separatedBy: "settings.dictionaryTerms").count == 2,
+                 "Each entry point must read the confirmed dictionary exactly once")
+    guard let snapshot = entryPoint.range(of: "let dictionaryTerms = settings.dictionaryTerms"),
+          let initializer = entryPoint.range(of: "QwenTranscriptionSession(") else {
+        fatalError("Missing dictionary snapshot or Qwen initialization")
+    }
+    precondition(snapshot.upperBound < initializer.lowerBound, "Snapshot must precede session initialization")
+    let arguments = entryPoint[initializer.upperBound...].components(separatedBy: "onStatus:")[0]
+    precondition(arguments.contains("contextualStrings: dictionaryTerms"),
+                 "Every Qwen session must receive the immutable confirmed dictionary snapshot")
+    precondition(entryPoint.contains("hud.model.setDictionaryTerms(dictionaryTerms)")
+                 || entryPoint.contains("hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])"),
+                 "Ordinary recording HUD must use the exact same snapshot as Qwen")
 }
-print("PASS dictionary wiring in normal dictation and audio test")
+print("PASS shared dictionary snapshot wiring in normal dictation and audio test")
 let transcription = try String(contentsOf: root.appendingPathComponent("Sources/Talkless/Transcription.swift"), encoding: .utf8)
 let sessionProtocol = transcription.components(separatedBy: "// MARK: - On-device SpeechAnalyzer")[0]
 let stub = #"""

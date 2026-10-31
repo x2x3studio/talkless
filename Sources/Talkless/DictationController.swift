@@ -318,6 +318,10 @@ final class DictationController: ObservableObject {
     private func startRecording() {
         guard !shortcutCaptureActive else { return }
         let audioInputDeviceUID = settings.audioInputDeviceUID
+        // One confirmed-term snapshot for this recognizer and its live HUD. Pending
+        // suggestions are not in dictionaryTerms; later Settings edits wait until next time.
+        let dictionaryTerms = settings.dictionaryTerms
+        hud.model.setDictionaryTerms([])
         generation += 1
         var operation = DictationOperation(generation: generation, engine: settings.asrEngine.rawValue,
                                            recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
@@ -378,13 +382,15 @@ final class DictationController: ObservableObject {
             session = QwenTranscriptionSession(
                 modelDirectory: qwenDirectory,
                 language: nil,
-                contextualStrings: settings.dictionaryTerms,
+                contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation else { return }
+                    guard let self, self.generation == generation,
+                          self.state == .recording || self.state == .processing else { return }
                     self.hud.show(.working)
                 },
                 onError: { [weak self] message in
-                    guard let self, self.generation == generation else { return }
+                    guard let self, self.generation == generation,
+                          self.state == .recording || self.state == .processing else { return }
                     self.diagnosticOperation?.record("recognition_error", ["stage": "recognition", "reason": "recognition_error"])
                     self.cancel(reason: "recognition_error")
                     self.hud.show(.error(message))
@@ -393,9 +399,10 @@ final class DictationController: ObservableObject {
         case .apple:
             session = AppleSpeechSession(
                 locale: Locale(identifier: settings.speechLocale),
-                contextualStrings: settings.dictionaryTerms,
+                contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
-                    guard let self, self.generation == generation else { return }
+                    guard let self, self.generation == generation,
+                          self.state == .recording || self.state == .processing else { return }
                     self.hud.show(.working)
                 }
             )
@@ -405,13 +412,12 @@ final class DictationController: ObservableObject {
                 hud.show(.error(L10n.tr("Enter a speech recognition API key in Settings first")))
                 return
             }
-            let terms = settings.dictionaryTerms
             session = CloudTranscriptionSession(config: .init(
                 baseURL: settings.asrBaseURL,
                 apiKey: settings.asrAPIKey,
                 model: settings.asrModel,
                 language: nil,
-                prompt: terms.isEmpty ? nil : terms.joined(separator: ", ")
+                prompt: dictionaryTerms.isEmpty ? nil : dictionaryTerms.joined(separator: ", ")
             ))
         }
         session.onPartial = { [weak self] text in
@@ -419,7 +425,13 @@ final class DictationController: ObservableObject {
                   self.state == .recording || self.state == .processing else { return }
             self.previewText = text
             self.hud.model.preview = text
-            if self.state == .recording { self.hud.show(.listening(handsFree: self.handsFree)) }
+            if self.state == .recording {
+                // An unrelated translation error can temporarily replace/hide the
+                // shared HUD. Resume with this recording's snapshot, never Settings.
+                self.hud.model.isEditMode = self.editSelection != nil
+                self.hud.model.setDictionaryTerms(self.editSelection == nil ? dictionaryTerms : [])
+                self.hud.show(.listening(handsFree: self.handsFree))
+            }
         }
         self.session = session
         recordingModelDirectory = qwenDirectory?.standardizedFileURL
@@ -446,6 +458,7 @@ final class DictationController: ObservableObject {
         configureRecordingFinish()
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
+        hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])
         hud.show(.listening(handsFree: handsFree))
     }
 
@@ -599,6 +612,7 @@ final class DictationController: ObservableObject {
         pressedAt = nil
         hotkeys.armAlternateFinish(nil)
         hud.model.recordingHint = nil
+        hud.model.setDictionaryTerms([])
         updateTriggerKey()
         hud.show(phase)
     }
@@ -622,6 +636,7 @@ final class DictationController: ObservableObject {
         state = .idle
         hotkeys.armAlternateFinish(nil)
         hud.model.recordingHint = nil
+        hud.model.setDictionaryTerms([])
         updateTriggerKey()
         hud.hide()
     }
@@ -657,24 +672,33 @@ final class DictationController: ObservableObject {
         generation += 1
         let generation = self.generation
         let modelPreparation = preparationGeneration
+        let dictionaryTerms = settings.dictionaryTerms
         previewText = ""
         hud.model.preview = ""
+        hud.model.isEditMode = false
+        hud.model.setDictionaryTerms(dictionaryTerms)
         state = .recording
         let session = QwenTranscriptionSession(
             modelDirectory: modelDirectory,
             language: nil,
-            contextualStrings: settings.dictionaryTerms,
+            contextualStrings: dictionaryTerms,
             onStatus: { [weak self] _ in
-                guard let self, self.generation == generation else { return }
+                guard let self, self.generation == generation,
+                      self.state == .recording || self.state == .processing else { return }
                 self.hud.show(.working)
             }
         )
         self.session = session
         session.onPartial = { [weak self] text in
-            guard let self, self.generation == generation else { return }
+            guard let self, self.generation == generation,
+                  self.state == .recording || self.state == .processing else { return }
             self.previewText = text
             self.hud.model.preview = text
-            if self.state == .recording { self.hud.show(.listening(handsFree: false)) }
+            if self.state == .recording {
+                self.hud.model.isEditMode = false
+                self.hud.model.setDictionaryTerms(dictionaryTerms)
+                self.hud.show(.listening(handsFree: false))
+            }
         }
         hud.show(.listening(handsFree: false))
         do {

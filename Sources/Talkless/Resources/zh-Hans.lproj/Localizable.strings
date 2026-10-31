@@ -1,4 +1,7 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
+"Underlined words match your dictionary. This does not confirm that recognition was corrected." = "带下划线的词语与词典匹配，但这不代表识别结果经过了纠正。";
+"Let's review Talkless tomorrow." = "明天一起讨论 Talkless。";
+"Dictionary match" = "词典匹配";
 " Delete disables this shortcut." = " 按 Delete 停用此快捷键。";
 " Esc cancels recording or processing." = " 按 Esc 取消录音或处理。";
 " · Since tracking began" = " · 自开始统计起";

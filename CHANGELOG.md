@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- Live dictation highlights exact dictionary spellings with a subtle background and underline. Highlights indicate text matches, not proof of a dictionary-caused correction.
+- Overlay settings include a dictionary-match preview; each recording uses a fixed dictionary snapshot for recognition hints and highlights.
+
 ### Documentation
 - Archived the icon design studies and documented the selected Pip silhouette and published startup fix.
 - Updated the user, AI, model, diagnostic, and release guides against current behavior, including shortcuts, translation, history, and privacy boundaries.

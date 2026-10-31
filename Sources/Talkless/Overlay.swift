@@ -24,11 +24,70 @@ final class HUDModel: ObservableObject {
         }
     }
 
-    @Published var phase: Phase = .hidden
+    @Published var phase: Phase = .hidden {
+        didSet {
+            switch phase {
+            case .hidden, .error: setDictionaryTerms([])
+            default: break
+            }
+        }
+    }
     @Published var isEditMode = false
     @Published var preview = ""
     @Published var recordingHint: String?
     @Published var appearance: HUDAppearance
+    @Published private(set) var dictionaryTerms: [String] = []
+    private var dictionaryMatcher = DictionaryHighlightMatcher(terms: [])
+
+    /// Supplied once from the same confirmed-term snapshot used by recognition.
+    /// Presence is not evidence that the recognizer used a hint to correct anything.
+    func setDictionaryTerms(_ terms: [String]) {
+        guard terms != dictionaryTerms else { return }
+        dictionaryMatcher = DictionaryHighlightMatcher(terms: terms)
+        dictionaryTerms = terms
+    }
+
+    /// The panel clips to the latest lines. Bound matching work independently of
+    /// recording length, without truncating the actual transcript or its layout.
+    static let maximumDictionaryHighlightCharacters = 1_024
+
+    static func dictionaryHighlightInput(in text: String) -> (text: String, contextLength: Int, utf16Offset: Int) {
+        let start = text.index(text.endIndex, offsetBy: -maximumDictionaryHighlightCharacters,
+                               limitedBy: text.startIndex) ?? text.startIndex
+        // Two preceding graphemes preserve word boundaries such as pre-OpenAI.
+        let contextStart = text.index(start, offsetBy: -2, limitedBy: text.startIndex) ?? text.startIndex
+        return (
+            String(text[contextStart...]),
+            text.distance(from: contextStart, to: start),
+            text.utf16.distance(from: text.startIndex, to: contextStart)
+        )
+    }
+
+    func attributedDisplayText(increasedContrast: Bool = false) -> AttributedString {
+        let text = displayText
+        var attributed = AttributedString(text)
+        guard case .listening = phase, !isEditMode else { return attributed }
+        // The HUD intentionally keeps its dark surface in both system appearances.
+        // A pale blue wash and a separate underline remain visible without changing
+        // the font, text color, or line metrics; contrast mode strengthens both.
+        let accent = Color(red: 0.58, green: 0.82, blue: 1)
+        let input = Self.dictionaryHighlightInput(in: text)
+        let firstHighlight = input.text.index(input.text.startIndex, offsetBy: input.contextLength)
+        for range in dictionaryMatcher.ranges(in: input.text) {
+            // Do not invent a term at the cropped edge or mark a partially seen phrase.
+            guard range.lowerBound >= firstHighlight else { continue }
+            let localRange = NSRange(range, in: input.text)
+            let fullRange = NSRange(location: input.utf16Offset + localRange.location, length: localRange.length)
+            guard let original = Range(fullRange, in: text),
+                  let start = AttributedString.Index(original.lowerBound, within: attributed),
+                  let end = AttributedString.Index(original.upperBound, within: attributed) else { continue }
+            attributed[start..<end].backgroundColor = accent.opacity(increasedContrast ? 0.28 : 0.16)
+            attributed[start..<end].underlineStyle = Text.LineStyle(
+                pattern: .solid, color: accent.opacity(increasedContrast ? 1 : 0.85)
+            )
+        }
+        return attributed
+    }
 
     init(appearance: HUDAppearance = HUDAppearance()) {
         self.appearance = appearance
@@ -250,6 +309,7 @@ struct HUDView: View {
     var materialBlending: NSVisualEffectView.BlendingMode = .behindWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let size = model.contentSize
@@ -262,7 +322,7 @@ struct HUDView: View {
                         indicator
                             .frame(width: HUDModel.indicatorWidth, height: 18)
                         if !model.displayText.isEmpty {
-                            Text(model.displayText)
+                            Text(model.attributedDisplayText(increasedContrast: contrast == .increased))
                                 .fontWeight(model.phase.statusText == nil ? .regular : .medium)
                                 .lineSpacing(3)
                                 .frame(width: textSize.width, alignment: .leading)

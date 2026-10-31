@@ -152,7 +152,15 @@ Open **Settings > Dictionary**:
 
 Review shows small spelling changes with **Heard** and **Polished** evidence and the number of distinct dictations. **Accept** adds the spelling to My terms. **Dismiss** hides it until you explicitly reset dismissals. Nothing is accepted automatically: AI edits can be wrong, so accept only spellings you recognize.
 
-Scanning considers up to 500 recent history entries and shows up to 100 suggestions, excluding voice edits, translations and large rewrites. It makes no network or additional AI requests. Talkless does not monitor corrections you make in other apps after pasting.
+Scanning considers up to 500 recent history entries and shows up to 100 suggestions, excluding voice-edit and translation entries and most large rewrites. It compares original and final dictation text locally, looking for short spelling substitutions rather than insertions, deletions, punctuation-only edits or common inflections. Suggestions are ranked by how many distinct dictations contain the candidate, then by recency. Dictation polished into another language is still a dictation entry, so the heuristics are not proof of a correct spelling. It makes no network or additional AI requests. Talkless does not monitor corrections you make in other apps after pasting.
+
+### Dictionary words in live transcription
+
+During ordinary dictation, words matching your confirmed dictionary are underlined with a subtle background in the live overlay. This means **the spelling appears in the current transcript**, not that the recognizer reports using a dictionary hint or correcting a mistake. The dictionary is captured when recording starts; edits apply to the next recording. Unaccepted review suggestions are not highlighted.
+
+Matching respects capitalization and word boundaries for Latin terms, and uses direct character matching for Chinese terms. Longer overlapping terms take precedence. Highlights update with each provisional transcript, so they may change as recognition revises its text. To keep long recordings responsive, highlighting scans the latest 1,024 characters; terms starting before that window are not annotated. The full transcript, paste output and saved history are unchanged.
+
+Live highlighting requires an engine that supplies partial text (local Qwen or Apple). Cloud recognition has no live partials. Spoken instructions in voice-edit mode and processing labels are not highlighted. Post-recording polishing corrections remain visible as before/after evidence in dictionary Review, not as claims of a dictionary-caused correction.
 
 ## Overlay
 
@@ -160,7 +168,7 @@ The recording overlay is quiet: no start/stop sounds or routine success messages
 
 By default it stays at the bottom center of the active display through recording and processing. It never takes focus, and clicks pass through. The menu bar icon adds a filled dot while recording and an outlined dot while processing.
 
-**Settings > Overlay** includes a sample-only live preview, with recording, recognizing and polishing stages and short/long recording text. No audio is recorded and no provider is contacted by the preview.
+**Settings > Overlay** includes a sample-only live preview, with recording, recognizing and polishing stages and short, long or dictionary-match recording text. The dictionary sample uses a fixed demo word, not your saved terms. No audio is recorded and no provider is contacted by the preview.
 
 - Choose **Translucent** or **Solid** backdrop.
 - Set translucent background opacity from **20% to 100%**; text and icons stay opaque. Solid is always opaque.

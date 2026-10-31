@@ -24,6 +24,7 @@ struct HUDTests {
         rendered.preview = model.preview
         rendered.isEditMode = model.isEditMode
         rendered.recordingHint = model.recordingHint
+        rendered.setDictionaryTerms(model.dictionaryTerms)
         if reduceTransparency { rendered.appearance.backdrop = .solid }
         if reduceMotion { rendered.appearance.animationsEnabled = false }
         return try snapshotView(HUDView(model: rendered), size: rendered.contentSize, name: name)
@@ -41,6 +42,18 @@ struct HUDTests {
         hosting.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         hosting.layoutSubtreeIfNeeded()
+        if name.contains("settings") {
+            func segmentedControls(in view: NSView) -> [NSSegmentedControl] {
+                (view as? NSSegmentedControl).map { [$0] } ?? view.subviews.flatMap { segmentedControls(in: $0) }
+            }
+            let stages = segmentedControls(in: hosting).filter { control in
+                control.segmentCount == HUDPreviewStage.allCases.count
+                    && (0..<control.segmentCount).map { control.label(forSegment: $0) ?? "" }
+                        == HUDPreviewStage.allCases.map(\.title)
+            }
+            precondition(stages.count == 1,
+                         "Settings must render one Stage control, not alias it to the Sample picker through duplicate IDs")
+        }
         if scrollToBottom {
             func scrollView(in view: NSView) -> NSScrollView? {
                 if let scroll = view as? NSScrollView { return scroll }
@@ -175,12 +188,126 @@ struct HUDTests {
         followingHUD.hide()
     }
 
+    @MainActor static func testDictionaryHighlights() throws {
+        let model = HUDModel(appearance: HUDAppearance(backdrop: .solid, animationsEnabled: false))
+        model.phase = .listening(handsFree: true)
+        model.preview = "Review Talkless and \u{5317}\u{4EAC} with \u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}, then Talkless again."
+        let plainSize = model.contentSize
+        let plainTextSize = model.textSize
+        let plain = try snapshot(model, name: "dictionary-unmarked")
+        model.setDictionaryTerms(["Talkless", "\u{5317}\u{4EAC}", "\u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}"])
+        func highlights(_ attributed: AttributedString) -> [String] {
+            attributed.runs.compactMap { run in
+                guard run.underlineStyle != nil else {
+                    precondition(run.backgroundColor == nil)
+                    return nil
+                }
+                precondition(run.backgroundColor != nil)
+                precondition(run.font == nil && run.foregroundColor == nil,
+                             "Decoration cannot change font metrics or transcript text color")
+                return String(attributed.characters[run.range])
+            }
+        }
+        precondition(highlights(model.attributedDisplayText()) == ["Talkless", "\u{5317}\u{4EAC}", "\u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}", "Talkless"])
+        precondition(String(model.attributedDisplayText().characters) == model.preview)
+        precondition(model.contentSize == plainSize && model.textSize == plainTextSize,
+                     "Matching cannot resize or rewrap the HUD")
+        let marked = try snapshot(model, name: "dictionary-marked")
+        precondition(marked.pixelsWide == plain.pixelsWide && marked.pixelsHigh == plain.pixelsHigh)
+        // Check actual rendered ink, not just attributed-string metadata.
+        var bluePixels = 0
+        var unchangedGlyphs = 0
+        for y in 0..<marked.pixelsHigh {
+            for x in 0..<marked.pixelsWide {
+                let color = marked.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                let prior = plain.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                if color.blueComponent - color.redComponent > 0.08,
+                   color.blueComponent > prior.blueComponent + 0.05 { bluePixels += 1 }
+                if prior.redComponent > 0.9 && prior.greenComponent > 0.9 && prior.blueComponent > 0.9 {
+                    precondition(color.redComponent > 0.87 && color.greenComponent > 0.87 && color.blueComponent > 0.87,
+                                 "Decoration must preserve bright glyph positions and wrapping")
+                    unchangedGlyphs += 1
+                }
+            }
+        }
+        precondition(bluePixels > 20 && unchangedGlyphs > 20, "Native renderer must draw the highlight and original glyphs")
+        let standard = model.attributedDisplayText()
+        let increased = model.attributedDisplayText(increasedContrast: true)
+        precondition(highlights(increased) == highlights(standard) && increased != standard)
+        model.preview = "Review Talkles"
+        precondition(highlights(model.attributedDisplayText()).isEmpty, "Revised partial removes prior match")
+        model.preview = "Talkless Talkless"
+        precondition(highlights(model.attributedDisplayText()) == ["Talkless", "Talkless"])
+        let limit = HUDModel.maximumDictionaryHighlightCharacters
+        func paddedTail(_ prefix: String) -> String {
+            prefix + String(repeating: " ", count: limit - prefix.count)
+        }
+        model.setDictionaryTerms(["OpenAI", "\u{5317}\u{4EAC}"])
+        for prefix in ["prefix", "pre-", "user_"] {
+            model.preview = prefix + paddedTail("OpenAI")
+            precondition(highlights(model.attributedDisplayText()).isEmpty,
+                         "Cropped suffix cannot create a false lexical boundary")
+        }
+        model.preview = "Earlier. " + paddedTail("OpenAI")
+        precondition(highlights(model.attributedDisplayText()) == ["OpenAI"])
+        model.preview = "Earlier \u{5317}" + paddedTail("\u{4EAC}")
+        precondition(highlights(model.attributedDisplayText()).isEmpty,
+                     "A Chinese phrase beginning outside the highlight tail is omitted, not partially highlighted")
+        model.preview = "Earlier \u{5728}" + paddedTail("\u{5317}\u{4EAC}")
+        precondition(highlights(model.attributedDisplayText()) == ["\u{5317}\u{4EAC}"],
+                     "Han adjacency remains valid at the bounded edge")
+        let emoji = "\u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}"
+        let decomposed = "Cafe\u{301}"
+        model.setDictionaryTerms(["Caf\u{E9}", emoji, "\u{5317}\u{4EAC}"])
+        model.preview = String(repeating: emoji, count: 2_000) + " " + paddedTail(decomposed + " " + emoji + " \u{5317}\u{4EAC}")
+        precondition(highlights(model.attributedDisplayText()) == [decomposed, emoji, "\u{5317}\u{4EAC}"],
+                     "Tail UTF-16 offsets preserve original combining and emoji grapheme indices")
+        let legacy = String(repeating: "\u{5317}", count: 4_000) + "\u{4EAC}"
+        model.setDictionaryTerms([legacy, "Talkless"])
+        model.preview = String(repeating: "\u{5317}", count: 10_000) + " Talkless"
+        let input = HUDModel.dictionaryHighlightInput(in: model.preview)
+        precondition(input.text.count == limit + 2 && input.contextLength == 2,
+                     "Very long transcripts/legacy terms cannot increase matching input beyond the tail bound")
+        precondition(input.utf16Offset == (model.preview as NSString).length - (input.text as NSString).length)
+        precondition(highlights(model.attributedDisplayText()) == ["Talkless"])
+        precondition(String(model.attributedDisplayText().characters) == model.preview,
+                     "Only matching is bounded; transcript content is never truncated")
+        model.preview = "Talkless Talkless"
+        model.isEditMode = true
+        precondition(highlights(model.attributedDisplayText()).isEmpty, "Voice edit instructions never imply dictionary use")
+        model.isEditMode = false
+        for phase in [HUDModel.Phase.working, .recognizing, .polishing, .editing] {
+            model.phase = phase
+            precondition(highlights(model.attributedDisplayText()).isEmpty, "Status labels never get highlights")
+        }
+        for phase in [HUDModel.Phase.hidden, .error("Talkless")] {
+            model.setDictionaryTerms(["Talkless"])
+            model.phase = phase
+            precondition(highlights(model.attributedDisplayText()).isEmpty && model.dictionaryTerms.isEmpty)
+            model.phase = .listening(handsFree: false)
+            precondition(highlights(model.attributedDisplayText()).isEmpty, "Hidden/error matcher cannot leak into a new session")
+        }
+        let hud = HUDController(caretProvider: { nil }, screenFramesProvider: { [] }, pointerProvider: { .zero })
+        hud.model.setDictionaryTerms(["Talkless"])
+        hud.model.preview = "Talkless"
+        hud.show(.listening(handsFree: true))
+        hud.hide()
+        precondition(hud.model.dictionaryTerms.isEmpty)
+        hud.model.preview = "Talkless"
+        precondition(highlights(hud.model.attributedDisplayText()).isEmpty)
+        hud.show(.listening(handsFree: false))
+        precondition(highlights(hud.model.attributedDisplayText()).isEmpty)
+        hud.hide()
+        print("PASS exact native dictionary attribution, glyph/layout preservation, partial revisions, edit/status exclusion, contrast, and lifecycle resets")
+    }
+
     @MainActor static func main() throws {
         let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
         localization.interfaceLanguage = .english
         defer { withExtendedLifetime(localization) {} }
         _ = NSApplication.shared
         testPlacementPreferences()
+        try testDictionaryHighlights()
         var caretReads = 0
         let updates = CurrentValueSubject<HUDAppearance, Never>(HUDAppearance())
         let hud = HUDController(appearanceUpdates: updates.eraseToAnyPublisher(), caretProvider: {
@@ -311,6 +438,29 @@ struct HUDTests {
                 stage: .recording, sample: .short).environment(\.colorScheme, scheme),
                 size: CGSize(width: 550, height: 214), name: "preview-\(name)")
         }
+        // Render the real production settings/HUD in both languages and appearances.
+        // This local localization object has nil defaults: language changes never persist.
+        for (languageName, language) in [("en", InterfaceLanguage.english), ("zh-Hans", .simplifiedChinese)] {
+            localization.interfaceLanguage = language
+            localization.refreshLocale()
+            for (schemeName, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
+                try snapshotView(OverlayPreview(appearance: HUDAppearance(animationsEnabled: false),
+                    stage: .recording, sample: .dictionary).environment(\.colorScheme, scheme),
+                    size: CGSize(width: 550, height: 214), name: "dictionary-preview-\(languageName)-\(schemeName)")
+                try snapshotView(OverlaySettingsView(appearance: .constant(HUDAppearance(animationsEnabled: false)))
+                    .environment(\.colorScheme, scheme),
+                    size: CGSize(width: 703, height: 640), name: "dictionary-settings-\(languageName)-\(schemeName)")
+                let terms = ["Talkless", "\u{5317}\u{4EAC}", "\u{7528}\u{6237}\u{8BCD}\u{5178}"]
+                preview.setDictionaryTerms(terms)
+                preview.preview = language == .english
+                    ? "Let's review Talkless tomorrow."
+                    : "\u{660E}\u{5929}\u{5728}\u{5317}\u{4EAC}\u{8BA8}\u{8BBA} Talkless \u{548C}\u{7528}\u{6237}\u{8BCD}\u{5178}\u{3002}"
+                try snapshotView(HUDView(model: preview).environment(\.colorScheme, scheme), size: preview.contentSize,
+                    name: "dictionary-hud-\(languageName)-\(schemeName)")
+            }
+        }
+        localization.interfaceLanguage = .english
+        preview.setDictionaryTerms([])
         preview.preview = HUDPreviewSample.short.text
         preview.appearance.backgroundOpacity = 0.2
         let faint = try snapshot(preview, name: "alpha-faint")
@@ -358,6 +508,7 @@ try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library",
     root.appendingPathComponent("Sources/Talkless/LanguagePickerView.swift").path,
     root.appendingPathComponent("Sources/Talkless/HUDAppearance.swift").path,
     root.appendingPathComponent("Sources/Talkless/Overlay.swift").path,
+    root.appendingPathComponent("Sources/Talkless/DictionaryHighlight.swift").path,
     root.appendingPathComponent("Sources/Talkless/OverlaySettingsView.swift").path,
     root.appendingPathComponent("Sources/Talkless/CaretPosition.swift").path,
     root.appendingPathComponent("Sources/Talkless/TextIO.swift").path, "-o", binary.path])

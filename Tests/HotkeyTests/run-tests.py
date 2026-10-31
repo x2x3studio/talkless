@@ -92,6 +92,7 @@ final class Diagnostics: @unchecked Sendable {
     enum Phase { case listening(handsFree: Bool), error(String) }
     var model: FakeHUD { self }
     var recordingHint: String?
+    func setDictionaryTerms(_ terms: [String]) {}
     func show(_ phase: Phase) {}
     func hide() {}
 }

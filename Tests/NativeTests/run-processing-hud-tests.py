@@ -49,6 +49,7 @@ enum HUDModel {
     var phases: [HUDModel.Phase] = []
     var model: FakeHUD { self }
     var recordingHint: String?
+    func setDictionaryTerms(_ terms: [String]) {}
     func show(_ phase: HUDModel.Phase) { phases.append(phase) }
 }
 final class Diagnostics: @unchecked Sendable {
@@ -332,6 +333,220 @@ TESTS = r'''
 }
 '''
 
+STARTUP_STUBS = r'''
+// Execute real startup/cancel code with synthetic recorder, permissions and providers.
+// No hardware, network, Accessibility or persisted settings are consulted.
+enum L10n {
+    static func tr(_ key: String) -> String { key }
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: key, locale: Locale(identifier: "en"), arguments: args)
+    }
+}
+final class Diagnostics: @unchecked Sendable {
+    static let shared = Diagnostics()
+    func record(event: String, metadata: [String: String] = [:]) {}
+}
+@MainActor final class FakeSettings {
+    enum Engine: String, CaseIterable { case qwen, apple, openAICompatible }
+    var asrEngine: Engine = .qwen
+    var audioInputDeviceUID: String?
+    var terms = ["Talkless", "\u{5317}\u{4EAC}"]
+    var termReads = 0
+    var dictionaryTerms: [String] { termReads += 1; return terms }
+    var voiceEditEnabled = false
+    var llmConfigured = true
+    var speechLocale = "en-US"
+    var asrAPIKey = "synthetic-not-sent"
+    var asrBaseURL = "https://unused.invalid"
+    var asrModel = "synthetic"
+    func resolvedQwenModelDirectory() throws -> URL { URL(fileURLWithPath: "/synthetic/model") }
+}
+struct AppContext { let name: String; let bundleID: String }
+struct FakeApp { let localizedName: String?; let bundleIdentifier: String? }
+@MainActor final class FakeWorkspace {
+    static let shared = FakeWorkspace()
+    let frontmostApplication: FakeApp? = nil
+}
+@MainActor final class ModelManager {
+    static let shared = ModelManager()
+    var operationModelID: String?
+}
+@MainActor enum TextIO {
+    static func selectedTextViaAX() -> String? { "Selected sentence" }
+}
+enum AVCaptureDevice {
+    enum Media { case audio }
+    static func requestAccess(for media: Media, completion: (Bool) -> Void) { preconditionFailure("No permissions") }
+}
+@MainActor protocol TranscriptionSession: AnyObject {
+    var onPartial: ((String) -> Void)? { get set }
+    func feed(_ buffer: Int)
+    func cancel()
+}
+@MainActor class FakeSession: TranscriptionSession {
+    static var latest: FakeSession?
+    static var onCreate: () -> Void = {}
+    var onPartial: ((String) -> Void)?
+    var onStatus: ((String) -> Void)?
+    var onError: ((String) -> Void)?
+    var terms: [String] = []
+    var prompt: String?
+    var cancelled = false
+    init() { Self.latest = self; Self.onCreate() }
+    func feed(_ buffer: Int) {}
+    func cancel() { cancelled = true }
+}
+@MainActor final class QwenTranscriptionSession: FakeSession {
+    init(modelDirectory: URL, language: String?, contextualStrings: [String],
+         onStatus: @escaping (String) -> Void, onError: @escaping (String) -> Void) {
+        super.init(); terms = contextualStrings; self.onStatus = onStatus; self.onError = onError
+    }
+}
+@MainActor final class AppleSpeechSession: FakeSession {
+    init(locale: Locale, contextualStrings: [String], onStatus: @escaping (String) -> Void) {
+        super.init(); terms = contextualStrings; self.onStatus = onStatus
+    }
+}
+@MainActor final class CloudTranscriptionSession: FakeSession {
+    struct Config { let baseURL: String; let apiKey: String; let model: String; let language: String?; let prompt: String? }
+    init(config: Config) { super.init(); prompt = config.prompt }
+}
+@MainActor final class FakeRecorder {
+    var onBuffer: ((Int) -> Void)?
+    var onError: ((String) -> Void)?
+    var fail = false
+    func start(deviceUID: String?, operationID: UUID) throws {
+        if fail { throw NSError(domain: "Synthetic", code: 1) }
+    }
+    func stop() {}
+}
+@MainActor final class FakeHUD {
+    let model = HUDModel()
+    func show(_ phase: HUDModel.Phase) { model.phase = phase }
+    func hide() { model.phase = .hidden; model.preview = ""; model.isEditMode = false }
+}
+@MainActor final class FakeHotkeys { func armAlternateFinish(_ value: Int?) {} }
+@MainActor final class StartupHarness {
+    enum State { case idle, recording, processing }
+    enum Gesture: String { case hold }
+    enum Authorization { case authorized, notDetermined, denied, restricted }
+    static var microphoneStatus: Authorization { .authorized }
+    var state = State.idle
+    var shortcutCaptureActive = false
+    var generation = 0
+    var recordingGestureMode = Gesture.hold
+    var handsFree = false
+    private var diagnosticOperation: DictationOperation?
+    var changingModel = false
+    let settings = FakeSettings()
+    let hud = FakeHUD()
+    let recorder = FakeRecorder()
+    let hotkeys = FakeHotkeys()
+    var targetApp: FakeApp?
+    var previewText = ""
+    var context: AppContext?
+    var editSelection: String?
+    var session: (any TranscriptionSession)?
+    var recordingModelDirectory: URL?
+    var recordingPreparationGeneration = 0
+    var preparationGeneration = 0
+    var pressedAt: UInt64?
+    var processingTask: Task<Void, Never>?
+    var onModelSetupRequested: (() -> Void)?
+    func configureRecordingFinish() {}
+    func updateTriggerKey() {}
+'''
+
+STARTUP_TESTS = r'''
+}
+@main struct StartupTests {
+    @MainActor static func matched(_ model: HUDModel) -> [String] {
+        let attributed = model.attributedDisplayText()
+        return attributed.runs.compactMap {
+            $0.underlineStyle == nil ? nil : String(attributed.characters[$0.range])
+        }
+    }
+    @MainActor static func main() {
+        for engine in FakeSettings.Engine.allCases {
+            let test = StartupHarness()
+            test.settings.asrEngine = engine
+            // Simulate a Settings edit during construction, between snapshot and HUD setup.
+            FakeSession.onCreate = { test.settings.terms = ["NextSession"] }
+            test.startRecording()
+            let old = FakeSession.latest!
+            precondition(test.state == .recording && test.settings.termReads == 1)
+            precondition(test.hud.model.dictionaryTerms == ["Talkless", "\u{5317}\u{4EAC}"])
+            if engine == .openAICompatible {
+                precondition(old.prompt == "Talkless, \u{5317}\u{4EAC}")
+                precondition(test.hud.model.preview.isEmpty && matched(test.hud.model).isEmpty,
+                             "Cloud recognition has no live partial to decorate")
+            } else {
+                precondition(old.terms == ["Talkless", "\u{5317}\u{4EAC}"])
+                old.onPartial?("Talkless \u{5317}\u{4EAC} NextSession")
+                precondition(matched(test.hud.model) == ["Talkless", "\u{5317}\u{4EAC}"])
+                old.onPartial?("Talkles")
+                precondition(matched(test.hud.model).isEmpty, "Replacement partial clears prior matches")
+                // Translation can briefly use the shared HUD while recording continues.
+                // Presentation reset must not replace the recording-owned term snapshot.
+                for dismissError in [false, true] {
+                    test.hud.show(.error("Synthetic unrelated translation error"))
+                    precondition(test.hud.model.dictionaryTerms.isEmpty)
+                    if dismissError { test.hud.hide() }
+                    old.onPartial?("Talkless NextSession")
+                    precondition(test.hud.model.phase == .listening(handsFree: false))
+                    precondition(matched(test.hud.model) == ["Talkless"] && test.settings.termReads == 1,
+                                 "Continued recording restores its original snapshot after unrelated error/hide")
+                }
+                test.state = .processing
+                test.hud.show(.recognizing)
+                old.onPartial?("Talkless")
+                precondition(test.hud.model.phase == .recognizing && matched(test.hud.model).isEmpty)
+            }
+            test.cancel()
+            precondition(test.hud.model.dictionaryTerms.isEmpty)
+            old.onPartial?("Talkless")
+            old.onStatus?("late")
+            old.onError?("late")
+            precondition(test.hud.model.phase == .hidden && matched(test.hud.model).isEmpty)
+            FakeSession.onCreate = {}
+            test.startRecording()
+            let current = FakeSession.latest!
+            precondition(test.settings.termReads == 2 && test.hud.model.dictionaryTerms == ["NextSession"])
+            old.onPartial?("Talkless")
+            old.onStatus?("late")
+            old.onError?("late")
+            precondition(test.state == .recording && test.hud.model.preview.isEmpty,
+                         "Previous generation cannot change the new HUD or terminate recording")
+            current.onPartial?("Talkless NextSession")
+            precondition(matched(test.hud.model) == ["NextSession"])
+            test.cancel()
+            test.recorder.fail = true
+            test.startRecording()
+            precondition(test.state == .idle && test.hud.model.dictionaryTerms.isEmpty)
+            let failedPhase = test.hud.model.phase
+            FakeSession.latest?.onPartial?("NextSession")
+            FakeSession.latest?.onStatus?("late")
+            FakeSession.latest?.onError?("late")
+            precondition(test.hud.model.phase == failedPhase && matched(test.hud.model).isEmpty,
+                         "Failed startup callbacks cannot revive HUD highlights")
+            test.recorder.fail = false
+            test.settings.voiceEditEnabled = true
+            test.startRecording()
+            FakeSession.latest?.onPartial?("NextSession")
+            precondition(test.hud.model.isEditMode && test.hud.model.dictionaryTerms.isEmpty)
+            precondition(matched(test.hud.model).isEmpty, "Voice edit instructions never decorate")
+            test.hud.show(.error("Synthetic unrelated translation error"))
+            test.hud.hide()
+            FakeSession.latest?.onPartial?("NextSession")
+            precondition(test.hud.model.isEditMode && matched(test.hud.model).isEmpty,
+                         "Resuming after hidden error must preserve voice-edit exclusion")
+            test.cancel()
+        }
+        print("PASS production recording snapshots for Qwen/Apple/cloud, dynamic dictionary edits, partial revisions, processing exclusion, cancel/startup failures, stale generations, and voice edit")
+    }
+}
+'''
+
 operation = controller.split("private struct DictationOperation", 1)[1].split("/// Core dictation flow", 1)[0]
 source = "import Foundation\nprivate struct DictationOperation" + operation + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
 with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as directory:
@@ -341,4 +556,13 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     swift.write_text(source)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
                     str(swift), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, timeout=30)
+    overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
+    # Real HUDModel, real startup/cancel methods, only external boundaries substituted.
+    startup = overlay_model + "\nprivate struct DictationOperation" + operation + STARTUP_STUBS
+    startup += method("startRecording").replace("NSWorkspace", "FakeWorkspace") + "\n" + method("cancel") + STARTUP_TESTS
+    swift.write_text(startup)
+    subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),
+                    str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
+                    str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)

@@ -1,4 +1,7 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
+"Underlined words match your dictionary. This does not confirm that recognition was corrected." = "Underlined words match your dictionary. This does not confirm that recognition was corrected.";
+"Let's review Talkless tomorrow." = "Let's review Talkless tomorrow.";
+"Dictionary match" = "Dictionary match";
 " Delete disables this shortcut." = " Delete disables this shortcut.";
 " Esc cancels recording or processing." = " Esc cancels recording or processing.";
 " · Since tracking began" = " · Since tracking began";

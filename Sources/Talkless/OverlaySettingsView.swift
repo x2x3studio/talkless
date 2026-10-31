@@ -6,7 +6,7 @@ struct OverlaySettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var previewStage = HUDPreviewStage.recording
-    @State private var previewSample = HUDPreviewSample.short
+    @State private var previewSample = HUDPreviewSample.dictionary
 
     var body: some View {
         Form {
@@ -14,14 +14,17 @@ struct OverlaySettingsView: View {
                 Picker(L10n.tr("Stage"), selection: $previewStage) {
                     ForEach(HUDPreviewStage.allCases) { Text($0.title).tag($0) }
                 }
-                .id(localization.locale.identifier)
+                .id("stage-\(localization.locale.identifier)")
                 .pickerStyle(.segmented)
                 OverlayPreview(appearance: appearance, stage: previewStage, sample: previewSample)
                 Picker(L10n.tr("Sample text"), selection: $previewSample) {
                     ForEach(HUDPreviewSample.allCases) { Text($0.title).tag($0) }
                 }
-                .id(localization.locale.identifier)
+                .id("sample-\(localization.locale.identifier)")
                 .disabled(previewStage != .recording)
+                Text(L10n.tr("Underlined words match your dictionary. This does not confirm that recognition was corrected."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.tr("Sample text only. No audio recording or AI requests."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -31,7 +34,7 @@ struct OverlaySettingsView: View {
                 Picker(L10n.tr("Backdrop"), selection: $appearance.backdrop) {
                     ForEach(HUDAppearance.Backdrop.allCases) { Text($0.title).tag($0) }
                 }
-                .id(localization.locale.identifier)
+                .id("backdrop-\(localization.locale.identifier)")
                 HStack(spacing: 12) {
                     Text(L10n.tr("Background opacity"))
                     Slider(value: $appearance.backgroundOpacity, in: HUDAppearance.opacityRange, step: 0.05)
@@ -101,19 +104,21 @@ enum HUDPreviewStage: String, CaseIterable, Identifiable {
 }
 
 enum HUDPreviewSample: String, CaseIterable, Identifiable {
-    case short, long
+    case short, long, dictionary
 
     var id: Self { self }
     var title: String {
         switch self {
         case .short: L10n.tr("Short")
         case .long: L10n.tr("Long")
+        case .dictionary: L10n.tr("Dictionary match")
         }
     }
 
     var text: String {
         switch self {
         case .short: L10n.tr("Let's meet tomorrow morning.")
+        case .dictionary: L10n.tr("Let's review Talkless tomorrow.")
         case .long:
             L10n.tr("Let's meet tomorrow morning to review the latest draft. We can go through the open questions, collect everyone's feedback, and agree on the next steps. Please bring your notes from the last conversation so we can make sure nothing gets missed. After the meeting, I will share a short summary with the team. That summary will include the decisions, the remaining questions, and a clear plan for the week ahead. We should leave enough time to check the details before sending the final version. These are the latest words.")
         }
@@ -135,6 +140,8 @@ struct OverlayPreview: View {
         let model = HUDModel(appearance: appearance)
         model.phase = stage.phase
         model.preview = sample.text
+        // A fixed demo term, never the user's dictionary or recognition session.
+        model.setDictionaryTerms(["Talkless"])
         _model = StateObject(wrappedValue: model)
     }
 
