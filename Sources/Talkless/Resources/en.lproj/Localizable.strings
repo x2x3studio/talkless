@@ -621,6 +621,7 @@
 "Tap %@ to start talking; press again to finish." = "Tap %@ to start talking; press again to finish.";
 "Tap to dictate" = "Tap to dictate";
 "Target app changed; result saved" = "Target app changed; result saved";
+"The app changed before the text was ready. It was copied; press ⌘V to paste." = "The app changed before the text was ready. It was copied; press ⌘V to paste.";
 "Target language" = "Target language";
 "Telugu" = "Telugu";
 "Test Connection" = "Test Connection";

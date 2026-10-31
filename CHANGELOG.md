@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- If you switch to another app before the text is ready, Talkless copies it and asks you to press ⌘V instead of pasting into the wrong app.
+
+### Improved
+- You can start the next dictation right after text is inserted; the original clipboard is still restored in the background.
+
+## 2026.1031.40954
+
 ### Improved
 - AI polishing, voice editing, and translation reuse warm connections, and Talkless starts connecting to the AI service while you speak, so results arrive sooner.
 - Saving history no longer blocks the interface after each dictation.

@@ -124,6 +124,8 @@ enum PolishValidation {
         await Task.yield()
         inserted.append(text)
     }
+    static var copied: [String] = []
+    static func copyToClipboard(_ text: String) { copied.append(text) }
 }
 struct HistoryEntry {
     enum Kind { case dictation, edit }
@@ -171,6 +173,9 @@ struct HistoryEntry {
     let hud = FakeHUD()
     let history = FakeHistory()
     var cancelled = false
+    var targetApp: Int? = 1
+    var appChanged = false
+    func insertionTargetChanged(from app: Int?) -> Bool { precondition(app == 1); return appChanged }
     func cancel(reason: String = "user") {
         diagnosticOperation?.record("dictation_cancel", ["reason": reason])
         cancelled = true
@@ -404,6 +409,24 @@ TESTS = r'''
         precondition(TextIO.inserted.isEmpty && failedEdit.history.entries.isEmpty)
         LLMClient.fail = false
         print("PASS cancellation across all awaits prevents late preview/history; edit errors stay actionable")
+        for editing in [false, true] {
+            let switched = ProcessingHarness()
+            switched.editSelection = editing ? "selected text" : nil
+            switched.appChanged = true
+            TextIO.inserted = []
+            TextIO.copied = []
+            switched.stopAndProcess()
+            await switched.processingTask?.value
+            precondition(TextIO.inserted.isEmpty, "A changed frontmost app must never receive the paste")
+            precondition(TextIO.copied == ["processed transcript"] && switched.history.entries.count == 1)
+            guard case .error(let message) = switched.hud.model.phase, message.contains("⌘V") else {
+                preconditionFailure("Switching apps must explain that the text was copied")
+            }
+            precondition(switched.state == .idle)
+            precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == "target_changed" })
+        }
+        TextIO.copied = []
+        print("PASS switching apps before insertion copies instead of pasting, keeps history, and explains ⌘V")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
         for outcome in ["success", "empty", "failure", "cancelled", "stale", "new_preparation", "non_qwen"] {
@@ -617,6 +640,7 @@ typealias AudioRecorder = FakeRecorder
     let recorder = FakeRecorder()
     let hotkeys = FakeHotkeys()
     var targetApp: FakeApp?
+    func insertionTargetChanged(from app: FakeApp?) -> Bool { false }
     var previewText = ""
     var context: AppContext?
     var editSelection: String?

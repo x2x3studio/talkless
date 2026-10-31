@@ -17,6 +17,7 @@ let demoRun = 0;
 let demoPlaying = false;
 let noteEdited = false;
 let runtimeNotes = null;
+let releaseChannel = 'beta';
 
 function preferredLocale(languages) {
   for (const language of languages) {
@@ -39,7 +40,23 @@ function chosenLocale() {
 function text(key) {
   const note = key.match(/^release\.note\.(\d+)$/);
   if (note && runtimeNotes) return runtimeNotes[currentLocale]?.[note[1]] || runtimeNotes.en[note[1]] || key;
+  // Copy that mentions the beta has a ".stable" variant used once a stable release is current.
+  if (releaseChannel === 'stable' && (catalog[`${key}.stable`] || catalogs.get('en')?.[`${key}.stable`])) key = `${key}.stable`;
   return catalog[key] || catalogs.get('en')?.[key] || key;
+}
+
+function renderText() {
+  const metaPrefix = page === 'home' ? 'meta' : `${page}.meta`;
+  document.title = text(`${metaPrefix}.title`);
+  document.querySelector('meta[name="description"]').content = text(`${metaPrefix}.description`);
+  document.querySelector('meta[property="og:title"]').content = text(`${metaPrefix}.title`);
+  document.querySelector('meta[property="og:description"]').content = text(`${metaPrefix}.description`);
+  for (const element of document.querySelectorAll('[data-i18n]')) {
+    element.textContent = text(element.dataset.i18n);
+  }
+  for (const element of document.querySelectorAll('[data-i18n-aria]')) {
+    element.setAttribute('aria-label', text(element.dataset.i18nAria));
+  }
 }
 
 async function loadCatalog(locale) {
@@ -68,23 +85,13 @@ async function setLocale(locale, remember = false) {
     catalog = strings;
     if (playButton) playButton.disabled = false;
     root.lang = locale;
-    const metaPrefix = page === 'home' ? 'meta' : `${page}.meta`;
-    document.title = text(`${metaPrefix}.title`);
-    document.querySelector('meta[name="description"]').content = text(`${metaPrefix}.description`);
-    document.querySelector('meta[property="og:title"]').content = text(`${metaPrefix}.title`);
-    document.querySelector('meta[property="og:description"]').content = text(`${metaPrefix}.description`);
     // Carry language through navigation even when browser storage is blocked.
     for (const link of document.querySelectorAll('[data-site-link]')) {
       const url = new URL(link.href, location.href);
       url.searchParams.set('lang', locale);
       link.href = `${url.pathname}${url.search}${url.hash}`;
     }
-    for (const element of document.querySelectorAll('[data-i18n]')) {
-      element.textContent = text(element.dataset.i18n);
-    }
-    for (const element of document.querySelectorAll('[data-i18n-aria]')) {
-      element.setAttribute('aria-label', text(element.dataset.i18nAria));
-    }
+    renderText();
     for (const button of localeButtons) button.setAttribute('aria-pressed', String(button.dataset.locale === locale));
     if (output && !noteEdited) resetNote();
     announcement.textContent = '';
@@ -171,7 +178,9 @@ output?.addEventListener('focus', () => {
 output?.addEventListener('input', () => { stopDemo(); noteEdited = true; });
 output?.addEventListener('blur', () => { if (!output.textContent.trim()) { noteEdited = false; resetNote(); } });
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || !demoPlaying) return;
+  if (event.key !== 'Escape') return;
+  hideDownloadSteps();
+  if (!demoPlaying) return;
   stopDemo();
   transcript.textContent = text('demo.idle');
   announcement.textContent = text('demo.cancelled');
@@ -193,6 +202,7 @@ async function applyRelease() {
       element.setAttribute('datetime', release.publishedDate);
     }
     for (const tag of document.querySelectorAll('.download-link .button-tag')) tag.hidden = release.channel !== 'beta';
+    if (release.channel === 'stable') releaseChannel = 'stable';
     const list = document.querySelector('[data-release-changes]');
     const notes = release.notes;
     if (list && Array.isArray(notes?.en) && notes.en.length && notes['zh-Hans']?.length === notes.en.length) {
@@ -204,9 +214,69 @@ async function applyRelease() {
         return item;
       }));
     }
+    renderText();
   } catch { /* Keep the static release snapshot. */ }
 }
 
+// Talkless is a macOS app: say so before a phone, tablet or PC visitor downloads a DMG.
+// Browsers cannot reliably tell Intel from Apple silicon Macs, so Macs see the requirements line only.
+function isOtherDevice() {
+  const agent = navigator.userAgent || '';
+  const touchMac = /Macintosh/.test(agent) && navigator.maxTouchPoints > 1; // iPadOS requests desktop sites.
+  return Boolean(navigator.userAgentData?.mobile) || /iPhone|iPad|iPod|Android/i.test(agent) || touchMac || !/Macintosh|Mac OS X/.test(agent);
+}
+
+let downloadSteps = null;
+
+function showDownloadSteps() {
+  if (!downloadSteps) {
+    downloadSteps = document.createElement('aside');
+    downloadSteps.className = 'download-steps';
+    downloadSteps.setAttribute('role', 'status');
+    const title = document.createElement('p');
+    title.className = 'download-steps-title';
+    title.dataset.i18n = 'download.steps.title';
+    const list = document.createElement('ol');
+    for (const key of ['download.steps.open', 'download.steps.drag', 'download.steps.launch']) {
+      const step = document.createElement('li');
+      step.dataset.i18n = key;
+      list.append(step);
+    }
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'download-steps-close';
+    close.dataset.i18nAria = 'download.steps.close';
+    close.textContent = '\u00d7';
+    close.addEventListener('click', hideDownloadSteps);
+    downloadSteps.append(close, title, list);
+    document.body.append(downloadSteps);
+    // Localize the new nodes immediately: the catalogs are already loaded.
+    title.textContent = text('download.steps.title');
+    for (const step of list.children) step.textContent = text(step.dataset.i18n);
+    close.setAttribute('aria-label', text('download.steps.close'));
+  }
+  downloadSteps.hidden = false;
+}
+
+function hideDownloadSteps() {
+  if (downloadSteps) downloadSteps.hidden = true;
+}
+
+function setupDownloads() {
+  const otherDevice = isOtherDevice();
+  for (const link of document.querySelectorAll('.download-link')) {
+    // Never block the download; the browser follows /download as usual.
+    link.addEventListener('click', showDownloadSteps);
+    if (otherDevice) {
+      const note = document.createElement('p');
+      note.className = 'download-device-note';
+      note.dataset.i18n = 'download.otherDevice';
+      link.after(note);
+    }
+  }
+}
+
+setupDownloads();
 await loadCatalog('en').then(strings => { catalog = strings; }).catch(() => {});
 await setLocale(chosenLocale());
 await applyRelease();

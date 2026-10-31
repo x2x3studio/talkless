@@ -26,7 +26,7 @@ enum TextIO {
         if let text = selectedTextViaAX() { return text }
 
         let pasteboard = NSPasteboard.general
-        let saved = snapshot(pasteboard)
+        let saved = takeUserSnapshot(pasteboard)
         let before = pasteboard.changeCount
         postKey(vKeyC, flags: .maskCommand)
 
@@ -43,11 +43,12 @@ enum TextIO {
         return result
     }
 
-    /// Insert text at the cursor using the clipboard and ⌘V, then restore the original clipboard.
+    /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the
+    /// original clipboard is restored 400 ms later so the next dictation never waits for it.
     @MainActor
     static func insert(_ text: String) async {
         let pasteboard = NSPasteboard.general
-        let saved = snapshot(pasteboard)
+        let saved = takeUserSnapshot(pasteboard)
 
         pasteboard.clearContents()
         let item = NSPasteboardItem()
@@ -60,16 +61,36 @@ enum TextIO {
 
         postKey(vKeyV, flags: .maskCommand)
 
-        try? await Task.sleep(for: .milliseconds(400))
-        // Do not overwrite anything the user copied in the meantime.
-        if pasteboard.changeCount == ourChange {
-            restore(saved, to: pasteboard)
-        }
+        pendingRestore?.task.cancel()
+        pendingRestore = PendingRestore(saved: saved, change: ourChange, task: Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let pending = pendingRestore, pending.change == ourChange else { return }
+            pendingRestore = nil
+            // Do not overwrite anything the user copied in the meantime.
+            if pasteboard.changeCount == ourChange { restore(pending.saved, to: pasteboard) }
+        })
     }
 
     static func copyToClipboard(_ text: String) {
+        pendingRestore?.task.cancel()
+        pendingRestore = nil
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private struct PendingRestore {
+        let saved: Snapshot
+        let change: Int
+        let task: Task<Void, Never>
+    }
+    private static var pendingRestore: PendingRestore?
+
+    /// The user's own clipboard. While our transient paste is still on the pasteboard, that is the
+    /// snapshot taken before it; the caller takes over restoring it.
+    private static func takeUserSnapshot(_ pasteboard: NSPasteboard) -> Snapshot {
+        defer { pendingRestore?.task.cancel(); pendingRestore = nil }
+        if let pendingRestore, pasteboard.changeCount == pendingRestore.change { return pendingRestore.saved }
+        return snapshot(pasteboard)
     }
 
     private static func postKey(_ key: CGKeyCode, flags: CGEventFlags) {

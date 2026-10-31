@@ -527,6 +527,7 @@ final class DictationController: ObservableObject {
         let generation = self.generation
         let editSelection = self.editSelection
         let context = self.context
+        let targetApp = self.targetApp
         let modelDirectory = recordingModelDirectory
         let modelPreparation = recordingPreparationGeneration
 
@@ -609,6 +610,18 @@ final class DictationController: ObservableObject {
                 guard generation == self.generation, !Task.isCancelled else { return }
 
                 self.lastTranscript = output
+                // Switching apps during recognition/polishing must not paste into the new app.
+                if self.insertionTargetChanged(from: targetApp) {
+                    operation?.record("paste_skipped", ["reason": "target_changed"])
+                    TextIO.copyToClipboard(output)
+                    self.history.add(HistoryEntry(
+                        kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
+                    ))
+                    operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
+                        "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
+                    self.finish(.error(L10n.tr("The app changed before the text was ready. It was copied; press ⌘V to paste.")))
+                    return
+                }
                 stage = "insertion"
                 stageStarted = DispatchTime.now().uptimeNanoseconds
                 operation?.record("paste_attempt", ["empty": String(output.isEmpty)])
@@ -694,6 +707,11 @@ final class DictationController: ObservableObject {
         hud.model.setDictionaryTerms([])
         updateTriggerKey()
         hud.hide()
+    }
+
+    private func insertionTargetChanged(from app: NSRunningApplication?) -> Bool {
+        guard let app else { return false }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier
     }
 
     private func paste(_ text: String, into app: NSRunningApplication?) async {

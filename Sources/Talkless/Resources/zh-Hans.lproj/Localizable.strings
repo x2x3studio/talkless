@@ -621,6 +621,7 @@
 "Tap %@ to start talking; press again to finish." = "单击%@开始说话，再按一次结束";
 "Tap to dictate" = "单击输入";
 "Target app changed; result saved" = "目标 App 已改变，结果已保存";
+"The app changed before the text was ready. It was copied; press ⌘V to paste." = "文字生成前已切换了 App，结果已复制，按 ⌘V 粘贴。";
 "Target language" = "目标语言";
 "Telugu" = "泰卢固语";
 "Test Connection" = "测试连接";

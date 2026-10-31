@@ -18,13 +18,14 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = value; }
   removeAttribute(name) { delete this.attributes[name]; }
   replaceChildren(...children) { this.value = ''; this.children = children; }
-  append(child) { this.children.push(child); }
+  append(...nodes) { this.children.push(...nodes); }
   addEventListener(name, listener) { this.listeners[name] = listener; }
   querySelector(selector) { return selector === 'strong' ? this.strong : this.children.find(child => child.className === selector.slice(1)); }
   focus() { this.focused = true; this.listeners.focus?.(); }
+  after(node) { this.next = node; }
 }
 
-async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false, runtime = release } = {}) {
+async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false, runtime = release, agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', touchPoints = 0 } = {}) {
   const elements = Object.fromEntries((page === 'home' ? ['#play-demo', '#demo-output', '#demo-transcript', '#dictation-pill', '#demo-announcement', '#release-version'] : ['#locale-announcement', '#release-version']).map(id => [id, new Element()]));
   if (page === 'home') elements['#play-demo'].strong = new Element();
   elements['#release-version'].textContent = release.version;
@@ -44,21 +45,22 @@ async function boot({ languages = ['en-US'], reduced = true, stored = null, sear
   published.textContent = release.publishedDate;
   const tags = [new Element(), new Element()];
   const changes = new Element();
+  const created = [];
   const requests = [];
   const storage = new Map(stored ? [['talkless.website.language', stored]] : []);
   const document = {
     documentElement: { lang: 'en' },
-    body: { dataset: { page } },
+    body: { dataset: { page }, children: [], append(node) { this.children.push(node); } },
     querySelector(selector) { return selector === '[data-release-changes]' ? (page === 'updates' ? changes : null) : elements[selector] ?? (selector.startsWith('meta[') ? new Element() : null); },
-    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': [...localized, ...changes.children], '[data-release-version]': [elements['#release-version']], '[data-release-build]': [build], '[data-release-date]': [published], '.download-link .button-tag': tags })[selector] || []; },
-    createElement() { return new Element(); },
+    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': [...localized, ...changes.children, ...created.filter(node => node.dataset.i18n)], '[data-i18n-aria]': created.filter(node => node.dataset.i18nAria), '[data-release-version]': [elements['#release-version']], '[data-release-build]': [build], '[data-release-date]': [published], '.download-link .button-tag': tags })[selector] || []; },
+    createElement() { const node = new Element(); created.push(node); return node; },
     createTextNode(value) { const node = new Element(); node.textContent = value; return node; },
     addEventListener(name, listener) { this[name] = listener; },
   };
   const context = vm.createContext({
     document,
     window: { matchMedia: () => ({ matches: reduced }) },
-    navigator: { languages },
+    navigator: { languages, userAgent: agent, maxTouchPoints: touchPoints },
     location: { search, href: `https://typeless.x2x3.com/${search}` },
     history: { replaceState() {} },
     localStorage: { getItem: key => { if (blockedStorage) throw new Error('Storage blocked'); return storage.get(key); }, setItem: (key, value) => { if (blockedStorage) throw new Error('Storage blocked'); storage.set(key, value); } },
@@ -120,6 +122,43 @@ assert((await boot({ runtime: { ...newer, channel: 'beta' } })).tags.every(tag =
 const offline = await boot({ page: 'updates', runtime: null });
 assert.equal(offline.elements['#release-version'].textContent, release.version, 'Failed release fetch keeps the static snapshot');
 assert.equal(offline.changes.children.length, 0);
+assert.equal(live.document.title, zh['updates.meta.title']);
+const stableHome = await boot({ runtime: newer });
+const badge = new Element({ i18n: 'hero.badge' });
+stableHome.localized.push(badge);
+await stableHome.locales[1].listeners.click();
+assert.equal(badge.textContent, zh['hero.badge.stable'], 'Stable releases swap beta copy for its stable variant');
+const betaHome = await boot();
+const betaBadge = new Element({ i18n: 'hero.badge' });
+betaHome.localized.push(betaBadge);
+await betaHome.locales[0].listeners.click();
+assert.equal(betaBadge.textContent, en['hero.badge'], 'Beta releases keep beta copy');
+
+// Device note: Macs see only the requirements line; phones, iPads and PCs are told before downloading.
+assert(basic.downloads.every(link => !link.next), 'Mac visitors get no device note');
+for (const [agent, touchPoints] of [['Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 5], ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 5], ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 0], ['Mozilla/5.0 (Linux; Android 15)', 5]]) {
+  const other = await boot({ agent, touchPoints, languages: ['zh-CN'] });
+  assert(other.downloads.every(link => link.next?.textContent === zh['download.otherDevice']), agent);
+  assert.equal(other.downloads[0].href, '/download', 'The note never blocks downloading');
+}
+
+// Clicking download shows localized install steps without preventing navigation; Escape or close hides them.
+const steps = await boot({ languages: ['zh-CN'] });
+steps.downloads[0].listeners.click();
+const panel = steps.document.body.children[0];
+assert.equal(panel.hidden, false);
+assert.equal(panel.children[1].textContent, zh['download.steps.title']);
+assert.deepEqual(panel.children[2].children.map(step => step.textContent), [zh['download.steps.open'], zh['download.steps.drag'], zh['download.steps.launch']]);
+assert.equal(panel.children[0].attributes['aria-label'], zh['download.steps.close']);
+steps.document.keydown({ key: 'Escape' });
+assert.equal(panel.hidden, true);
+steps.downloads[1].listeners.click();
+assert.equal(steps.document.body.children.length, 1, 'Steps panel is reused');
+await steps.locales[0].listeners.click();
+assert.equal(panel.children[1].textContent, en['download.steps.title'], 'Steps follow the language switch');
+panel.children[0].listeners.click();
+assert.equal(panel.hidden, true);
+
 const malformed = await boot({ runtime: { ...newer, version: '<b>1</b>' } });
 assert.equal(malformed.elements['#release-version'].textContent, release.version, 'Malformed runtime metadata is ignored');
 for (const page of ['guide', 'privacy', 'updates', 'support']) {
@@ -146,4 +185,4 @@ await pending;
 assert.equal(animated.elements['#dictation-pill'].dataset.state, 'idle');
 assert.equal(animated.elements['#demo-output'].textContent, '', 'Escape must prevent insertion');
 assert(basic.requests.every(path => path.startsWith('/locales/') || path === '/release.json'), 'Only same-origin data may be requested');
-console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, same-origin /download, runtime release labels/notes with static fallback, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');
+console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, same-origin /download, runtime release labels/notes with static fallback, stable copy variants, device notes, download steps, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');
