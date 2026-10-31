@@ -525,6 +525,10 @@ private struct SpeechTab: View {
                     }
                     TextField(L10n.tr("API URL"), text: $settings.asrBaseURL)
                     SecureField(L10n.tr("API Key"), text: $settings.asrAPIKey)
+                    if let error = settings.asrCredentialError {
+                        Text(error).font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     TextField(L10n.tr("Model"), text: $settings.asrModel)
                     Text(L10n.tr("Uploads the full recording for transcription after you finish. Audio is not saved locally."))
                         .font(.caption).foregroundStyle(.secondary)

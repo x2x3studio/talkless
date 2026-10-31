@@ -228,7 +228,7 @@ Local Qwen recognition does not upload audio. Apple recognition runs on-device a
 Talkless stores:
 
 - **App preferences:** settings, provider endpoints/model IDs, dictionary terms, dictionary fixes and dismissed suggestions in macOS UserDefaults.
-- **AI service credentials:** API keys in macOS Keychain. The separate **cloud speech-recognition key is stored in plaintext in UserDefaults**, not Keychain.
+- **Credentials:** AI service keys and the cloud speech-recognition key are stored in macOS Keychain. A speech key that an earlier version kept in UserDefaults moves to Keychain on first launch and is then deleted from UserDefaults; if Keychain is unavailable, the key works for that session and Settings explains why.
 - **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, text history in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`.
 
 Logs exclude audio, transcripts, API keys and request contents. Use History's deletion controls for saved text and **Clear activity** for daily totals. Talkless does not use a `~/.talkless` configuration folder.

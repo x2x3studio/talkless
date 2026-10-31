@@ -41,6 +41,15 @@ final class MemoryCredentials: CredentialStoring {
         if failWrites { throw Failure.unavailable }
         values[provider] = value.isEmpty ? nil : value
     }
+    var speech: String?
+    func speechCredential() throws -> String? {
+        if failReads { throw Failure.unavailable }
+        return speech
+    }
+    func setSpeechCredential(_ value: String) throws {
+        if failWrites { throw Failure.unavailable }
+        speech = value.isEmpty ? nil : value
+    }
 }
 
 @main
@@ -384,6 +393,29 @@ struct ProviderSettingsTests {
         check(!features.llmConfigured, "incomplete service configuration is reported locally")
         check(features.voiceEditEnabled && features.translateTarget == "German",
               "incomplete configuration does not clear feature preferences")
+
+        // Cloud speech key: Keychain only, speechMigrated once from old plaintext defaults.
+        let speechDefaults = MemoryDefaults()
+        speechDefaults.set("legacy-speech-key", forKey: "asrAPIKey")
+        let speechStore = MemoryCredentials()
+        let speechMigrated = settings(speechDefaults, speechStore)
+        check(speechMigrated.asrAPIKey == "legacy-speech-key" && speechStore.speech == "legacy-speech-key",
+              "plaintext speech key moves into Keychain")
+        check(speechDefaults.string(forKey: "asrAPIKey") == nil, "plaintext copy is deleted after migration")
+        check(settings(speechDefaults, speechStore).asrAPIKey == "legacy-speech-key", "speech key reloads from Keychain")
+        speechMigrated.asrAPIKey = "new-speech-key"
+        check(speechStore.speech == "new-speech-key" && speechDefaults.string(forKey: "asrAPIKey") == nil,
+              "edits save to Keychain, never to defaults")
+        let lockedDefaults = MemoryDefaults()
+        lockedDefaults.set("legacy-speech-key", forKey: "asrAPIKey")
+        let lockedStore = MemoryCredentials()
+        lockedStore.failWrites = true
+        let locked = settings(lockedDefaults, lockedStore)
+        check(locked.asrAPIKey == "legacy-speech-key" && locked.asrCredentialError != nil,
+              "a failed migration keeps the key usable and reports why")
+        check(lockedDefaults.string(forKey: "asrAPIKey") == "legacy-speech-key", "plaintext is kept until Keychain succeeds")
+        locked.asrAPIKey = "session-only"
+        check(locked.asrAPIKey == "session-only" && locked.asrCredentialError != nil, "failed saves keep the key for the session")
 
         print("Provider settings tests passed (\(assertions) assertions; in-memory defaults and credentials only).")
     }

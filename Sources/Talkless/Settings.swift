@@ -244,7 +244,9 @@ final class AppSettings: ObservableObject {
     @Published var speechLocale: String { didSet { save(speechLocale, "speechLocale") } }
 
     @Published var asrBaseURL: String { didSet { save(asrBaseURL, "asrBaseURL") } }
-    @Published var asrAPIKey: String { didSet { save(asrAPIKey, "asrAPIKey") } }
+    /// Stored in Keychain. A failed save keeps the key for this session and reports why.
+    @Published var asrAPIKey: String { didSet { persistSpeechCredential() } }
+    @Published private(set) var asrCredentialError: String?
     @Published var asrModel: String { didSet { save(asrModel, "asrModel") } }
 
     @Published var polishEnabled: Bool { didSet { save(polishEnabled, "polishEnabled") } }
@@ -345,7 +347,8 @@ final class AppSettings: ObservableObject {
         useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false
         speechLocale = d.string(forKey: "speechLocale") ?? "zh_CN"
         asrBaseURL = d.string(forKey: "asrBaseURL") ?? "https://api.openai.com/v1"
-        asrAPIKey = d.string(forKey: "asrAPIKey") ?? ""
+        asrAPIKey = ""
+        asrCredentialError = nil
         asrModel = d.string(forKey: "asrModel") ?? "gpt-4o-transcribe"
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
@@ -373,6 +376,7 @@ final class AppSettings: ObservableObject {
             legacyCredentialProvider = provider
             migrateLegacyCredential(legacyKey, for: provider)
         }
+        asrAPIKey = loadSpeechCredential(legacy: d.string(forKey: "asrAPIKey"))
         isLoadingProvider = true
         llmAPIKey = loadCredential(for: selected)
         llmCredentialSaveError = credentialErrors[selected]
@@ -456,6 +460,36 @@ final class AppSettings: ObservableObject {
             // Never delete or rewrite the old plaintext key until Keychain succeeds.
             credentials[provider] = legacyKey
             credentialErrors[provider] = credentialErrorMessage(error, saving: true)
+        }
+    }
+
+    /// Earlier builds kept this key in plaintext defaults. Move it to Keychain once, and delete
+    /// the plaintext copy only after Keychain holds it.
+    private func loadSpeechCredential(legacy: String?) -> String {
+        do {
+            if let legacy, !legacy.isEmpty {
+                if let existing = try credentialStore.speechCredential(), !existing.isEmpty {
+                    defaults.removeObject(forKey: "asrAPIKey")
+                    return existing
+                }
+                try credentialStore.setSpeechCredential(legacy)
+                defaults.removeObject(forKey: "asrAPIKey")
+                return legacy
+            }
+            return try credentialStore.speechCredential() ?? ""
+        } catch {
+            asrCredentialError = credentialErrorMessage(error, saving: legacy?.isEmpty == false)
+            return legacy ?? ""
+        }
+    }
+
+    private func persistSpeechCredential() {
+        do {
+            try credentialStore.setSpeechCredential(asrAPIKey)
+            defaults.removeObject(forKey: "asrAPIKey")
+            asrCredentialError = nil
+        } catch {
+            asrCredentialError = credentialErrorMessage(error, saving: true)
         }
     }
 
