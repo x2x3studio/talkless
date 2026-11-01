@@ -60,10 +60,20 @@ enum SettingsAppearance {
     var useCustomQwenDirectory = false
     var llmConfigured = false
     var polishEnabled = false
+    var doubaoConfigured = false
     var triggerKey = Key()
     var recordingGestureMode = Gesture.hold
     var effectiveAlternateFinishKey: Key?
     var translationShortcut = Key()
+}
+
+// The live speech and AI steps embed real Settings views; the guide's own logic is tested here.
+struct SetupSpeechSetup: View {
+    init(controller: DictationController, openSettings: @escaping () -> Void) {}
+    var body: some View { EmptyView() }
+}
+struct SetupAISetup: View {
+    var body: some View { EmptyView() }
 }
 
 @MainActor final class ModelManager: ObservableObject {
@@ -248,7 +258,10 @@ struct SetupGuideViewTests {
         check(!live.speechStatus.ready, "Custom folders are not falsely validated")
         settings.useCustomQwenDirectory = false
         settings.asrEngine = .doubao
-        check(!live.speechStatus.ready, "Cloud configuration is not silently tested")
+        check(!live.speechStatus.ready, "Doubao without a key needs attention")
+        settings.doubaoConfigured = true
+        check(live.speechStatus.ready, "A saved Doubao key completes the speech step without a test request")
+        settings.doubaoConfigured = false
         settings.asrEngine = .qwen
         manager.directory = controller.preparationDirectory
         localization.interfaceLanguage = .simplifiedChinese

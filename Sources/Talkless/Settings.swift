@@ -198,6 +198,9 @@ final class AppSettings: ObservableObject {
     @Published private(set) var llmCredentialSaveError: String?
 
     @Published var outputLanguage: OutputLanguage { didSet { save(outputLanguage.rawValue, "outputLanguage") } }
+    /// Local formatting of dictated text, applied with or without smart cleanup.
+    @Published var punctuationStyle: PunctuationStyle { didSet { save(punctuationStyle.rawValue, "punctuationStyle") } }
+    @Published var latinSpacing: LatinSpacing { didSet { save(latinSpacing.rawValue, "latinSpacing") } }
     /// If text is selected when dictation starts, treat speech as an instruction to edit it.
     @Published var voiceEditEnabled: Bool { didSet { save(voiceEditEnabled, "voiceEditEnabled") } }
     @Published var appToneEnabled: Bool { didSet { save(appToneEnabled, "appToneEnabled") } }
@@ -287,6 +290,8 @@ final class AppSettings: ObservableObject {
         doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
+        punctuationStyle = PunctuationStyle(rawValue: d.string(forKey: "punctuationStyle") ?? "") ?? .keepAll
+        latinSpacing = LatinSpacing(rawValue: d.string(forKey: "latinSpacing") ?? "") ?? .none
         voiceEditEnabled = d.object(forKey: "voiceEditEnabled") as? Bool ?? false
         appToneEnabled = d.object(forKey: "appToneEnabled") as? Bool ?? true
         let storedLanguages = d.decoded(TranslationLanguagePreferences.self, forKey: Self.translationLanguagesKey)

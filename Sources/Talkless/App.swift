@@ -382,7 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             window.title = L10n.tr("Talkless Setup")
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
-            window.setContentSize(NSSize(width: 600, height: 540))
+            // Room for the embedded model, Doubao and AI service controls.
+            window.setContentSize(NSSize(width: 640, height: 660))
             window.minSize = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 600, height: 540)).size
             window.delegate = self
             window.center()

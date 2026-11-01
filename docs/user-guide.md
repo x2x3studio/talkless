@@ -11,12 +11,12 @@ Requires **Apple Silicon and macOS 26 or later**. You do not need Xcode to use a
 1. Download the DMG from [Releases](https://github.com/x2x3studio/talkless/releases). Beta builds are marked **Pre-release**.
 2. Drag Talkless to **Applications** and open that copy.
 3. Follow the **Setup guide** to learn the controls and allow **Microphone** and **Accessibility** access. Microphone records your voice; Accessibility enables global shortcuts and text insertion.
-4. Open **Settings > Speech recognition**, download the local Qwen model, and wait for it to finish verifying and preparing.
+4. In the guide's **Speech recognition** step, choose **Offline** and click **Download** for the local model (recommended), or choose **Doubao online** and paste your Speech API key. The optional **Smart text cleanup** step turns on AI cleanup and sets up your provider and key in place.
 5. Click a text field in another app, hold **Fn**, speak, and release. Wait for recognition to finish and the text to appear.
 
-Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide does not test providers or send audio or text. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
+Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. Smart text cleanup is optional and off by default; the guide sends audio or text only when you click a Test button. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
 
-Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. Doubao online recognition and custom model folders are not verified by the guide; review those in Speech recognition settings. Existing installations are not forced through setup after an update.
+Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. A saved Doubao key counts as set up without a test request; custom model folders are reviewed in Speech recognition settings. Existing installations are not forced through setup after an update.
 
 If macOS opens the emoji panel when you press Fn, set the Globe-key action to **Do Nothing** in **System Settings > Keyboard**, or choose another dictation key.
 
@@ -90,13 +90,18 @@ Configure **Settings > AI service** with your provider, credentials and model. T
 
 ### Polish dictation
 
-In **Dictation > Smart text cleanup**, enable **Smart text cleanup** to clean up recognized text before insertion. It is off by default.
+In **Dictation**, enable **Smart text cleanup** so AI lays out, corrects and polishes the text after you speak. It is off by default. To get the original words back, open **Settings > History**, which keeps the raw text of every dictation (**Copy Raw Transcript**).
 
 - **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs. It is not a recognition-language setting.
 - **Adapt tone to the current app:** tailor polished text to chat, email, code or documents. This is on by default, but only has an effect when polishing runs.
 - **Additional instructions:** add writing preferences, such as “Always use digits for numbers.”
 
 If polishing fails, the raw transcript is inserted instead, with a brief error message.
+
+Two formatting options in **Dictation** apply on this Mac to every dictation, with or without smart text cleanup, as the last step before insertion:
+
+- **Punctuation:** Keep all punctuation (default), No punctuation at sentence end (drops a final period or comma on each line; question and exclamation marks stay), or Spaces instead of punctuation. Decimals, versions and URLs are never changed.
+- **Spaces around numbers and English:** No spaces (default) or Spaces before and after, between Chinese and Latin words or numbers, as in “用 Python 写 3 个脚本”.
 
 ### Edit selected text by voice
 

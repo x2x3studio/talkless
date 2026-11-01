@@ -7,7 +7,7 @@ import Foundation
 @MainActor
 final class UIResponsiveness {
     static let shared = UIResponsiveness()
-    static let stallThreshold: TimeInterval = 0.15
+    nonisolated static let stallThreshold: TimeInterval = 0.15
     private static let pingInterval: TimeInterval = 0.1
     private static let renderWindow: TimeInterval = 10
     private static let renderBurst = 60
@@ -40,20 +40,25 @@ final class UIResponsiveness {
         guard timer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: pingQueue)
         timer.schedule(deadline: .now() + Self.pingInterval, repeating: Self.pingInterval)
-        timer.setEventHandler {
-            let sent = DispatchTime.now().uptimeNanoseconds
-            DispatchQueue.main.async {
-                let lag = Double(DispatchTime.now().uptimeNanoseconds - sent) / 1_000_000_000
-                guard lag >= UIResponsiveness.stallThreshold else { return }
-                MainActor.assumeIsolated {
-                    Diagnostics.shared.record(event: "ui_stall", metadata: [
-                        "duration_ms": String(Int(lag * 1000)), "page": UIResponsiveness.shared.page,
-                    ])
-                }
-            }
-        }
+        // A closure written here would inherit main-actor isolation, and Swift traps when the
+        // timer then calls it on the ping queue. Use a nonisolated function instead.
+        timer.setEventHandler(handler: Self.ping)
         timer.resume()
         self.timer = timer
+    }
+
+    /// Runs on the ping queue: time how long the main thread takes to pick up a block.
+    nonisolated private static func ping() {
+        let sent = DispatchTime.now().uptimeNanoseconds
+        DispatchQueue.main.async {
+            let lag = Double(DispatchTime.now().uptimeNanoseconds - sent) / 1_000_000_000
+            guard lag >= stallThreshold else { return }
+            MainActor.assumeIsolated {
+                Diagnostics.shared.record(event: "ui_stall", metadata: [
+                    "duration_ms": String(Int(lag * 1000)), "page": UIResponsiveness.shared.page,
+                ])
+            }
+        }
     }
 
     func stop() {

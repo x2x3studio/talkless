@@ -18,6 +18,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/UserDefaultsCoding.swift" \
   "$ROOT/Sources/Talkless/DictionaryTerms.swift" \
   "$ROOT/Sources/Talkless/DictionaryLearning.swift" \
+  "$ROOT/Sources/Talkless/TextFormatting.swift" \
   "$ROOT/Sources/Talkless/DictionaryCorrectionExtractor.swift" \
   "$ROOT/Sources/Talkless/History.swift" \
   "$ROOT/Sources/Talkless/DictationActivity.swift" \

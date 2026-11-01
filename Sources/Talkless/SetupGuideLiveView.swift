@@ -72,7 +72,9 @@ struct SetupGuideLiveView: View {
                 Task { await launchAtLogin.setEnabled(enabled) }
             },
             openLoginItems: launchAtLogin.openLoginItems
-        ), launchAtLogin: LaunchAtLoginPresentation(controller: launchAtLogin))
+        ), launchAtLogin: LaunchAtLoginPresentation(controller: launchAtLogin),
+           speechSetup: AnyView(SetupSpeechSetup(controller: controller, openSettings: { openSettings(.models) })),
+           aiSetup: AnyView(SetupAISetup()))
         .onAppear(perform: refresh)
         .onReceive(refreshTimer) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
@@ -156,7 +158,9 @@ struct SetupGuideLiveView: View {
             }
             return (ready, L10n.format("%@: %@", entry.model.name, status))
         case .doubao:
-            return (false, L10n.tr("Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests."))
+            return settings.doubaoConfigured
+                ? (true, L10n.tr("Doubao online recognition is set up. Use Test above to check the key."))
+                : (false, L10n.tr("Paste your Doubao Speech API key above."))
         }
     }
 }

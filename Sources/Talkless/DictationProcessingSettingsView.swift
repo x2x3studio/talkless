@@ -60,6 +60,20 @@ struct DictationProcessingSettingsView: View {
         }
 
         Section {
+            Picker(L10n.tr("Punctuation"), selection: $settings.punctuationStyle) {
+                ForEach(PunctuationStyle.allCases) { Text($0.title).tag($0) }
+            }
+            .id("punctuation-\(localization.locale.identifier)")
+            Picker(L10n.tr("Spaces around numbers and English"), selection: $settings.latinSpacing) {
+                ForEach(LatinSpacing.allCases) { Text($0.title).tag($0) }
+            }
+            .id("spacing-\(localization.locale.identifier)")
+        } footer: {
+            Text(L10n.tr("Applied on this Mac to every dictation, with or without smart text cleanup."))
+                .settingsNote()
+        }
+
+        Section {
             Toggle(isOn: $settings.voiceEditEnabled) {
                 Text(L10n.tr("Edit text by voice"))
                 Text(L10n.format("Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”.",

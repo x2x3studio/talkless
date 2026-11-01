@@ -94,6 +94,8 @@ struct Settings {
     var llmConfigured = true
     var llmConfig = 0
     var outputLanguage = OutputLanguage.original
+    var punctuationStyle = PunctuationStyle.keepAll
+    var latinSpacing = LatinSpacing.none
     var learned: [(raw: String, output: String)] = []
     mutating func learnFromDictation(raw: String, output: String, fired: Set<String>) { learned.append((raw, output)) }
 }
@@ -572,6 +574,8 @@ final class Diagnostics: @unchecked Sendable {
     func expireLearnedFixes() {}
     enum Language { case original, english }
     var outputLanguage = Language.original
+    var punctuationStyle = PunctuationStyle.keepAll
+    var latinSpacing = LatinSpacing.none
     func learnFromDictation(raw: String, output: String, fired: Set<String>) {}
     var doubaoConfig = "synthetic-config"
     var onlineLocalFallback = false
@@ -1192,7 +1196,8 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
                     str(swift), str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
                     str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
-                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"),
+                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
     # Real HUDModel, real startup/cancel methods, only external boundaries substituted.
@@ -1221,7 +1226,8 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
                     str(ROOT / "Sources/Talkless/HUDAppearance.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
                     str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
-                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/DictionaryTerms.swift"),
+                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     diagnostic = (ROOT / "Sources/Talkless/MicrophoneDiagnostic.swift").read_text().replace("import AVFoundation\n", "")
     swift.write_text(diagnostic + MICROPHONE_STUBS)

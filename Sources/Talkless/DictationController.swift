@@ -698,6 +698,9 @@ final class DictationController: ObservableObject {
                     // Same-language polish is evidence of how the recognizer mishears this user.
                     let sameLanguage = polished && self.settings.outputLanguage == .original
                     self.settings.learnFromDictation(raw: raw, output: sameLanguage ? output : raw, fired: fixed.fired)
+                    // The user's punctuation and spacing choices apply last, to every dictation.
+                    output = TextFormatting.apply(output, punctuation: self.settings.punctuationStyle,
+                                                  spacing: self.settings.latinSpacing)
                 }
 
                 self.lastTranscript = output

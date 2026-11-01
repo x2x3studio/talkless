@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fixed
+- Opening Settings no longer crashes Talkless. The responsiveness monitor added in 2026.1101.51474 tripped a Swift concurrency check on its background timer, so the app quit as soon as Settings appeared, and again on every relaunch that opened Settings.
+
+### Added
+- Two formatting options in Dictation settings, applied to every dictation with or without smart text cleanup: Punctuation (keep all, no punctuation at sentence end, or spaces instead of punctuation) and Spaces around numbers and English (none or before and after). Defaults keep all punctuation and add no spaces.
+- The setup guide lets you choose Offline or Doubao online in place: download the offline model, or paste and test the Doubao key, right in the guide. The optional Smart text cleanup step turns it on and sets up the AI provider and key there too.
+
+### Changed
+- AI polishing is now described as Smart text cleanup: after you speak, it lays out, corrects and polishes the text.
+
+## 2026.1101.57885
+
 ### Changed
 - Pip now stays in one place in the menu bar: the slot is laid out for the widest mark, and only the mark changes. Idle shows "?", dictation shows "!" until the words are recognized, and AI polishing or voice editing shows "@".
 

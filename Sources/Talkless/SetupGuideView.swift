@@ -88,7 +88,7 @@ enum SetupGuideStep: Int, CaseIterable {
         case .microphone: L10n.tr("Microphone")
         case .accessibility: L10n.tr("Accessibility")
         case .speech: L10n.tr("Speech recognition")
-        case .ai: L10n.tr("AI polishing · optional")
+        case .ai: L10n.tr("Smart text cleanup · optional")
         case .login: L10n.tr("Launch at login · optional")
         case .done: L10n.tr("Setup summary")
         }
@@ -113,16 +113,23 @@ struct SetupGuideView: View {
     @ObservedObject var state: SetupGuideState
     let actions: SetupGuideActions
     let launchAtLogin: LaunchAtLoginPresentation
+    /// Live choices embedded by the app: engine, model download or Doubao key, and the AI service.
+    /// Previews and tests leave them nil and get status rows with buttons into Settings instead.
+    let speechSetup: AnyView?
+    let aiSetup: AnyView?
     @ObservedObject private var localization: LocalizationSettings
     @State private var step: SetupGuideStep
     @FocusState private var continueFocused: Bool
 
     init(state: SetupGuideState, actions: SetupGuideActions,
          launchAtLogin: LaunchAtLoginPresentation = .init(),
+         speechSetup: AnyView? = nil, aiSetup: AnyView? = nil,
          localization: LocalizationSettings = .shared, initialStep: SetupGuideStep = .welcome) {
         self.state = state
         self.actions = actions
         self.launchAtLogin = launchAtLogin
+        self.speechSetup = speechSetup
+        self.aiSetup = aiSetup
         self.localization = localization
         _step = State(initialValue: initialStep)
     }
@@ -239,6 +246,12 @@ struct SetupGuideView: View {
                               detail: L10n.tr("Accessibility is allowed, but the dictation shortcut is not active. Finish editing shortcuts in Settings, then check again. If it stays inactive, quit and reopen Talkless."))
                 Button(L10n.tr("Check again"), action: actions.refresh)
             }
+        case .speech where speechSetup != nil:
+            explanation("Choose how speech becomes text. Offline uses a model on this Mac; Doubao online needs your own API key.")
+            speechSetup
+            SetupGuideRow(symbol: snapshot.speechReady ? "checkmark.circle.fill" : "arrow.down.circle",
+                          title: snapshot.speechReady ? L10n.tr("Speech recognition available") : L10n.tr("Speech recognition needs attention"),
+                          detail: snapshot.speechStatus, complete: snapshot.speechReady)
         case .speech:
             explanation("Choose speech recognition in Settings. Local Qwen models need a one-time download; this guide never starts one.")
             SetupGuideRow(symbol: snapshot.speechReady ? "checkmark.circle.fill" : "arrow.down.circle",
@@ -249,6 +262,9 @@ struct SetupGuideView: View {
                 Button(L10n.tr("Check again"), action: actions.refresh)
             }
             explanation("This guide stays open. Return here after choosing or downloading a model, or continue and finish later.", small: true)
+        case .ai where aiSetup != nil:
+            explanation("After you speak, AI can lay out, correct and polish the text. It is optional and uses your own provider, which may charge for use.")
+            aiSetup
         case .ai:
             explanation("AI can clean up your transcript. It is not required for dictation, and your provider may charge for use.")
             SetupGuideRow(symbol: snapshot.polishEnabled && snapshot.aiConfigured ? "checkmark.circle.fill" : "slider.horizontal.3",
@@ -287,7 +303,7 @@ struct SetupGuideView: View {
                 summaryRow("Dictation shortcuts", ready: snapshot.shortcutsReady)
                 summaryRow("Speech recognition", ready: snapshot.speechReady)
                 HStack {
-                    Text(L10n.tr("AI polishing · optional"))
+                    Text(L10n.tr("Smart text cleanup · optional"))
                     Spacer()
                     Text(snapshot.polishEnabled && snapshot.aiConfigured ? L10n.tr("Enabled") : L10n.tr("Not enabled"))
                         .foregroundStyle(.secondary)
