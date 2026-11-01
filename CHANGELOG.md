@@ -6,6 +6,7 @@
 - Optional local Qwen fallback for failed online recognition. Enabling it preloads and keeps the local model in memory; failed online sessions replay the complete recording locally once, without mixing partial transcripts.
 
 ### Improved
+- Settings use short feature names and one-line descriptions, with cleanup preferences and connection details in expandable sections. The local fallback switch explicitly says it switches recognition to local after an online failure.
 - Online recognition without fallback releases local model memory when idle. Connection/upload stalls fail after 10 seconds, and the final response has a 15-second deadline after recording ends. AI polishing is unchanged.
 
 ## 2026.1101.28606

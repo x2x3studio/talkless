@@ -112,6 +112,7 @@ import Testing
                         })
                         RecordingSettingsSection(mode: .constant(.toggle), triggerKey: .constant(.rightCommand),
                                                  setCaptureActive: { _ in true }, resetKey: { nil })
+                        DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
                     }.formStyle(.grouped))),
                     ("ai-service", AnyView(AIServiceSettingsView(settings: settings))),
                     ("doubao", AnyView(Form {

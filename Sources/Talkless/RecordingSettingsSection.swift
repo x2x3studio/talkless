@@ -20,11 +20,11 @@ struct RecordingSettingsSection: View {
         Section {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.tr("Recording mode"))
+                    Text(L10n.tr("Speaking mode"))
                     Text(instructions).settingsNote()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Picker(L10n.tr("Recording mode"), selection: $mode) {
+                Picker(L10n.tr("Speaking mode"), selection: $mode) {
                     ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
                 }
                 .labelsHidden()
@@ -48,7 +48,7 @@ struct RecordingSettingsSection: View {
             .disabled(isBusy)
 
             ShortcutRecorder(
-                title: L10n.tr("Dictation key"), value: triggerKey.title,
+                title: L10n.tr("Dictation shortcut"), value: triggerKey.title,
                 defaultValue: AppSettings.defaultTriggerKey.title,
                 isDefault: triggerKey == AppSettings.defaultTriggerKey,
                 setCaptureActive: setCaptureActive,

@@ -10,7 +10,7 @@ struct AudioInputSettingsView: View {
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Section(L10n.tr("Audio")) {
+        Section {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(L10n.tr("Microphone"))

@@ -15,7 +15,7 @@ struct DoubaoSettingsSection: View {
                     .labelsHidden()
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel(L10n.tr("Doubao Speech API key"))
-                Text(L10n.tr("Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key."))
+                Text(L10n.tr("Use a Doubao Speech key, not an Ark key. Stored in Keychain."))
                     .settingsNote()
             }
             if let error = settings.doubaoCredentialError {
@@ -37,40 +37,44 @@ struct DoubaoSettingsSection: View {
                 }
                 switch connection.outcome {
                 case .success:
-                    Label(L10n.tr("Connection verified. Doubao accepted the recognition configuration."), systemImage: "checkmark.circle")
+                    Label(L10n.tr("Connection verified"), systemImage: "checkmark.circle")
                         .foregroundStyle(.green).font(.caption)
                 case .failure(let message):
                     Label(message, systemImage: "exclamationmark.circle")
                         .foregroundStyle(.orange).font(.caption)
                 case nil:
-                    Text(L10n.tr("Not verified. Paste your key, then verify the connection."))
+                    Text(L10n.tr("Paste a key, then verify."))
                         .settingsNote()
                 }
-                Text(L10n.tr("Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply."))
+            }
+            Toggle(isOn: $settings.onlineLocalFallback) {
+                Text(L10n.tr("Use offline recognition if online fails"))
+                Text(L10n.tr("Requires a downloaded model. Keeps it in memory while enabled."))
                     .settingsNote()
             }
-            Text(L10n.tr("Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording."))
-                .settingsNote()
-            Text(L10n.tr("This configures speech recognition only. AI polishing uses the separate AI service settings."))
-                .settingsNote()
-            Toggle(L10n.tr("Use local Qwen if online recognition fails"), isOn: $settings.onlineLocalFallback)
             if settings.onlineLocalFallback {
-                Text(L10n.tr("Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first."))
-                    .settingsNote()
                 if let localModelStatus { Text(localModelStatus).settingsNote() }
                 if (try? settings.resolvedQwenModelDirectory()) == nil {
-                    Text(L10n.tr("Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available."))
+                    Text(L10n.tr("Download Qwen in Local offline before using this option."))
                         .font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text(L10n.tr("A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation."))
-                .settingsNote()
             DisclosureGroup(L10n.tr("Advanced")) {
                 Picker(L10n.tr("Doubao ASR resource"), selection: $settings.doubaoResource) {
                     ForEach(DoubaoResource.allCases) { Text($0.title).tag($0) }
                 }
                 Text(L10n.tr("Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested."))
+                    .settingsNote()
+            }
+            DisclosureGroup(L10n.tr("Privacy and connection details")) {
+                Text(L10n.tr("Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording."))
+                    .settingsNote()
+                Text(L10n.tr("This configures speech recognition only. AI polishing uses the separate AI service settings."))
+                    .settingsNote()
+                Text(L10n.tr("Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply."))
+                    .settingsNote()
+                Text(L10n.tr("A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation."))
                     .settingsNote()
             }
             HStack {

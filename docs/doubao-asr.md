@@ -24,7 +24,7 @@ Qwen receives dictionary recognition hints. This Doubao integration does not sen
 
 ## Optional local fallback and model memory
 
-**Use local Qwen if online recognition fails** is off by default. When enabled, Talkless requires an installed local model and preloads it into memory. The model stays resident while online recognition is selected with fallback enabled. A preparation error is shown rather than claiming the standby is ready.
+**Use offline recognition if online fails** is off by default. When enabled, Talkless requires an installed local model and preloads it into memory. The model stays resident while online recognition is selected with fallback enabled. A preparation error is shown rather than claiming the standby is ready.
 
 If the online session fails, recording can continue and the overlay explains the change. On finishing, Qwen recognizes the complete recorder-owned PCM snapshot once, in bounded windows; online partial text is never concatenated with local output. A local error is reported rather than retried. Cancellation never triggers fallback. The next recording still tries Doubao first. Invalid/missing credentials detected before a session starts remain a configuration error.
 

@@ -56,7 +56,7 @@ Choose **Settings > Dictation > Recording**:
 | **Tap to toggle** | Press once to start; press again to finish. |
 | **Escape** | Cancel recording or processing without inserting the pending result. |
 
-Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the AI polishing setting are captured when you start: with **Polish dictation with AI** on (and an AI service configured), every dictation is polished; with it off, none are.
+Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the AI polishing setting are captured when you start: with **Smart text cleanup** on (and an AI service configured), every dictation is polished; with it off, none are.
 
 Local Qwen and online Doubao both show live text in the overlay; Doubao streams audio while you speak and waits for its final response after recording ends. The final text is pasted using the clipboard and Command-V. Keep the intended text field focused until it arrives: dictation uses the **current cursor**, rather than restoring focus to the app where you started. The previous clipboard contents are restored unless you copied something else in the meantime. If you need the result again, use History.
 
@@ -75,7 +75,7 @@ An unavailable chosen microphone is not silently replaced. Reconnect it or choos
 Open **Settings > Speech recognition**:
 
 - **Qwen3-ASR (local, offline)** is the default. The built-in model is **Qwen3 ASR · 0.6B**, in MLX 4-bit format, with an approximately **713 MB** download. It runs on your Mac and stays loaded between dictations. Model weights are not included in the app or app updates.
-- **Online · Doubao** streams audio directly to Doubao's bidirectional ASR 2.0 service with live previews. Enter a Speech API key from the new Doubao Speech console, not an Ark/chat-model key. The endpoint and model are built in. Under Advanced, choose duration-based (default) or concurrent billing to match your enabled resource. The key stays in Keychain; these credentials are separate from **AI service**. Without local fallback, connection failure cancels recognition rather than inserting a partial transcript. The connection/upload stall limit is 10 seconds, and final recognition has a 15-second deadline after recording ends. Enable **Use local Qwen if online recognition fails** to keep an installed Qwen model in memory and recognize the complete recording locally after online failure; the next recording still uses Doubao first. Selecting online with fallback off releases local model memory when idle, not model files.
+- **Online · Doubao** streams audio directly to Doubao's bidirectional ASR 2.0 service with live previews. Enter a Speech API key from the new Doubao Speech console, not an Ark/chat-model key. The endpoint and model are built in. Under Advanced, choose duration-based (default) or concurrent billing to match your enabled resource. The key stays in Keychain; these credentials are separate from **AI service**. Without local fallback, connection failure cancels recognition rather than inserting a partial transcript. The connection/upload stall limit is 10 seconds, and final recognition has a 15-second deadline after recording ends. Enable **Use offline recognition if online fails** to keep an installed Qwen model in memory and recognize the complete recording locally after online failure; the next recording still uses Doubao first. Selecting online with fallback off releases local model memory when idle, not model files.
 - Retired Apple/Whisper-compatible selections fall back to local Qwen on upgrade. Old cloud keys are not reused or sent to Doubao; existing saved credentials are left untouched.
 
 Local model downloads support progress, cancel/resume, retry, selection with **Use**, and confirmed deletion. Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror may redirect to Hugging Face; availability depends on your network. Files are verified before use. Advanced settings also allow an explicit custom MLX model folder.
@@ -88,7 +88,7 @@ Configure **Settings > AI service** with your provider, credentials and model. T
 
 ### Polish dictation
 
-In **Dictation > AI processing**, enable **Polish dictation with AI** to clean up recognized text before insertion. It is off by default.
+In **Dictation > Smart text cleanup**, enable **Smart text cleanup** to clean up recognized text before insertion. It is off by default.
 
 - **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs. It is not a recognition-language setting.
 - **Adapt tone to the current app:** tailor polished text to chat, email, code or documents. This is on by default, but only has an effect when polishing runs.
@@ -98,7 +98,7 @@ If polishing fails, the raw transcript is inserted instead, with a brief error m
 
 ### Edit selected text by voice
 
-1. Enable **Dictation > Voice editing > Change selected text by voice**. It is off by default and is independent of the AI polishing switch.
+1. Enable **Dictation > Edit text by voice**. It is off by default and is independent of the AI polishing switch.
 2. Select text in the foreground app.
 3. Use your dictation key and say how to change it, such as “Make this shorter” or “Translate into English.” The overlay shows a blue pencil instead of the waveform from the start, so you can tell voice editing has taken over; press Esc if you only meant to dictate. Finish normally.
 4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
