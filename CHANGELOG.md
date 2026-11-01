@@ -3,7 +3,12 @@
 ## Unreleased
 
 ### Changed
-- The menu bar icon now shows each state with its own glyph in one centered slot: Pip when idle, sound bars that follow your voice while recording, pulsing dots while recognizing, and sparkles while AI works. The "?", "!" and "@" marks and the empty strip beside Pip are gone, and nothing shifts when the state changes. Busy icons stay still with Reduce motion on.
+- The menu bar icon is back to Pip with its "?" (listening), "!" (recognizing) and "@" (AI polishing or voice editing) marks, now centered in its slot so it no longer leans left. The slot keeps one width, so nothing beside it shifts.
+
+## 2026.1101.54169
+
+### Changed
+- The menu bar icon showed each state as its own glyph (later reverted).
 
 ## 2026.1101.51474
 

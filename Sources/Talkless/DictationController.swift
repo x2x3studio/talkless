@@ -47,10 +47,6 @@ final class DictationController: ObservableObject {
     private let translationPanel = TranslationPanelController()
     private let hotkeys = HotkeyMonitor()
     private let recorder = AudioRecorder()
-    /// Latest microphone level (0…1) for the menu bar icon. Deliberately not @Published:
-    /// audio-rate updates must not redraw every view that observes this controller.
-    private let level = InputLevel()
-    var inputLevel: Double { state == .recording ? level.value : 0 }
     private var translateHotKey: GlobalHotKey?
     private var configuredTranslationShortcut: TranslationShortcut = .default
     @Published private(set) var translationShortcutActive = false
@@ -200,7 +196,6 @@ final class DictationController: ObservableObject {
         hotkeys.onComboKey = { [weak self] timestamp in self?.comboKeyPressed(at: timestamp) }
         hotkeys.onEscape = { [weak self] in self?.escapePressed() ?? false }
         hotkeys.onEditModifier = { [weak self] in self?.editModifierPressed() }
-        recorder.onLevel = { [level] value in level.value = Double(value) }
         translateHotKey = GlobalHotKey { [weak self] in
             Task { await self?.translateSelection() }
         }
@@ -1047,14 +1042,4 @@ final class DictationController: ObservableObject {
         }
     }
 
-}
-
-/// Written from the audio thread, read by the menu bar animation.
-final class InputLevel: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored = 0.0
-    var value: Double {
-        get { lock.withLock { stored } }
-        set { lock.withLock { stored = newValue } }
-    }
 }

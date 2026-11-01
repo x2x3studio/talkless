@@ -20,13 +20,14 @@ try #"""
 import AppKit
 
 @main struct MenuIconTests {
-    /// A moment when every animated glyph is at full strength (first dot fully lit, sparkles at peak).
-    static let brightFrame: TimeInterval = 0.25 / 0.9
-    @MainActor static func raster(_ image: NSImage, scale: Int) -> NSBitmapImageRep {
-        let bitmap = bitmap(width: 19 * scale, height: 18 * scale)
+    /// `canonical` undoes the state's centering shift, so geometry checks share Pip's original
+    /// coordinates; the shift itself is checked separately on the real image.
+    @MainActor static func raster(_ image: NSImage, scale: Int, canonical state: MenuBarIcon.State? = nil) -> NSBitmapImageRep {
+        let bitmap = bitmap(width: 25 * scale, height: 18 * scale)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        image.draw(in: CGRect(x: 0, y: 0, width: 19 * scale, height: 18 * scale))
+        let shift = state.map { MenuBarIcon.offset(for: $0) } ?? 0
+        image.draw(in: CGRect(x: -shift * CGFloat(scale), y: 0, width: 25 * CGFloat(scale), height: 18 * CGFloat(scale)))
         NSGraphicsContext.restoreGraphicsState()
         return bitmap
     }
@@ -82,18 +83,19 @@ import AppKit
         }
     }
 
-    /// Horizontal and vertical ink extent in points (alpha > 0.05).
-    static func inkExtent(_ bitmap: NSBitmapImageRep, scale: Int) -> (x: ClosedRange<CGFloat>, y: ClosedRange<CGFloat>)? {
-        var xs = [Int](), ys = [Int]()
-        for y in 0..<bitmap.pixelsHigh { for x in 0..<bitmap.pixelsWide where alpha(bitmap, x, y) > 0.05 { xs.append(x); ys.append(y) } }
-        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return nil }
-        let s = CGFloat(scale)
-        return (CGFloat(minX) / s...CGFloat(maxX + 1) / s, CGFloat(minY) / s...CGFloat(maxY + 1) / s)
-    }
+    @MainActor static func idleBitmap(_ scale: Int) -> NSBitmapImageRep { raster(MenuBarIcon.image(for: .idle), scale: scale, canonical: .idle) }
 
-    @MainActor static func checkPip(_ bitmap: NSBitmapImageRep, scale: Int) {
+    @MainActor static func checkRaster(_ bitmap: NSBitmapImageRep, state: MenuBarIcon.State, scale: Int) {
         var bodyPixels = 0
-        for y in 0..<18 * scale { for x in 0..<19 * scale where alpha(bitmap, x, y) > 0.5 { bodyPixels += 1 } }
+        for y in 0..<18 * scale {
+            for x in 0..<25 * scale {
+                let a = alpha(bitmap, x, y)
+                if x < 18 * scale && a > 0.5 { bodyPixels += 1 }
+                if y < scale || y >= 17 * scale {
+                    precondition(a < 0.05, "Artwork must not clip or introduce a background tile")
+                }
+            }
+        }
         precondition(bodyPixels > 90 * scale * scale && bodyPixels < 180 * scale * scale,
                      "Pip must remain a substantial readable silhouette at 1x and 2x")
         func minAlpha(around point: CGPoint, radius: CGFloat) -> CGFloat {
@@ -109,14 +111,25 @@ import AppKit
         }
         precondition(minAlpha(around: CGPoint(x: 505, y: 649), radius: 0.5) < 0.6,
                      "Optical smile must remain open at native size")
+        // Badge column x 17..<24 pt: "?" while listening, "!" while recognizing, a wider "@"
+        // while AI works, nothing while idle. Measure the ink's horizontal extent.
+        var columns = Set<Int>(), rows = Set<Int>()
+        for y in 0..<18 * scale { for x in 17 * scale..<24 * scale where alpha(bitmap, x, y) > 0.5 && alpha(idleBitmap(scale), x, y) == 0 { columns.insert(x); rows.insert(y) } }
+        let width = CGFloat(columns.count) / CGFloat(scale), height = CGFloat(rows.count) / CGFloat(scale)
+        switch state {
+        case .idle: precondition(columns.isEmpty, "Idle has no badge")
+        case .recording: precondition(width >= 3 && width <= 5 && height >= 5, "Listening shows a legible question mark")
+        case .processing: precondition(width >= 1 && width <= 2.5 && height >= 5, "Recognition shows a narrow exclamation mark")
+        case .aiProcessing: precondition(width >= 3.5 && height >= 3.5 && height < 5.5, "AI processing shows a compact at sign")
+        }
     }
 
     // Native AppKit template rendering (not manually recolored mask art).
     @MainActor static func nativePreview(state: MenuBarIcon.State, scale: Int, dark: Bool, selected: Bool) -> NSBitmapImageRep {
-        let bitmap = bitmap(width: 19 * scale, height: 18 * scale)
+        let bitmap = bitmap(width: 25 * scale, height: 18 * scale)
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
-        let button = NSButton(frame: CGRect(x: 0, y: 0, width: 19, height: 18))
-        button.image = MenuBarIcon.image(for: state, time: brightFrame, level: 0.8)
+        let button = NSButton(frame: CGRect(x: 0, y: 0, width: 25, height: 18))
+        button.image = MenuBarIcon.image(for: state)
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleNone
         button.isBordered = false
@@ -130,7 +143,7 @@ import AppKit
             NSGraphicsContext.current = NSGraphicsContext(cgContext: graphics.cgContext, flipped: true)
             button.contentTintColor = selected ? .selectedMenuItemTextColor : .labelColor
             (selected ? NSColor.selectedContentBackgroundColor : (dark ? NSColor(calibratedWhite: 0.15, alpha: 1) : NSColor(calibratedWhite: 0.96, alpha: 1))).setFill()
-            CGRect(x: 0, y: 0, width: 19, height: 18).fill()
+            CGRect(x: 0, y: 0, width: 25, height: 18).fill()
             button.cell!.draw(withFrame: button.bounds, in: button)
             NSGraphicsContext.restoreGraphicsState()
         }
@@ -175,22 +188,22 @@ import AppKit
                 draw(app, CGRect(x: px, y: 414 + CGFloat(64 - size) / 2, width: CGFloat(size), height: CGFloat(size)))
                 text("\(size) px", px, 486, 11, dark: dark)
             }
-            text("Menu bar · actual 19 × 18 pt", x + 22, 523, 13, dark: dark, bold: true)
+            text("Menu bar · actual 25 × 18 pt", x + 22, 523, 13, dark: dark, bold: true)
             for (index, state) in MenuBarIcon.State.allCases.enumerated() {
                 let px = x + 22 + CGFloat(index * 110)
                 text("\(state)", px, 552, 12, dark: dark)
                 for scale in [1, 2] {
                     let preview = nativePreview(state: state, scale: scale, dark: dark, selected: false)
-                    drawBitmap(preview, CGRect(x: px + CGFloat((scale-1) * 35), y: 579, width: 19, height: 18))
+                    drawBitmap(preview, CGRect(x: px + CGFloat((scale-1) * 35), y: 579, width: 25, height: 18))
                 }
                 let selected = nativePreview(state: state, scale: 2, dark: dark, selected: true)
-                drawBitmap(selected, CGRect(x: px + 70, y: 579, width: 19, height: 18))
+                drawBitmap(selected, CGRect(x: px + 70, y: 579, width: 25, height: 18))
                 text("1x", px, 607, 10, dark: dark); text("2x", px + 35, 607, 10, dark: dark); text("sel.", px + 70, 607, 10, dark: dark)
                 let enlarged = nativePreview(state: state, scale: 2, dark: dark, selected: false)
-                drawBitmap(enlarged, CGRect(x: px, y: 640, width: 57, height: 54))
+                drawBitmap(enlarged, CGRect(x: px, y: 640, width: 75, height: 54))
             }
         }
-        text("Bottom row: 3× pixel inspection. Eyes and smile are transparent; busy states animate in the same slot.", 28, 719, 11)
+        text("Bottom row: 3× pixel inspection. Eyes and smile are transparent; badges stay separate.", 28, 719, 11)
         NSGraphicsContext.restoreGraphicsState()
         try write(sheet, to: output.appendingPathComponent("pip-production-contact-sheet.png"))
     }
@@ -221,20 +234,40 @@ import AppKit
         }
         for scale in [1, 2] {
             var rendered: [Data] = []
+            let idleMask = raster(MenuBarIcon.image(for: .idle), scale: scale, canonical: .idle)
             for state in MenuBarIcon.State.allCases {
-                let image = MenuBarIcon.image(for: state, time: brightFrame, level: 0.8)
+                let image = MenuBarIcon.image(for: state)
                 precondition(image.isTemplate)
-                precondition(image.size == NSSize(width: 19, height: 18), "Every state shares one slot, so nothing shifts")
+                precondition(image.size == NSSize(width: 25, height: 18), "Every state keeps one width, so neighbors never shift")
+                // Pip alone, or Pip with its mark, is centered: no state leans left.
+                let real = raster(image, scale: 4)
+                var inked = [Int]()
+                for x in 0..<real.pixelsWide where (0..<real.pixelsHigh).contains(where: { alpha(real, x, $0) > 0.05 }) { inked.append(x) }
+                let left = CGFloat(inked.first!) / 4, right = 25 - CGFloat(inked.last! + 1) / 4
+                precondition(left >= 1 && right >= 1 && abs(left - right) <= 1, "\(state): margins \(left) vs \(right) must match")
+                precondition(MenuBarIcon.offset(for: state) == MenuBarIcon.offset(for: state).rounded(), "Whole-point shifts keep Pip crisp at 1x")
                 precondition(image.accessibilityDescription == state.accessibilityDescription)
-                let bitmap = raster(image, scale: scale)
-                guard let extent = inkExtent(bitmap, scale: scale) else { preconditionFailure("\(state) must draw something") }
-                // Centered with even margins, never clipped at the slot's edges.
-                let left = extent.x.lowerBound, right = 19 - extent.x.upperBound
-                precondition(left >= 0.5 && right >= 0.5 && abs(left - right) <= 1, "\(state): margins \(left) vs \(right)")
-                precondition(extent.y.lowerBound >= 0.5 && extent.y.upperBound <= 17.5, "\(state) must not clip vertically")
-                if state == .idle { checkPip(bitmap, scale: scale) }
+                let bitmap = raster(image, scale: scale, canonical: state)
+                checkRaster(bitmap, state: state, scale: scale)
+                for y in 0..<18 * scale {
+                    for x in 0..<25 * scale {
+                        let pip = alpha(idleMask, x, y)
+                        if pip > 0 {
+                            precondition(alpha(bitmap, x, y) == pip, "State changes must not move or alter Pip")
+                        } else if alpha(bitmap, x, y) > 0 {
+                            // Mark ink stays at least one pixel (half a point at 2x) clear of Pip.
+                            for dx in -1...1 { for dy in -1...1 {
+                                let nx = x + dx, ny = y + dy
+                                guard nx >= 0, ny >= 0, nx < 25 * scale, ny < 18 * scale else { continue }
+                                precondition(alpha(idleMask, nx, ny) == 0, "State badge must stay separate from Pip")
+                            } }
+                        }
+                    }
+                }
                 rendered.append(bitmap.representation(using: .png, properties: [:])!)
-                if let output { try write(bitmap, to: output.appendingPathComponent("menu-\(state)-\(scale)x-template.png")) }
+                if let output { try write(raster(image, scale: scale), to: output.appendingPathComponent("menu-\(state)-\(scale)x-template.png")) }
+                // The native previews show the real, centered position.
+                let placed = raster(image, scale: scale)
                 var appearances: [Data] = []
                 for dark in [false, true] {
                     for selected in [false, true] {
@@ -247,11 +280,10 @@ import AppKit
                         let background = brightness(0, 0)
                         var foreground: [CGFloat] = []
                         for y in 0..<18 * scale {
-                            for x in 0..<19 * scale {
-                                if alpha(bitmap, x, y) > 0.99 { foreground.append(brightness(x, y)) }
+                            for x in 0..<18 * scale {
+                                if alpha(placed, x, y) > 0.99 { foreground.append(brightness(x, y)) }
                             }
                         }
-                        precondition(!foreground.isEmpty, "\(state) needs fully inked pixels in its brightest frame")
                         let average = foreground.reduce(0, +) / CGFloat(foreground.count)
                         precondition(dark || selected ? average > background + 0.2 : average < background - 0.4,
                                      "Template foreground must adapt with readable contrast, not just change the background")
@@ -263,27 +295,14 @@ import AppKit
                 precondition(appearances[0] != appearances[2], "Native light and dark appearances must differ")
                 precondition(appearances[0] != appearances[1], "Native selected appearance must differ")
             }
-            precondition(Set(rendered).count == MenuBarIcon.State.allCases.count, "States need distinct glyphs at both native scales")
-
-            // Busy states move; idle Pip never does.
-            for state in MenuBarIcon.State.allCases {
-                let frames = Set([0.0, 0.2, 0.45].map { time in
-                    raster(MenuBarIcon.image(for: state, time: time, level: 0.5), scale: scale).representation(using: .png, properties: [:])!
-                })
-                precondition(state.animates == (frames.count > 1), "\(state): animation \(state.animates ? "missing" : "unexpected")")
-            }
-            // Louder speech raises the sound bars.
-            let quiet = inkExtent(raster(MenuBarIcon.image(for: .recording, time: 0, level: 0), scale: scale), scale: scale)!
-            let loud = inkExtent(raster(MenuBarIcon.image(for: .recording, time: 0, level: 1), scale: scale), scale: scale)!
-            let quietHeight = quiet.y.upperBound - quiet.y.lowerBound, loudHeight = loud.y.upperBound - loud.y.lowerBound
-            precondition(loudHeight >= quietHeight * 2.5 && loudHeight <= 15, "Bars follow the voice: \(quietHeight) → \(loudHeight)")
+            precondition(Set(rendered).count == MenuBarIcon.State.allCases.count, "States need distinct badges at both native scales")
         }
         if let output {
             // ICNS supplies the actual optical-size variants in the review sheet.
             try contactSheet(app: NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))!, output: output)
             print("Preview: \(output.appendingPathComponent("pip-production-contact-sheet.png").path)")
         }
-        print("PASS approved Pip outline, generator/menu parity, eye/smile holes, one centered slot for every state, level-driven bars, animated busy states, native appearances, app artwork, and accessible labels")
+        print("PASS approved Pip outline, generator/menu parity, eye/smile holes, 1x/2x silhouette and badge separation, native appearances, app artwork, and accessible labels")
     }
 }
 """#.write(to: source, atomically: true, encoding: .utf8)

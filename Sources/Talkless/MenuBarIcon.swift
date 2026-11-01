@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 enum MenuBarIcon {
     enum State: CaseIterable {
-        /// Idle shows Pip; recording live sound bars; recognition pulsing dots; AI work sparkles.
+        /// Listening shows "?", recognition "!", and AI work, both polishing and voice editing, "@".
         case idle, recording, processing, aiProcessing
 
         var accessibilityDescription: String {
@@ -15,25 +15,66 @@ enum MenuBarIcon {
             }
         }
 
-        var animates: Bool { self != .idle }
+        var badge: String? {
+            switch self {
+            case .idle: nil
+            case .recording: "?"
+            case .processing: "!"
+            case .aiProcessing: "@"
+            }
+        }
     }
 
-    /// One slot for every state: Pip's width with even margins, so neither the icon nor the
-    /// menu bar items beside it ever shift, and no empty strip sits beside the glyph.
-    static let size = NSSize(width: 19, height: 18)
-    /// Animation frames per second while recording or processing.
-    static let framesPerSecond: Double = 15
+    /// The original Pip canvas: marks shrink to fit beside Pip instead of widening the icon,
+    /// so the menu bar item never changes width or shifts its neighbors.
+    static let size = NSSize(width: 25, height: 18)
 
-    /// `time` drives the animation (seconds, any origin); `level` is the smoothed input level 0…1.
-    static func image(for state: State, time: TimeInterval = 0, level: Double = 0) -> NSImage {
+    private static func mark(_ badge: String) -> NSAttributedString {
+        // "@" is much wider than "?" and "!", so it is set smaller to share the column.
+        NSAttributedString(string: badge, attributes: [
+            .font: NSFont.systemFont(ofSize: badge == "@" ? 5.5 : 8.5, weight: .heavy),
+            .foregroundColor: NSColor.black,
+        ])
+    }
+
+    private static func markInk(_ mark: NSAttributedString) -> NSRect {
+        mark.boundingRect(with: NSSize(width: 20, height: 20), options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
+    }
+
+    /// Pip's ink spans x 1.75–17 in the unshifted layout, a mark 18.3 onward. The whole group,
+    /// Pip alone or Pip with its mark, is centered in the slot so no state leans left. Whole
+    /// points keep Pip crisp at 1x.
+    static func offset(for state: State) -> CGFloat {
+        let pip: ClosedRange<CGFloat> = {
+            let box = PipArtwork.path(small: true).boundingBoxOfPath
+            return (9.5 + (box.minX - 512) * 0.027)...(9.5 + (box.maxX - 512) * 0.027)
+        }()
+        let right = state.badge.map { 18.3 + markInk(mark($0)).width } ?? pip.upperBound
+        return ((size.width - (right - pip.lowerBound)) / 2 - pip.lowerBound).rounded()
+    }
+
+    static func image(for state: State) -> NSImage {
+        let shift = offset(for: state)
         let image = NSImage(size: size, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.translateBy(x: shift, y: 0)
+            context.saveGState()
+            // A 15-point silhouette in the 19-point mark slot leaves a clear
+            // transparent gutter before the state badge.
+            context.translateBy(x: 9.5, y: 9)
+            context.scaleBy(x: 0.027, y: 0.027)
+            context.translateBy(x: -512, y: -512)
             context.setFillColor(NSColor.black.cgColor)
-            switch state {
-            case .idle: drawPip(context)
-            case .recording: drawSoundBars(context, time: time, level: level)
-            case .processing: drawDots(context, time: time)
-            case .aiProcessing: drawSparkles(context, time: time)
+            context.addPath(PipArtwork.path(small: true))
+            context.fillPath(using: .evenOdd)
+            context.restoreGState()
+            if let badge = state.badge {
+                let mark = mark(badge)
+                // In the mark's rows (y 1.5–8.5) Pip's ink ends by x 16.75, at the cheek;
+                // starting the mark's ink at 18.3 keeps a clear pixel even at 1x, so the pair
+                // reads as one compact icon.
+                let ink = markInk(mark)
+                mark.draw(at: NSPoint(x: 18.3 - ink.minX, y: badge == "@" ? 1.5 : 0))
             }
             return true
         }
@@ -41,60 +82,6 @@ enum MenuBarIcon {
         image.isTemplate = true
         image.accessibilityDescription = state.accessibilityDescription
         return image
-    }
-
-    private static func drawPip(_ context: CGContext) {
-        context.saveGState()
-        // A 15-point silhouette centered in the slot.
-        context.translateBy(x: 9.5, y: 9)
-        context.scaleBy(x: 0.027, y: 0.027)
-        context.translateBy(x: -512, y: -512)
-        context.addPath(PipArtwork.path(small: true))
-        context.fillPath(using: .evenOdd)
-        context.restoreGState()
-    }
-
-    /// Five bars around the center that follow the voice; a gentle ripple keeps them alive in silence.
-    private static func drawSoundBars(_ context: CGContext, time: TimeInterval, level: Double) {
-        let width: CGFloat = 2.2, gap: CGFloat = 1.3
-        let envelope: [CGFloat] = [0.55, 0.8, 1, 0.8, 0.55]
-        let total = CGFloat(envelope.count) * width + CGFloat(envelope.count - 1) * gap
-        let loudness = 0.22 + 0.78 * CGFloat(max(0, min(1, level)))
-        for (index, weight) in envelope.enumerated() {
-            let ripple = 0.78 + 0.22 * CGFloat(sin(time * 9 + Double(index) * 1.3))
-            let height = max(2.6, 14 * loudness * weight * ripple)
-            let rect = CGRect(x: (size.width - total) / 2 + CGFloat(index) * (width + gap),
-                              y: (size.height - height) / 2, width: width, height: height)
-            context.addPath(CGPath(roundedRect: rect, cornerWidth: width / 2, cornerHeight: width / 2, transform: nil))
-        }
-        context.fillPath()
-    }
-
-    /// Three dots pulse in turn while speech is recognized.
-    private static func drawDots(_ context: CGContext, time: TimeInterval) {
-        let diameter: CGFloat = 3.4
-        for index in 0..<3 {
-            let pulse = (sin(2 * .pi * (time * 0.9 - Double(index) / 3)) + 1) / 2
-            context.setAlpha(0.3 + 0.7 * CGFloat(pulse))
-            let center = CGPoint(x: size.width / 2 + CGFloat(index - 1) * 5, y: size.height / 2)
-            context.fillEllipse(in: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
-                                           width: diameter, height: diameter))
-        }
-        context.setAlpha(1)
-    }
-
-    /// Sparkles, as in the overlay's polishing icon, breathe while AI polishes or edits.
-    private static func drawSparkles(_ context: CGContext, time: TimeInterval) {
-        guard let symbol = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold)) else { return }
-        let breathe = (sin(2 * .pi * time * 0.9) + 1) / 2
-        let fit = min(16 / symbol.size.width, 15 / symbol.size.height, 1)
-        let drawn = NSSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
-        // The symbol's ink sits left of its bounds' center; nudge it so its margins match.
-        symbol.draw(in: NSRect(x: (size.width - drawn.width) / 2 + 0.75, y: (size.height - drawn.height) / 2,
-                               width: drawn.width, height: drawn.height),
-                    from: .zero, operation: .sourceOver, fraction: 0.5 + 0.5 * breathe,
-                    respectFlipped: true, hints: nil)
     }
 }
 
