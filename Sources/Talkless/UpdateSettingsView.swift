@@ -31,8 +31,11 @@ struct UpdateSettingsView: View {
                 }
             }
             .help(L10n.tr("The time of the last attempt, including checks that did not finish."))
-            Button(updater.checkForUpdatesTitle) { updater.checkForUpdates(nil) }
-                .disabled(controller.state != .idle || !updater.canCheckForUpdates)
+            HStack {
+                Spacer(minLength: 0)
+                Button(updater.checkForUpdatesTitle) { updater.checkForUpdates(nil) }
+                    .disabled(controller.state != .idle || !updater.canCheckForUpdates)
+            }
             if let status = updater.status {
                 Text(status).settingsNote()
             }

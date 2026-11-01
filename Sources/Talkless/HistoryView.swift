@@ -104,28 +104,42 @@ struct HistoryView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(L10n.tr("Search history"), text: $search)
-                    .textFieldStyle(.plain)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.borderless).foregroundStyle(.secondary)
-                        .accessibilityLabel(L10n.tr("Clear search"))
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                searchField.frame(minWidth: 200)
+                typeFilter
             }
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: .controlBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.separator))
-            Picker(L10n.tr("Show"), selection: $filter) {
-                ForEach(Filter.allCases, id: \.self) { Text($0.title).tag($0) }
+            VStack(alignment: .leading, spacing: 8) {
+                searchField
+                typeFilter
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .id(localization.locale.identifier)
         }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(L10n.tr("Search history"), text: $search)
+                .textFieldStyle(.plain)
+            if !search.isEmpty {
+                Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.tr("Clear search"))
+            }
+        }
+        .padding(.horizontal, 9).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.separator))
+    }
+
+    private var typeFilter: some View {
+        Picker(L10n.tr("Show"), selection: $filter) {
+            ForEach(Filter.allCases, id: \.self) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .id(localization.locale.identifier)
     }
 
     private func daySection(_ day: Date, entries: [HistoryEntry]) -> some View {

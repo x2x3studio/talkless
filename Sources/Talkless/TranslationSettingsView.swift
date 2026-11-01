@@ -3,20 +3,46 @@ import SwiftUI
 @MainActor
 struct TranslationSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
-    @ObservedObject private var controller: DictationController
+    private let isBusy: Bool
+    private let shortcutError: String?
+    private let setCaptureActive: (Bool) -> Bool
     @ObservedObject private var settings: AppSettings
     private let onConfigureAI: () -> Void
     @State private var showingPreferredLanguages = false
 
-    init(controller: DictationController, settings: AppSettings = .shared,
-         onConfigureAI: @escaping () -> Void) {
-        self.controller = controller
+    init(settings: AppSettings = .shared, isBusy: Bool, shortcutError: String?,
+         setCaptureActive: @escaping (Bool) -> Bool, onConfigureAI: @escaping () -> Void) {
         self.settings = settings
+        self.isBusy = isBusy
+        self.shortcutError = shortcutError
+        self.setCaptureActive = setCaptureActive
         self.onConfigureAI = onConfigureAI
     }
 
     var body: some View {
         Form {
+            Section(L10n.tr("Keyboard shortcut")) {
+                ShortcutRecorder(
+                    title: L10n.tr("Translate selection"), value: settings.translationShortcut.title,
+                    defaultValue: AppSettings.defaultTranslationShortcut.title,
+                    isDefault: settings.isTranslationShortcutDefault,
+                    allowsClearing: true, setCaptureActive: setCaptureActive,
+                    onReset: { settings.resetTranslationShortcut(); return nil },
+                    onTranslationRecord: { shortcut in
+                        if let error = shortcut.validationError { return error }
+                        settings.translationShortcut = shortcut
+                        return nil
+                    }, onRecord: { _ in nil }
+                )
+                .disabled(isBusy)
+                if let error = shortcutError {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             Section(L10n.tr("Selected-text translation")) {
                 languageRow("Source language", selection: $settings.translationLanguages.source,
                             automaticLabel: L10n.tr("Auto · Detect language"))
@@ -53,28 +79,6 @@ struct TranslationSettingsView: View {
                 }
                 Text(L10n.tr("Choose the languages shown first. More languages are always available; translation quality depends on your AI model."))
                     .settingsNote()
-            }
-
-            Section(L10n.tr("Keyboard shortcut")) {
-                ShortcutRecorder(
-                    title: L10n.tr("Translate selection"), value: settings.translationShortcut.title,
-                    defaultValue: AppSettings.defaultTranslationShortcut.title,
-                    isDefault: settings.isTranslationShortcutDefault,
-                    allowsClearing: true, setCaptureActive: controller.setShortcutCaptureActive,
-                    onReset: { settings.resetTranslationShortcut(); return nil },
-                    onTranslationRecord: { shortcut in
-                        if let error = shortcut.validationError { return error }
-                        settings.translationShortcut = shortcut
-                        return nil
-                    }, onRecord: { _ in nil }
-                )
-                .disabled(controller.state != .idle)
-                if let error = controller.translationShortcutError {
-                    Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
 
             Section(L10n.tr("AI service")) {

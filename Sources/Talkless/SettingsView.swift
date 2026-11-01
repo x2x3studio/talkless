@@ -91,7 +91,10 @@ struct SettingsView: View {
                                              onConfigureAI: { selection = .aiService },
                                              onPermissions: { selection = .system })
                     case .translation:
-                        TranslationSettingsView(controller: controller, onConfigureAI: { selection = .aiService })
+                        TranslationSettingsView(isBusy: controller.state != .idle,
+                                                shortcutError: controller.translationShortcutError,
+                                                setCaptureActive: controller.setShortcutCaptureActive,
+                                                onConfigureAI: { selection = .aiService })
                     case .system:
                         SystemSettingsTab(controller: controller)
                     case .about:
@@ -229,7 +232,7 @@ private struct SystemSettingsTab: View {
     }
 }
 
-private struct DiagnosticsSection: View {
+struct DiagnosticsSection: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @State private var includeCrashReports = false
     @State private var exporting = false
@@ -273,7 +276,7 @@ private struct DiagnosticsSection: View {
     }
 }
 
-private struct PermissionRow: View {
+struct PermissionRow: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     let title: String
     let detail: String

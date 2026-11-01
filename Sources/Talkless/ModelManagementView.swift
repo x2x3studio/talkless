@@ -111,74 +111,9 @@ struct ModelManagementView: View {
     }
 
     private func modelRow(_ entry: ModelEntry) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.model.name)
-                    .font(.system(size: 14, weight: .semibold))
-                if entry.model.isRecommended {
-                    badge(L10n.tr("Recommended"), highlighted: false)
-                }
-                Spacer(minLength: 0)
-                if isInUse(entry) {
-                    badge(L10n.tr("In use"), highlighted: true)
-                }
-            }
-
-            HStack(spacing: 6) {
-                Text(L10n.format("%@ · MLX 4-bit", byteCount(entry.model.totalBytes)))
-                Spacer()
-                if let url = URL(string: "https://huggingface.co/\(entry.model.manifest.repository)") {
-                    Link(destination: url) {
-                        Label(L10n.tr("Model details"), systemImage: "arrow.up.right")
-                    }
-                    .help(L10n.format("View %@ on Hugging Face", entry.model.manifest.repository))
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if entry.phase == .downloading || entry.phase == .paused {
-                ProgressView(value: entry.progress)
-                    .progressViewStyle(.linear)
-                    .accessibilityLabel(L10n.format("%@ download", entry.model.name))
-                    .accessibilityValue(L10n.format("%@ of %@", byteCount(entry.downloadedBytes), byteCount(entry.totalBytes)))
-            }
-
-            HStack(spacing: 10) {
-                if entry.phase == .checking || entry.phase == .verifying || entry.phase == .deleting {
-                    ProgressView().controlSize(.small)
-                }
-                Text(isInUse(entry) ? (controller.modelPreparationStatus ?? statusText(entry)) : statusText(entry))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                Spacer(minLength: 4)
-                rowActions(entry)
-                    .controlSize(.small)
-            }
-
-            if let error = entry.error {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        ModelDownloadCard(entry: entry, isInUse: isInUse(entry), preparationStatus: controller.modelPreparationStatus) {
+            rowActions(entry)
         }
-        .padding(.vertical, 7)
-        .accessibilityElement(children: .contain)
-    }
-
-    private func badge(_ title: String, highlighted: Bool) -> some View {
-        Text(title)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(highlighted ? SettingsAppearance.accent : Color.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(
-                highlighted ? SettingsAppearance.accent.opacity(0.10) : Color.primary.opacity(0.05),
-                in: Capsule()
-            )
     }
 
     @ViewBuilder
@@ -288,6 +223,88 @@ struct ModelManagementView: View {
         .padding(24)
         .frame(width: 420)
         .interactiveDismissDisabled(deleting)
+    }
+}
+
+/// Model presentation independent of download/controller lifetimes, including busy and error states.
+struct ModelDownloadCard<Actions: View>: View {
+    let entry: ModelEntry
+    let isInUse: Bool
+    var preparationStatus: String?
+    @ViewBuilder let actions: Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(entry.model.name)
+                    .font(.system(size: 14, weight: .semibold))
+                if entry.model.isRecommended {
+                    badge(L10n.tr("Recommended"), highlighted: false)
+                }
+                Spacer(minLength: 0)
+                if isInUse {
+                    badge(L10n.tr("In use"), highlighted: true)
+                }
+            }
+
+            HStack(spacing: 6) {
+                Text(L10n.format("%@ · MLX 4-bit", byteCount(entry.model.totalBytes)))
+                Spacer()
+                if let url = URL(string: "https://huggingface.co/\(entry.model.manifest.repository)") {
+                    Link(destination: url) {
+                        Label(L10n.tr("Model details"), systemImage: "arrow.up.right")
+                    }
+                    .help(L10n.format("View %@ on Hugging Face", entry.model.manifest.repository))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if entry.phase == .downloading || entry.phase == .paused {
+                ProgressView(value: entry.progress)
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel(L10n.format("%@ download", entry.model.name))
+                    .accessibilityValue(L10n.format("%@ of %@", byteCount(entry.downloadedBytes), byteCount(entry.totalBytes)))
+            }
+
+            HStack(spacing: 10) {
+                if entry.phase == .checking || entry.phase == .verifying || entry.phase == .deleting {
+                    ProgressView().controlSize(.small)
+                }
+                Text(isInUse ? (preparationStatus ?? statusText(entry)) : statusText(entry))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                actions
+                    .controlSize(.regular)
+                    .fixedSize()
+            }
+
+            if let error = entry.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func badge(_ title: String, highlighted: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(highlighted ? SettingsAppearance.accent : Color.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                highlighted ? SettingsAppearance.accent.opacity(0.10) : Color.primary.opacity(0.05),
+                in: Capsule()
+            )
     }
 
     private func statusText(_ entry: ModelEntry) -> String {

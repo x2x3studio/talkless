@@ -11,8 +11,13 @@ struct AudioInputSettingsView: View {
 
     var body: some View {
         Section(L10n.tr("Audio")) {
-            HStack(spacing: 8) {
-                Picker(selection: $settings.audioInputDeviceUID) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.tr("Microphone"))
+                    Text(L10n.tr("Changes apply to the next recording.")).settingsNote()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Picker(L10n.tr("Microphone"), selection: $settings.audioInputDeviceUID) {
                     Text(L10n.tr("System default")).tag(nil as String?)
                     ForEach(devices, id: \.uid) { device in
                         Text(label(for: device)).tag(Optional(device.uid))
@@ -21,24 +26,22 @@ struct AudioInputSettingsView: View {
                        !devices.contains(where: { $0.uid == uid }) {
                         Text(L10n.tr("Unavailable microphone")).tag(Optional(uid))
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.tr("Microphone"))
-                        Text(L10n.tr("Default: System default"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
                 .id(localization.locale.identifier)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .frame(width: SettingsControlLayout.valueWidth, height: SettingsControlLayout.height)
                 Button(L10n.tr("Reset")) { settings.audioInputDeviceUID = nil }
-                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .frame(width: SettingsControlLayout.resetWidth, height: SettingsControlLayout.height)
                     .disabled(settings.audioInputDeviceUID == nil)
                     .help(L10n.tr("Reset microphone to System default. Other settings are unchanged."))
                     .accessibilityLabel(L10n.tr("Reset microphone to System default"))
             }
-            Text(L10n.tr("Changes apply to the next recording."))
-                .font(.caption).foregroundStyle(.secondary)
+            .padding(.vertical, 4)
             if let discoveryError {
                 Text(discoveryError)
                     .font(.caption).foregroundStyle(.orange)

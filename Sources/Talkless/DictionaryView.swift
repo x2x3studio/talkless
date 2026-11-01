@@ -275,7 +275,9 @@ private struct DictionaryCandidateRow: View {
                 if !candidate.app.isEmpty {
                     Text("· \(candidate.app)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Spacer()
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
                 Button(L10n.tr("Dismiss"), action: dismiss).help(L10n.tr("Hide this spelling until dismissals are reset"))
                 Button(L10n.tr("Accept"), action: accept)
                     .help(L10n.tr("Add this spelling to My terms, not a replacement rule"))
@@ -300,7 +302,7 @@ private struct DictionaryCandidateRow: View {
     }
 }
 
-private struct DictionaryTermEditor: View {
+struct DictionaryTermEditor: View {
     let original: String?
     @ObservedObject var settings: AppSettings
     let onSave: (String) -> Void

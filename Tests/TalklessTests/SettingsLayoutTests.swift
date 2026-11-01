@@ -49,11 +49,13 @@ import Testing
             let suffix = language == .english ? "en" : "zh"
             let sidebar = render(SettingsSidebar(selection: .constant(.dictation)), size: NSSize(width: 196, height: 470))
             let page = render(HistoryView(history: history, activity: activity), size: NSSize(width: 704, height: 900))
+            let narrow = render(HistoryView(history: history, activity: activity), size: NSSize(width: 604, height: 900))
             #expect(sidebar.count > 2_000 && page.count > 2_000)
             if let output {
                 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
                 try sidebar.write(to: output.appendingPathComponent("sidebar-\(suffix).png"))
                 try page.write(to: output.appendingPathComponent("history-\(suffix).png"))
+                try narrow.write(to: output.appendingPathComponent("history-narrow-\(suffix).png"))
             }
         }
     }
@@ -86,6 +88,80 @@ import Testing
         #expect(SettingsControlLayout.valueWidth + SettingsControlLayout.resetWidth < 300)
     }
 
+    @Test func rendersSettingsPagesWithoutServices() throws {
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Sources/Talkless/Resources").standardizedFileURL
+        L10n.useCatalog(LocalizationCatalog(bundle: Bundle(url: resources)))
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        defer { localization.interfaceLanguage = .english; withExtendedLifetime(localization) {} }
+        let suite = "talkless-layout-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
+        settings.audioInputDeviceUID = "test-mic"
+        settings.dictionary = "Talkless\nSwiftUI"
+        let review = DictionaryReviewStore(settings: settings, defaults: defaults)
+        let output = ProcessInfo.processInfo.environment["TALKLESS_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0) }
+        for language in [InterfaceLanguage.english, .simplifiedChinese] {
+            localization.interfaceLanguage = language
+            for dark in [false, true] {
+                let views: [(String, AnyView)] = [
+                    ("audio", AnyView(Form {
+                        AudioInputSettingsView(settings: settings, loadDevices: {
+                            [AudioInputDevice(id: 1, uid: "test-mic", name: "USB Microphone with a deliberately long device name")]
+                        })
+                        RecordingSettingsSection(mode: .constant(.toggle), triggerKey: .constant(.rightCommand),
+                                                 setCaptureActive: { _ in true }, resetKey: { nil })
+                    }.formStyle(.grouped))),
+                    ("ai-service", AnyView(AIServiceSettingsView(settings: settings))),
+                    ("model", AnyView(Form {
+                        Section(L10n.tr("Speech models")) {
+                            ModelDownloadCard(entry: ModelEntry(model: ModelCatalog.models[0], phase: .installed),
+                                              isInUse: true, preparationStatus: L10n.tr("Ready · kept in memory")) {
+                                Button(L10n.tr("Delete…"), role: .destructive) {}
+                            }
+                            ModelDownloadCard(entry: ModelEntry(model: ModelCatalog.models[0], phase: .failed,
+                                                               error: "Synthetic download failure; retry or select another source."),
+                                              isInUse: false) {
+                                Button(L10n.tr("Delete…"), role: .destructive) {}
+                                Button(L10n.tr("Retry")) {}.buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }.formStyle(.grouped))),
+                    ("system-controls", AnyView(Form {
+                        Section(L10n.tr("Permissions")) {
+                            PermissionRow(title: L10n.tr("Accessibility"), detail: L10n.tr("Keyboard shortcuts and text insertion"),
+                                          granted: false, action: {})
+                            PermissionRow(title: L10n.tr("Microphone"), detail: L10n.tr("Record your voice"),
+                                          granted: true, action: {})
+                        }
+                        Section(L10n.tr("Startup")) {
+                            LaunchAtLoginControls(presentation: LaunchAtLoginPresentation(), setEnabled: { _ in }, openLoginItems: {})
+                        }
+                        DiagnosticsSection()
+                    }.formStyle(.grouped))),
+                    ("languages-sheet", AnyView(PreferredTranslationLanguagesView(preferredLanguageIDs: ["en", "zh-Hans"]) { _ in })),
+                    ("translation", AnyView(TranslationSettingsView(settings: settings, isBusy: false,
+                        shortcutError: nil, setCaptureActive: { _ in true }, onConfigureAI: {}))),
+                    ("processing", AnyView(Form {
+                        DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
+                    }.formStyle(.grouped))),
+                    ("dictionary", AnyView(DictionaryView(settings: settings, review: review).padding(28))),
+                    ("term-editor", AnyView(DictionaryTermEditor(original: "Talkless", settings: settings) { _ in })),
+                    ("overlay", AnyView(OverlaySettingsView(appearance: .constant(HUDAppearance())))),
+                ]
+                for (name, view) in views {
+                    let png = render(view, size: NSSize(width: 604, height: 850), dark: dark)
+                    #expect(png.count > 2_000)
+                    if let output {
+                        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                        try png.write(to: output.appendingPathComponent("\(name)-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+                    }
+                }
+            }
+        }
+    }
+
     private func render(_ view: some View, size: NSSize, dark: Bool = false) -> Data {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height)
@@ -106,4 +182,12 @@ import Testing
         host.cacheDisplay(in: host.bounds, to: bitmap)
         return bitmap.representation(using: .png, properties: [:])!
     }
+}
+
+/// Never touches Keychain or production preferences during layout review.
+@MainActor private struct LayoutCredentials: CredentialStoring {
+    func credential(for provider: PolishProvider) throws -> String? { nil }
+    func setCredential(_ value: String, for provider: PolishProvider) throws {}
+    func speechCredential() throws -> String? { nil }
+    func setSpeechCredential(_ value: String) throws {}
 }

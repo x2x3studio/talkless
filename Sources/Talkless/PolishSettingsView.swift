@@ -137,6 +137,7 @@ struct AIServiceSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
+                        Spacer(minLength: 0)
                         Button(fetching ? L10n.tr("Fetching…") : L10n.tr("Fetch Models")) { fetchModels() }
                             .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .help(L10n.tr("Fetch available models from this provider."))
@@ -144,6 +145,7 @@ struct AIServiceSettingsView: View {
                         Button(testing ? L10n.tr("Testing…") : L10n.tr("Test Connection")) { testConnection() }
                             .disabled(testing || fetching || !settings.llmConfigured)
                             .help(L10n.tr("Send a short test prompt using the current provider and model."))
+                            .buttonStyle(.borderedProminent)
                         if testing { ProgressView().controlSize(.small) }
                     }
                     Text(L10n.tr("Runs only when clicked. Your provider may charge for tests."))

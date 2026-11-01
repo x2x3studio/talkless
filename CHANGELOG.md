@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Improved
+- Microphone controls now align with recording controls. Translation's shortcut is at the top of its settings page, and AI connection tests and update checks use trailing action placement.
+- Model actions and dictionary review actions have dedicated rows so longer status and app names do not crowd buttons. History search and filters stack when the window is narrow.
+
+## 2026.1101.20949
+
+### Improved
 - Microphone selection is the first section on the Dictation page again. Recording mode and dictation key controls share aligned value and reset columns; instructions sit beside the setting instead of occupying a separate row.
 
 ## 2026.1101.364

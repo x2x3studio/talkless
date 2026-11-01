@@ -16,7 +16,7 @@ import sys
 root = Path(sys.argv[1])
 source = (root / 'Sources/Talkless/SettingsView.swift').read_text()
 about = source[source.index('// MARK: - About'):source.index('// MARK: - Speech Recognition')]
-system = source[source.index('private struct SystemSettingsTab:'):source.index('private struct DiagnosticsSection:')]
+system = source[source.index('private struct SystemSettingsTab:'):source.index('struct DiagnosticsSection:')]
 assert 'UpdateSettingsView(' not in system and 'updateController' not in system
 for retained in ['Section(L10n.tr("Language"))', 'Section(L10n.tr("Permissions"))',
                  'Section(L10n.tr("Setup guide"))', 'LaunchAtLoginSettingsView()', 'DiagnosticsSection()']:
