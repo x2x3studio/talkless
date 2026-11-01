@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Improved
+- Microphone selection is the first section on the Dictation page again. Recording mode and dictation key controls share aligned value and reset columns; instructions sit beside the setting instead of occupying a separate row.
+
+## 2026.1101.364
+
+### Improved
 - AI polishing now explicitly addresses homophones, accent-related recognition errors, and phonetic spellings of technical terms, with examples of corrections and words that should be preserved. Dictionary hints still require matching context rather than overriding ordinary words.
 
 ## 2026.1031.65045

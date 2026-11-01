@@ -46,7 +46,7 @@ struct ShortcutRecorder: View {
                             isError = error
                         }
                     )
-                    .frame(width: 230, height: 28)
+                    .frame(width: SettingsControlLayout.valueWidth, height: SettingsControlLayout.height)
                     if let valueDetail {
                         Text(valueDetail)
                             .font(.caption)
@@ -59,7 +59,9 @@ struct ShortcutRecorder: View {
                         message = onReset()
                         isError = message != nil
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .frame(width: SettingsControlLayout.resetWidth, height: SettingsControlLayout.height)
                     .disabled(isDefault)
                     .help(L10n.format("Restore the default for %@", title.lowercased()))
                     .accessibilityLabel(L10n.format("Reset %@", title))

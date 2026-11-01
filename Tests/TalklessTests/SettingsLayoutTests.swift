@@ -58,12 +58,40 @@ import Testing
         }
     }
 
-    private func render(_ view: some View, size: NSSize) -> Data {
+    @Test func rendersRecordingControls() throws {
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Sources/Talkless/Resources").standardizedFileURL
+        L10n.useCatalog(LocalizationCatalog(bundle: Bundle(url: resources)))
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        defer { localization.interfaceLanguage = .english; withExtendedLifetime(localization) {} }
+        let output = ProcessInfo.processInfo.environment["TALKLESS_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0) }
+        for language in [InterfaceLanguage.english, .simplifiedChinese] {
+            localization.interfaceLanguage = language
+            for width in [604, 704] {
+                for dark in [false, true] {
+                    let view = Form {
+                        RecordingSettingsSection(mode: .constant(.toggle), triggerKey: .constant(.rightCommand),
+                                                 setCaptureActive: { _ in true }, resetKey: { nil })
+                    }.formStyle(.grouped)
+                    let png = render(view, size: NSSize(width: width, height: 300), dark: dark)
+                    #expect(png.count > 2_000)
+                    if let output {
+                        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                        let name = "recording-\(language.rawValue)-\(width)-\(dark ? "dark" : "light").png"
+                        try png.write(to: output.appendingPathComponent(name))
+                    }
+                }
+            }
+        }
+        #expect(SettingsControlLayout.valueWidth + SettingsControlLayout.resetWidth < 300)
+    }
+
+    private func render(_ view: some View, size: NSSize, dark: Bool = false) -> Data {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height)
-            .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .light))
+            .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, dark ? .dark : .light))
         host.frame = NSRect(origin: .zero, size: size)
-        host.appearance = NSAppearance(named: .aqua)
+        host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Native lists draw rows only inside a window; keep it far off screen.
         let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -20_000, y: -20_000), size: size),
                               styleMask: [.borderless], backing: .buffered, defer: false)

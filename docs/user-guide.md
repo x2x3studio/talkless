@@ -28,7 +28,7 @@ Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech re
 
 | Settings page | What you can change |
 | --- | --- |
-| **Dictation** | Recording mode and key, AI polishing, output language, app-aware tone, additional instructions, voice editing, microphone |
+| **Dictation** | Microphone first, then recording mode and key, AI polishing, output language, app-aware tone, additional instructions and voice editing |
 | **Speech recognition** | Recognition engine, local model downloads, Apple recognition language, cloud recognition connection |
 | **Dictionary** | Confirmed terms, heard-as fixes, import/export and suggested spelling corrections |
 | **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |

@@ -162,57 +162,14 @@ private struct DictationSettingsTab: View {
                     }
                 }
             }
-            Section(L10n.tr("Recording")) {
-                HStack {
-                    Picker(selection: $settings.recordingGestureMode) {
-                        ForEach(RecordingGestureMode.allCases) { Text($0.title).tag($0) }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(L10n.tr("Recording mode"))
-                            Text(L10n.format("Default: %@", AppSettings.defaultRecordingGestureMode.title))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .id(localization.locale.identifier)
-                    Button(L10n.tr("Reset")) {
-                        ShortcutRecorder.cancelCapture()
-                        settings.recordingGestureMode = AppSettings.defaultRecordingGestureMode
-                    }
-                    .controlSize(.small)
-                    .disabled(settings.recordingGestureMode == AppSettings.defaultRecordingGestureMode)
-                    .help(L10n.format("Restore %@. Shortcuts and other settings are unchanged.", AppSettings.defaultRecordingGestureMode.title))
-                    .accessibilityLabel(L10n.tr("Reset recording mode"))
-                }
-                .disabled(controller.state != .idle)
-                Text((settings.recordingGestureMode == .hold
-                      ? L10n.format("Hold %@ to talk; release to finish.", settings.triggerKey.title)
-                      : L10n.format("Tap %@ to start talking; press again to finish.", settings.triggerKey.title))
-                     + " " + L10n.tr("Esc cancels."))
-                    .settingsNote()
+            AudioInputSettingsView(settings: settings)
 
-                ShortcutRecorder(
-                    title: L10n.tr("Dictation key"), value: settings.triggerKey.title,
-                    defaultValue: AppSettings.defaultTriggerKey.title,
-                    isDefault: settings.isTriggerKeyDefault,
-                    setCaptureActive: controller.setShortcutCaptureActive,
-                    onReset: settings.resetTriggerKey
-                ) { key in
-                    if let error = ShortcutRecorderRules.primaryError(key) { return error }
-                    guard let key else { return L10n.tr("The dictation key cannot be cleared.") }
-                    settings.triggerKey = key
-                    return nil
-                }
-                .disabled(controller.state != .idle)
-                .help(L10n.tr("Click to record Fn or a right-side modifier. Release to save; Esc cancels. Single keys only."))
-                if settings.triggerKey == .fn {
-                    Text(L10n.tr("Using Fn? Set the Globe key to Do Nothing in System Settings › Keyboard to prevent the emoji panel."))
-                        .settingsNote()
-                }
-            }
+            RecordingSettingsSection(mode: $settings.recordingGestureMode, triggerKey: $settings.triggerKey,
+                                     isBusy: controller.state != .idle,
+                                     setCaptureActive: controller.setShortcutCaptureActive,
+                                     resetKey: settings.resetTriggerKey)
 
             DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
-
-            AudioInputSettingsView(settings: settings)
         }
         .formStyle(.grouped)
     }
