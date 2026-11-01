@@ -137,8 +137,6 @@
 "Checking downloaded files…" = "正在检查已下载文件…";
 "Checking downloaded model files. Try again in a moment." = "正在检查已下载的模型文件，请稍后重试。";
 "Checking model files…" = "正在检查模型文件…";
-"Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress." = "Talkless 运行时每 30 分钟检查一次更新。如正在语音输入，则延后至下次检查。关闭此选项不会取消已在进行的更新。";
-"Checks every 30 minutes. You choose when to download and install." = "每 30 分钟检查一次。下载和安装的时间由你决定。";
 "Choose Folder…" = "选择文件夹…";
 "Choose a Local Qwen Model Folder" = "选择本地 Qwen 模型文件夹";
 "Choose a local model folder in Speech recognition settings." = "请在语音识别设置中选择本地模型文件夹。";
@@ -869,3 +867,7 @@
 "Learned" = "学会了";
 "Retired, not needed for 30 days" = "已撤掉，30 天没用上";
 "Retired, cleanup changed it back" = "已撤掉，整理时被改回";
+"Most services work with the defaults. Change these only if your provider's documentation says so." = "大多数服务保持默认即可。只有服务商文档要求时再修改。";
+"Beta checks every 6 hours and Stable every 48 hours while Talkless is running. During dictation, a check waits a little. Turning this off does not cancel an update already in progress." = "Talkless 运行时，Beta 每 6 小时、正式版每 48 小时检查一次更新。正在语音输入时会稍后再查。关闭此选项不会取消已在进行的更新。";
+"Beta checks every 6 hours. You choose when to download and install." = "Beta 每 6 小时检查一次。下载和安装的时间由你决定。";
+"Stable checks every 48 hours. You choose when to download and install." = "正式版每 48 小时检查一次。下载和安装的时间由你决定。";

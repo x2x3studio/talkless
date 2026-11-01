@@ -20,8 +20,10 @@ struct UpdateSettingsView: View {
                 set: { updater.setAutomaticallyChecksForUpdates($0) }
             ))
             .disabled(!updater.canChangeAutomaticChecks)
-            .help(L10n.tr("Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress."))
-            Text(L10n.tr("Checks every 30 minutes. You choose when to download and install."))
+            .help(L10n.tr("Beta checks every 6 hours and Stable every 48 hours while Talkless is running. During dictation, a check waits a little. Turning this off does not cancel an update already in progress."))
+            Text(updater.channel == .beta
+                 ? L10n.tr("Beta checks every 6 hours. You choose when to download and install.")
+                 : L10n.tr("Stable checks every 48 hours. You choose when to download and install."))
                 .settingsNote()
             LabeledContent(L10n.tr("Last checked")) {
                 if let date = updater.lastUpdateCheckDate {

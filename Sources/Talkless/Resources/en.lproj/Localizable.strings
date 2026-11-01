@@ -137,8 +137,6 @@
 "Checking downloaded files…" = "Checking downloaded files…";
 "Checking downloaded model files. Try again in a moment." = "Checking downloaded model files. Try again in a moment.";
 "Checking model files…" = "Checking model files…";
-"Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress." = "Checks every 30 minutes while Talkless is running. During dictation, checks wait until the next interval. Turning this off does not cancel an update already in progress.";
-"Checks every 30 minutes. You choose when to download and install." = "Checks every 30 minutes. You choose when to download and install.";
 "Choose Folder…" = "Choose Folder…";
 "Choose a Local Qwen Model Folder" = "Choose a Local Qwen Model Folder";
 "Choose a local model folder in Speech recognition settings." = "Choose a local model folder in Speech recognition settings.";
@@ -869,3 +867,7 @@
 "Learned" = "Learned";
 "Retired, not needed for 30 days" = "Retired, not needed for 30 days";
 "Retired, cleanup changed it back" = "Retired, cleanup changed it back";
+"Most services work with the defaults. Change these only if your provider's documentation says so." = "Most services work with the defaults. Change these only if your provider's documentation says so.";
+"Beta checks every 6 hours and Stable every 48 hours while Talkless is running. During dictation, a check waits a little. Turning this off does not cancel an update already in progress." = "Beta checks every 6 hours and Stable every 48 hours while Talkless is running. During dictation, a check waits a little. Turning this off does not cancel an update already in progress.";
+"Beta checks every 6 hours. You choose when to download and install." = "Beta checks every 6 hours. You choose when to download and install.";
+"Stable checks every 48 hours. You choose when to download and install." = "Stable checks every 48 hours. You choose when to download and install.";

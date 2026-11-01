@@ -116,7 +116,7 @@ struct AIServiceSettingsView: View {
                 }
 
                 modelControls
-
+                if let modelStatus { statusView(modelStatus) }
                 if provider == .openRouter {
                     HStack(spacing: 6) {
                         Text(L10n.tr("openrouter/free is free but its models change and limits vary."))
@@ -125,24 +125,29 @@ struct AIServiceSettingsView: View {
                             .font(.caption)
                     }
                 }
+            }
 
-                if provider == .openAI || provider == .custom {
-                    DisclosureGroup(L10n.tr("Advanced")) {
-                        Picker(L10n.tr("Protocol"), selection: $settings.llmProtocol) {
-                            ForEach(provider.protocolOptions, id: \.self) { apiProtocol in
-                                Text(apiProtocol.label).tag(apiProtocol)
-                            }
-                        }
-                        .id("protocol-\(localization.locale.identifier)")
-                        if provider == .custom {
-                            Picker(L10n.tr("Authentication"), selection: $settings.llmAuthMode) {
-                                ForEach(LLMAuthMode.allCases, id: \.self) { mode in
-                                    Text(mode.label).tag(mode)
-                                }
-                            }
-                            .id("auth-\(localization.locale.identifier)")
+            if provider == .openAI || provider == .custom {
+                Section {
+                    Picker(L10n.tr("Protocol"), selection: $settings.llmProtocol) {
+                        ForEach(provider.protocolOptions, id: \.self) { apiProtocol in
+                            Text(apiProtocol.label).tag(apiProtocol)
                         }
                     }
+                    .id("protocol-\(localization.locale.identifier)")
+                    if provider == .custom {
+                        Picker(L10n.tr("Authentication"), selection: $settings.llmAuthMode) {
+                            ForEach(LLMAuthMode.allCases, id: \.self) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .id("auth-\(localization.locale.identifier)")
+                    }
+                } header: {
+                    Text(L10n.tr("Advanced"))
+                } footer: {
+                    Text(L10n.tr("Most services work with the defaults. Change these only if your provider's documentation says so."))
+                        .settingsNote()
                 }
             }
 
@@ -151,17 +156,13 @@ struct AIServiceSettingsView: View {
                     Text(settings.llmConfigured ? L10n.tr("Ready to test.") : L10n.tr("Fill in the key and model first."))
                         .settingsNote()
                     Spacer(minLength: 0)
-                    if fetching || testing { ProgressView().controlSize(.small) }
-                    Button(fetching ? L10n.tr("Fetching…") : L10n.tr("Fetch Models")) { fetchModels() }
-                        .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .help(L10n.tr("Fetch available models from this provider."))
+                    if testing { ProgressView().controlSize(.small) }
                     Button(testing ? L10n.tr("Testing…") : L10n.tr("Test Connection")) { testConnection() }
                         .disabled(testing || fetching || !settings.llmConfigured)
                         .help(L10n.tr("Sends a short test prompt. Your provider may charge for it."))
                         .buttonStyle(.borderedProminent)
                 }
 
-                if let modelStatus { statusView(modelStatus) }
                 if let connectionResult { connectionReceipt(connectionResult) }
             }
         }
@@ -180,39 +181,56 @@ struct AIServiceSettingsView: View {
         }
     }
 
+    /// One row: the model (a list once fetched, otherwise typed) with its refresh button.
     @ViewBuilder
     private var modelControls: some View {
-        if !remoteModels.isEmpty {
-            Picker(L10n.tr("Model"), selection: Binding(
-                get: {
-                    if !manualModelEntry, remoteModels.contains(where: { $0.id == settings.llmModel }) {
-                        return ModelSelection.remote(settings.llmModel)
+        let listed = !remoteModels.isEmpty
+        let typing = !listed || manualModelEntry || !remoteModels.contains(where: { $0.id == settings.llmModel })
+        LabeledContent(L10n.tr("Model")) {
+            HStack(spacing: 6) {
+                if listed {
+                    Picker(L10n.tr("Model"), selection: Binding(
+                        get: {
+                            if !manualModelEntry, remoteModels.contains(where: { $0.id == settings.llmModel }) {
+                                return ModelSelection.remote(settings.llmModel)
+                            }
+                            return .manual
+                        },
+                        set: { selection in
+                            switch selection {
+                            case .remote(let id):
+                                manualModelEntry = false
+                                settings.llmModel = id
+                            case .manual:
+                                manualModelEntry = true
+                            }
+                        }
+                    )) {
+                        ForEach(remoteModels) { model in
+                            Text(modelTitle(model)).tag(ModelSelection.remote(model.id))
+                        }
+                        Divider()
+                        Text(L10n.tr("Enter model ID…")).tag(ModelSelection.manual)
                     }
-                    return .manual
-                },
-                set: { selection in
-                    switch selection {
-                    case .remote(let id):
-                        manualModelEntry = false
-                        settings.llmModel = id
-                    case .manual:
-                        manualModelEntry = true
-                    }
+                    .labelsHidden()
+                    .id("model-\(localization.locale.identifier)")
+                } else {
+                    TextField(L10n.tr("Model"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
                 }
-            )) {
-                ForEach(remoteModels) { model in
-                    Text(modelTitle(model)).tag(ModelSelection.remote(model.id))
+                Button { fetchModels() } label: {
+                    if fetching { ProgressView().controlSize(.small) } else { Image(systemName: "arrow.clockwise") }
                 }
-                Divider()
-                Text(L10n.tr("Enter model ID…")).tag(ModelSelection.manual)
+                .buttonStyle(.borderless)
+                .frame(width: 20)
+                .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help(L10n.tr("Fetch available models from this provider."))
+                .accessibilityLabel(L10n.tr("Fetch Models"))
             }
-            .id("model-\(localization.locale.identifier)")
         }
-
-        if remoteModels.isEmpty || manualModelEntry || !remoteModels.contains(where: { $0.id == settings.llmModel }) {
-            VStack(alignment: .leading, spacing: 6) {
-                TextField(L10n.tr("Model"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
-            }
+        if listed && typing {
+            TextField(L10n.tr("Model ID"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
         }
     }
 

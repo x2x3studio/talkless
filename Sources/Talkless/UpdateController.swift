@@ -30,7 +30,13 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private let scheduleAutomaticCheck: AutomaticCheckScheduler
     private static let channelPreferenceKey = "TalklessUpdateChannel"
     private static let automaticChecksPreferenceKey = "TalklessAutomaticallyChecksForUpdates"
-    static let automaticCheckInterval: TimeInterval = 30 * 60
+    /// How often the timer wakes to see whether a check is due; cheap, makes no request.
+    static let automaticCheckTick: TimeInterval = 30 * 60
+    /// Beta ships often, so it is checked every 6 hours; Stable every 48 hours.
+    static func automaticCheckInterval(for channel: UpdateChannel) -> TimeInterval {
+        channel == .beta ? 6 * 60 * 60 : 48 * 60 * 60
+    }
+    private let now: () -> Date
     @Published private(set) var channel: UpdateChannel
     @Published private(set) var automaticallyChecksForUpdates: Bool
 
@@ -38,8 +44,10 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         bundle: Bundle = .main,
         defaults: UserDefaults = .standard,
         scheduleAutomaticCheck: @escaping AutomaticCheckScheduler = UpdateController.makeAutomaticCheckTimer,
+        now: @escaping () -> Date = Date.init,
         isDictationActive: @escaping () -> Bool
     ) {
+        self.now = now
         self.isDictationActive = isDictationActive
         self.defaults = defaults
         self.scheduleAutomaticCheck = scheduleAutomaticCheck
@@ -154,7 +162,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private func restartAutomaticCheckTimer() {
         automaticCheckTimer = nil
         guard automaticallyChecksForUpdates, standardController != nil else { return }
-        automaticCheckTimer = scheduleAutomaticCheck(Self.automaticCheckInterval) { [weak self] in
+        automaticCheckTimer = scheduleAutomaticCheck(Self.automaticCheckTick) { [weak self] in
             self?.checkForUpdatesAutomatically()
         }
     }
@@ -170,6 +178,9 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private func checkForUpdatesAutomatically() {
         guard automaticallyChecksForUpdates, canCheckForUpdates,
               let updater = standardController?.updater, !updater.sessionInProgress else { return }
+        // Sparkle records every attempt; wait for the channel's interval since the last one.
+        if let last = updater.lastUpdateCheckDate,
+           now().timeIntervalSince(last) < Self.automaticCheckInterval(for: channel) { return }
         // Probe only: Sparkle's background prompt keeps the item it found, so a window left
         // open while newer Betas ship would install a stale version. Clicking update re-fetches.
         updater.checkForUpdateInformation()

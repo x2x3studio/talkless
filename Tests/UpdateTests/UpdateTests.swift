@@ -67,15 +67,16 @@ import Sparkle
         clear()
         let clock = FakeClock()
         var busy = false
+        let checkDate = Date(timeIntervalSince1970: 1_798_000_000)
+        var now = checkDate.addingTimeInterval(60 * 60)
         let controller = UpdateController(bundle: configured, defaults: defaults,
-            scheduleAutomaticCheck: clock.schedule, isDictationActive: { busy })
+            scheduleAutomaticCheck: clock.schedule, now: { now }, isDictationActive: { busy })
         let sparkle = SPUStandardUpdaterController.instances.last!.updater
         precondition(controller.channel == .beta)
         precondition(controller.installedVersion == "0.2.0-beta.1 (build 42)")
         precondition(controller.status == nil, "Configured does not mean up to date")
         precondition(controller.lastUpdateCheckDate == nil && !controller.isUpdateSessionInProgress)
         precondition(controller.checkForUpdatesTitle == "Check for updates…")
-        let checkDate = Date(timeIntervalSince1970: 1_798_000_000)
         sparkle.lastUpdateCheckDate = checkDate
         precondition(controller.lastUpdateCheckDate == checkDate)
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
@@ -88,11 +89,16 @@ import Sparkle
         sparkle.lastUpdateCheckDate = checkDate
         precondition(controller.automaticallyChecksForUpdates)
         precondition(controller.canChangeAutomaticChecks && controller.canCheckForUpdates)
-        precondition(UpdateController.automaticCheckInterval == 1800)
+        precondition(UpdateController.automaticCheckTick == 1800)
+        precondition(UpdateController.automaticCheckInterval(for: .beta) == 6 * 3600
+                     && UpdateController.automaticCheckInterval(for: .stable) == 48 * 3600)
         precondition(clock.active.count == 1 && clock.active[0].interval == 1800)
         precondition(sparkle.backgroundChecks == 0, "No network check just from opening settings/startup")
         precondition(controller.feedURLString(for: sparkle) == beta)
         precondition(controller.allowedChannels(for: sparkle) == ["beta"])
+        clock.fire()
+        precondition(sparkle.backgroundChecks == 0, "Beta waits 6 hours after the last check")
+        now = checkDate.addingTimeInterval(7 * 60 * 60)
         clock.fire()
         precondition(sparkle.backgroundChecks == 1)
         controller.updater(sparkle, didFindValidUpdate: SUAppcastItem(channel: nil, displayVersionString: "2.0"))
@@ -176,6 +182,9 @@ import Sparkle
         precondition(clock.active.count == 1, "Repeated toggles must not duplicate timers")
         controller.selectChannel(.stable)
         precondition(clock.active.count == 1 && sparkle.cycleResets == 0)
+        clock.fire()
+        precondition(sparkle.backgroundChecks == 1, "Stable waits 48 hours after the last check")
+        now = checkDate.addingTimeInterval(49 * 60 * 60)
         clock.fire()
         precondition(sparkle.backgroundChecks == 2)
         defaults.set(false, forKey: "SUEnableAutomaticChecks") // Sparkle's now-disabled scheduler.

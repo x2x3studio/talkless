@@ -15,7 +15,7 @@ Speech recognition and AI processing are separate: local Qwen3 ASR does not need
 | Anthropic | Native Messages | Empty |
 | Custom | Any of the four protocols | Empty |
 
-Enter your API key and a model ID, or click **Fetch Models** and select a returned model. Discovery does not automatically select a model; manual entry remains available after an empty list or failure. Providers retain separate endpoint, model, protocol and credential state. Only Custom exposes the base URL and authentication controls: Protocol default, Bearer token or API key header. Defaults use bearer authentication for Chat/Responses, `x-goog-api-key` for Gemini and `x-api-key` for Messages.
+Enter your API key and a model ID, or click the refresh button beside **Model** (**Fetch Models**) and select a returned model. Discovery does not automatically select a model; manual entry remains available after an empty list or failure. Providers retain separate endpoint, model, protocol and credential state. Only Custom exposes the base URL; the **Advanced** section (OpenAI and Custom) holds the protocol, and for Custom the authentication: Protocol default, Bearer token or API key header. Defaults use bearer authentication for Chat/Responses, `x-goog-api-key` for Gemini and `x-api-key` for Messages.
 
 Custom URLs preserve proxy path prefixes and accept a base URL or matching full endpoint. No `/v1` or `/v1beta` is injected: `https://example.com` becomes `/responses` for Responses, while `https://example.com/v1` becomes `/v1/responses`. URLs must not contain credentials, a query or fragment. Remote endpoints require HTTPS and a key; loopback endpoints may use HTTP and an empty key. Cross-origin redirects are rejected; POST redirects must preserve the method and use 307/308.
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+- Automatic update checks now run every 6 hours on the Beta channel and every 48 hours on Stable, instead of every 30 minutes.
+- AI service settings are laid out as one block for provider, address, key and model, with the refresh button that fetches models right beside the model. Protocol and authentication sit in their own Advanced section with a short note, instead of a disclosure squeezed into the list.
+
 ## 2026.1101.63169
 
 ### Changed
