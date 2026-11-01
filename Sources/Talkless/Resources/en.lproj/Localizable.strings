@@ -53,15 +53,11 @@
 "AI polishing · optional" = "AI polishing · optional";
 "AI processing" = "AI processing";
 "AI service" = "AI service";
-"AI service…" = "AI service…";
 "API Key" = "API Key";
 "API URL" = "API URL";
 "API key" = "API key";
 "API key header" = "API key header";
-"API provider" = "API provider";
-"About OpenRouter free" = "About OpenRouter free";
 "About activity" = "About activity";
-"About the free router" = "About the free router";
 "About these statistics" = "About these statistics";
 "Accept" = "Accept";
 "Accept %@ into My terms" = "Accept %@ into My terms";
@@ -150,7 +146,6 @@
 "Check for Updates…" = "Check for Updates…";
 "Check for updates…" = "Check for updates…";
 "Check that the destination is writable and has enough free space, then try again." = "Check that the destination is writable and has enough free space, then try again.";
-"Check your provider, API key, and model." = "Check your provider, API key, and model.";
 "Checking downloaded files…" = "Checking downloaded files…";
 "Checking downloaded model files. Try again in a moment." = "Checking downloaded model files. Try again in a moment.";
 "Checking model files…" = "Checking model files…";
@@ -184,13 +179,10 @@
 "Cloud recognition" = "Cloud recognition";
 "Cloud recognition is selected. Review its configuration in Speech recognition settings. This guide makes no test requests." = "Cloud recognition is selected. Review its configuration in Speech recognition settings. This guide makes no test requests.";
 "Completed dictations. Edits and translations are not included." = "Completed dictations. Edits and translations are not included.";
-"Configuration complete" = "Configuration complete";
 "Configure a service before enabling polishing." = "Configure a service before enabling polishing.";
 "Configure an AI service in Settings to translate selected text" = "Configure an AI service in Settings to translate selected text";
-"Configure the shared provider and model, or test the connection." = "Configure the shared provider and model, or test the connection.";
 "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements." = "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements.";
 "Connection failed: %@" = "Connection failed: %@";
-"Connection is not checked automatically." = "Connection is not checked automatically.";
 "Connection successful. The model returned a response." = "Connection successful. The model returned a response.";
 "Continue" = "Continue";
 "Continue without changing anything, or explicitly enable polishing above. No audio or text is sent by this guide." = "Continue without changing anything, or explicitly enable polishing above. No audio or text is sent by this guide.";
@@ -266,7 +258,6 @@
 "Download Speech Model" = "Download Speech Model";
 "Download and verify this model before using it." = "Download and verify this model before using it.";
 "Download failed" = "Download failed";
-"Download once. Transcribe locally with Qwen3 ASR." = "Download once. Transcribe locally with Qwen3 ASR.";
 "Download paused" = "Download paused";
 "Download source" = "Download source";
 "Downloaded" = "Downloaded";
@@ -284,7 +275,6 @@
 "English" = "English";
 "English or Japanese" = "English or Japanese";
 "Enter a language or regional variant. Translation quality depends on your AI model." = "Enter a language or regional variant. Translation quality depends on your AI model.";
-"Enter a model ID or fetch available models." = "Enter a model ID or fetch available models.";
 "Enter a speech recognition API key in Settings first" = "Enter a speech recognition API key in Settings first";
 "Enter an API key for this language model service." = "Enter an API key for this language model service.";
 "Enter an HTTPS URL without credentials, a query, or a fragment." = "Enter an HTTPS URL without credentials, a query, or a fragment.";
@@ -316,12 +306,10 @@
 "Follows your text cursor without taking focus. Clicks pass through." = "Follows your text cursor without taking focus. Clicks pass through.";
 "Applies when you use AI polishing. Translation has its own language." = "Applies when you use AI polishing. Translation has its own language.";
 "For AI polish, e.g. Always use digits for numbers." = "For AI polish, e.g. Always use digits for numbers.";
-"Free router limits and availability vary. Other models may be paid." = "Free router limits and availability vary. Other models may be paid.";
 "French" = "French";
 "Future" = "Future";
 "Gemini Generate Content" = "Gemini Generate Content";
 "German" = "German";
-"Get an API key" = "Get an API key";
 "Go to the next step. You can finish this step later." = "Go to the next step. You can finish this step later.";
 "Grant %@ access" = "Grant %@ access";
 "Grant access" = "Grant access";
@@ -488,7 +476,6 @@
 "Ready" = "Ready";
 "Ready · kept in memory" = "Ready · kept in memory";
 "Recent history" = "Recent history";
-"Recognition engine" = "Recognition engine";
 "Recognizing" = "Recognizing";
 "Recommended" = "Recommended";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "Recommended · MLX 4-bit · Smaller download and memory footprint";
@@ -527,7 +514,6 @@
 "Right Option" = "Right Option";
 "Right Shift ⇧" = "Right Shift ⇧";
 "Romanian" = "Romanian";
-"Runs only when clicked. Your provider may charge for tests." = "Runs only when clicked. Your provider may charge for tests.";
 "Russian" = "Russian";
 "Sample text" = "Sample text";
 "Sample text only. No audio recording or AI requests." = "Sample text only. No audio recording or AI requests.";
@@ -546,7 +532,6 @@
 "Select text, press the shortcut, then copy the translation or replace the selection." = "Select text, press the shortcut, then copy the translation or replace the selection.";
 "Selected day" = "Selected day";
 "Selected-text translation" = "Selected-text translation";
-"Send a short test prompt using the current provider and model." = "Send a short test prompt using the current provider and model.";
 "Sends selected text and the target language to your provider; no voice recording." = "Sends selected text and the target language to your provider; no voice recording.";
 "Serbian" = "Serbian";
 "Service configured. No connection test has been run by this guide." = "Service configured. No connection test has been run by this guide.";
@@ -554,9 +539,7 @@
 "Settings" = "Settings";
 "Settings…" = "Settings…";
 "Setup guide" = "Setup guide";
-"Setup needed" = "Setup needed";
 "Setup summary" = "Setup summary";
-"Shared AI service" = "Shared AI service";
 "Short" = "Short";
 "Show calendar" = "Show calendar";
 "Show daily %@" = "Show daily %@";
@@ -752,7 +735,6 @@
 "Your primary, secondary, and selected languages stay available even when unchecked. Translation quality depends on your AI model." = "Your primary, secondary, and selected languages stay available even when unchecked. Translation quality depends on your AI model.";
 "Your recent dictations, edits, and translations." = "Your recent dictations, edits, and translations.";
 "Your spellings belong here" = "Your spellings belong here";
-"Your voice. On your Mac." = "Your voice. On your Mac.";
 "You’re in control" = "You’re in control";
 "hold" = "hold";
 "interface.language.english" = "English";
@@ -760,7 +742,6 @@
 "macOS Reduce Motion keeps indicators still. Your preference is saved." = "macOS Reduce Motion keeps indicators still. Your preference is saved.";
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved.";
 "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again.";
-"openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key." = "openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key.";
 "the selected model" = "the selected model";
 "toggle" = "toggle";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.";
@@ -820,10 +801,7 @@
 "Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "Set up an AI service first; until then, dictation with a selection is ordinary dictation.";
 "ASR 2.0 · Duration billing" = "ASR 2.0 · Duration billing";
 "ASR 2.0 · Concurrent billing" = "ASR 2.0 · Concurrent billing";
-"Local · Qwen (offline)" = "Local · Qwen (offline)";
-"Online · Doubao" = "Online · Doubao";
 "Enter a Doubao Speech API key in Speech recognition settings." = "Enter a Doubao Speech API key in Speech recognition settings.";
-"Doubao rejected the connection. Check your Speech API key and enabled ASR resource." = "Doubao rejected the connection. Check your Speech API key and enabled ASR resource.";
 "Could not connect to Doubao. Check your network and try again." = "Could not connect to Doubao. Check your network and try again.";
 "Doubao recognition timed out. Check your network and try again." = "Doubao recognition timed out. Check your network and try again.";
 "Doubao returned an invalid recognition response. No partial text was inserted." = "Doubao returned an invalid recognition response. No partial text was inserted.";
@@ -833,18 +811,10 @@
 "Doubao online recognition" = "Doubao online recognition";
 "Doubao Speech API key" = "Doubao Speech API key";
 "Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key." = "Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key.";
-"Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording." = "Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording.";
-"This configures speech recognition only. AI polishing uses the separate AI service settings." = "This configures speech recognition only. AI polishing uses the separate AI service settings.";
 "Doubao ASR resource" = "Doubao ASR resource";
-"Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested." = "Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested.";
-"Open Doubao Speech console" = "Open Doubao Speech console";
 "Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests." = "Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests.";
 "Paste your Doubao Speech API key here" = "Paste your Doubao Speech API key here";
 "Paste your API key here" = "Paste your API key here";
-"Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty." = "Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty.";
-"Get the API key from the selected provider's console. It is stored in your Mac's Keychain." = "Get the API key from the selected provider's console. It is stored in your Mac's Keychain.";
-"Verify connection" = "Verify connection";
-"Verifying connection…" = "Verifying connection…";
 "Connection verified. Doubao accepted the recognition configuration." = "Connection verified. Doubao accepted the recognition configuration.";
 "Not verified. Paste your key, then verify the connection." = "Not verified. Paste your key, then verify the connection.";
 "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply." = "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply.";
@@ -864,13 +834,6 @@
 "How it works" = "How it works";
 "Speaking mode" = "Speaking mode";
 "Dictation shortcut" = "Dictation shortcut";
-"Use a Doubao Speech key, not an Ark key. Stored in Keychain." = "Use a Doubao Speech key, not an Ark key. Stored in Keychain.";
-"Connection verified" = "Connection verified";
-"Paste a key, then verify." = "Paste a key, then verify.";
-"Use offline recognition if online fails" = "Use offline recognition if online fails";
-"Requires a downloaded model. Keeps it in memory while enabled." = "Requires a downloaded model. Keeps it in memory while enabled.";
-"Download Qwen in Local offline before using this option." = "Download Qwen in Local offline before using this option.";
-"Privacy and connection details" = "Privacy and connection details";
 "Update to %@…" = "Update to %@…";
 "On this Mac" = "On this Mac";
 "Doubao cloud" = "Doubao cloud";
@@ -879,9 +842,7 @@
 "Test" = "Test";
 "The key works." = "The key works.";
 "Create one in the Doubao Speech console. Saved in your Keychain." = "Create one in the Doubao Speech console. Saved in your Keychain.";
-"Fall back to this Mac when offline" = "Fall back to this Mac when offline";
 "Needs the local model downloaded." = "Needs the local model downloaded.";
-"Switch to On this Mac once to download the model." = "Switch to On this Mac once to download the model.";
 "More options" = "More options";
 "Match the plan enabled in your Doubao Speech console." = "Match the plan enabled in your Doubao Speech console.";
 "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly." = "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly.";
@@ -897,3 +858,6 @@
 "Sends a short test prompt. Your provider may charge for it." = "Sends a short test prompt. Your provider may charge for it.";
 "No AI service yet" = "No AI service yet";
 "Change…" = "Change…";
+"Use this Mac if Doubao fails" = "Use this Mac if Doubao fails";
+"No local model yet, so there is no fallback. Switch to On this Mac once to download it." = "No local model yet, so there is no fallback. Switch to On this Mac once to download it.";
+"Doubao is not set up. Using this Mac for this recording." = "Doubao is not set up. Using this Mac for this recording.";

@@ -561,7 +561,11 @@ final class Diagnostics: @unchecked Sendable {
     var doubaoConfig = "synthetic-config"
     var onlineLocalFallback = false
     var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
-    func resolvedQwenModelDirectory() throws -> URL { URL(fileURLWithPath: "/synthetic/model") }
+    var modelInstalled = true
+    func resolvedQwenModelDirectory() throws -> URL {
+        guard modelInstalled else { throw NSError(domain: "Synthetic", code: 2) }
+        return URL(fileURLWithPath: "/synthetic/model")
+    }
 }
 struct AppContext { let name: String; let bundleID: String }
 struct FakeApp { let localizedName: String?; let bundleIdentifier: String? }
@@ -615,7 +619,9 @@ enum AVCaptureDevice {
     }
 }
 @MainActor final class DoubaoTranscriptionSession: FakeSession {
+    static var notConfigured = false
     init(config: String, onError: @escaping (String) -> Void) throws {
+        if Self.notConfigured { throw NSError(domain: "Synthetic", code: 3) }
         super.init(); self.onError = onError
     }
 }
@@ -764,6 +770,34 @@ STARTUP_TESTS = r'''
             precondition(QwenTranscriptionSession.preparationCalls == 2, "Returning to local reloads the model")
         }
         print("PASS local model residency follows the selected engine and fallback switch, deferred until idle")
+        do {
+            let noModel = StartupHarness()
+            noModel.settings.asrEngine = .doubao
+            noModel.settings.onlineLocalFallback = true
+            noModel.settings.modelInstalled = false
+            noModel.startRecording()
+            await noModel.startupTask?.value
+            precondition(noModel.state == .recording && noModel.session is DoubaoTranscriptionSession,
+                         "A missing local model never blocks online recognition")
+            noModel.cancel()
+
+            DoubaoTranscriptionSession.notConfigured = true
+            defer { DoubaoTranscriptionSession.notConfigured = false }
+            let unset = StartupHarness()
+            unset.settings.asrEngine = .doubao
+            unset.settings.onlineLocalFallback = true
+            unset.startRecording()
+            await unset.startupTask?.value
+            precondition(unset.state == .recording && unset.session is QwenTranscriptionSession
+                         && unset.hud.model.notice != nil, "Online that cannot start falls back to local")
+            unset.cancel()
+
+            let blocked = StartupHarness()
+            blocked.settings.asrEngine = .doubao
+            blocked.startRecording()
+            precondition(blocked.state == .idle && blocked.session == nil, "Without the switch, online setup errors still block")
+        }
+        print("PASS fallback is a safety net: no model keeps online, unset online uses local only when enabled")
 
         TextIO.axSelection = nil // An app that does not expose its selection through Accessibility.
         for voiceEdit in [false, true] {

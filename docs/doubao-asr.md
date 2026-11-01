@@ -24,9 +24,18 @@ Qwen receives dictionary recognition hints. This Doubao integration does not sen
 
 ## Optional local fallback and model memory
 
-**Use offline recognition if online fails** is off by default. When enabled, Talkless requires an installed local model and preloads it into memory. The model stays resident while online recognition is selected with fallback enabled. A preparation error is shown rather than claiming the standby is ready.
+There are two modes, and you choose one:
 
-If the online session fails, recording can continue and the overlay explains the change. On finishing, Qwen recognizes the complete recorder-owned PCM snapshot once, in bounded windows; online partial text is never concatenated with local output. A local error is reported rather than retried. Cancellation never triggers fallback. The next recording still tries Doubao first. Invalid/missing credentials detected before a session starts remain a configuration error.
+- **On this Mac**: every recording uses local Qwen. Doubao is never contacted, whatever the fallback switch says.
+- **Doubao cloud**: every recording tries Doubao first. **Use this Mac if Doubao fails** (off by default) decides what happens when Doubao is unavailable.
+
+With the switch on and a local model installed, Talkless preloads the model and keeps it in memory while Doubao is selected. A preparation error is shown rather than claiming the standby is ready.
+
+- If Doubao cannot start, for example because no key is saved, the recording uses local Qwen from the start and the overlay says so.
+- If the online session fails during or after recording (network, rejected key, quota, timeout), recording continues and the overlay explains the change. On finishing, Qwen recognizes the complete recorder-owned PCM snapshot once, in bounded windows; online partial text is never concatenated with local output. A local error is reported rather than retried.
+- Cancellation never triggers fallback. The next recording still tries Doubao first.
+
+The switch is a safety net, not a requirement: if no local model is installed yet, or a model download/deletion is in progress, Doubao recordings run without fallback instead of being blocked. Settings shows a notice until a model is available.
 
 With fallback off, online failure stops dictation and reports the error. Selecting online without fallback releases resident Qwen weights and caches when idle, without deleting downloaded files. Selecting local or enabling fallback reloads the model. Changes during a recording are deferred until that recording completes; the in-flight session keeps its captured policy.
 

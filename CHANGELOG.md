@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Fixed
+- With Doubao cloud and "Use this Mac if Doubao fails" on, a missing local model no longer blocks dictation; Doubao recordings simply run without fallback until the model is downloaded. A model download or deletion in progress no longer blocks Doubao either.
+- With the switch on and a local model ready, Doubao that cannot start (for example, no key saved) now records locally instead of stopping. Local mode still only uses local recognition.
+
+### Changed
+- The fallback switch is now named "Use this Mac if Doubao fails" and warns when no local model is available. Docs describe the two modes and when fallback applies.
+
+## 2026.1101.36007
+
+### Fixed
 - Update checks no longer install an intermediate release. Automatic checks now only look for a new version and show "Update to …" in the menu and About; clicking it fetches the feed again and offers the newest build.
 - The AI service page no longer shows the Provider row three times when a custom provider is selected.
 - Request app activation before creating Settings and explicitly wake deferred window presentation after menu tracking. Settings follows the active desktop; closing a window cancels pending presentation requests.

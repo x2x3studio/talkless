@@ -124,7 +124,7 @@
   "guide.shortcuts.focus": "Keep the intended text field focused until the result arrives. Talkless pastes at the current cursor using the clipboard, then restores the previous clipboard unless you copied something else. Recover finished text from History if needed.",
   "guide.shortcuts.keys": "Fn is the default, not a requirement. Set the dictation key in Dictation settings. If Fn opens the emoji panel, change the Globe-key action to Do Nothing in macOS Keyboard settings, or use another key.",
   "guide.speech.title": "Choose your speech engine",
-  "guide.speech.body": "Choose Local Qwen for offline recognition, or Online Doubao for streaming recognition with live text. Doubao requires your own Speech API key and enabled ASR 2.0 resource; audio goes directly to Doubao and charges may apply. AI polishing is configured separately.",
+  "guide.speech.body": "Choose On this Mac (local Qwen, offline) or Doubao cloud (streaming, live text). In local mode only local recognition is used. Doubao requires your own Speech API key and enabled ASR 2.0 resource; audio goes directly to Doubao and charges may apply. Optionally turn on Use this Mac if Doubao fails to fall back to local recognition. AI polishing is configured separately.",
   "guide.speech.mic": "Choose System default or a specific microphone in Settings \u2192 Dictation. A disconnected selected microphone is not silently replaced. If the input route changes during a recording, check the device and start again.",
   "guide.ai.title": "Use AI only when you want it",
   "guide.ai.body": "Configure your own provider, credentials and model in Settings \u2192 AI service. Polishing is off by default. When you turn on Polish dictation with AI, every dictation is polished; when it is off, none are.",

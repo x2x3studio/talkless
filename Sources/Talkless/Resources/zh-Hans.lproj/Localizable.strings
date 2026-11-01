@@ -53,15 +53,11 @@
 "AI polishing · optional" = "AI 润色 · 可选";
 "AI processing" = "AI 处理";
 "AI service" = "AI 服务";
-"AI service…" = "AI 服务…";
 "API Key" = "API 密钥";
 "API URL" = "API 地址";
 "API key" = "API Key";
 "API key header" = "API 密钥请求头";
-"API provider" = "API 服务商";
-"About OpenRouter free" = "关于 OpenRouter 免费路由";
 "About activity" = "关于活动";
-"About the free router" = "关于免费路由";
 "About these statistics" = "关于这些统计";
 "Accept" = "接受";
 "Accept %@ into My terms" = "接受%@并添加到我的词语";
@@ -150,7 +146,6 @@
 "Check for Updates…" = "检查更新…";
 "Check for updates…" = "检查更新…";
 "Check that the destination is writable and has enough free space, then try again." = "请确认目标位置可写且有足够的可用空间，然后重试。";
-"Check your provider, API key, and model." = "请检查服务商、API 密钥和模型设置。";
 "Checking downloaded files…" = "正在检查已下载文件…";
 "Checking downloaded model files. Try again in a moment." = "正在检查已下载的模型文件，请稍后重试。";
 "Checking model files…" = "正在检查模型文件…";
@@ -184,13 +179,10 @@
 "Cloud recognition" = "云端识别";
 "Cloud recognition is selected. Review its configuration in Speech recognition settings. This guide makes no test requests." = "已选择云端识别。请在语音识别设置中确认配置。此引导不会发送测试请求。";
 "Completed dictations. Edits and translations are not included." = "已完成的语音输入次数，不含编辑和翻译。";
-"Configuration complete" = "配置完成";
 "Configure a service before enabling polishing." = "请先配置服务，再开启润色。";
 "Configure an AI service in Settings to translate selected text" = "请在设置中配置 AI 服务以翻译选中文本";
-"Configure the shared provider and model, or test the connection." = "配置共用的服务商和模型，或测试连接。";
 "Confirmed spellings help recognition and AI polish when enabled. They are hints, not forced replacements." = "确认后的词语可在启用识别和 AI 润色时提供提示，不会强制替换文本。";
 "Connection failed: %@" = "连接失败：%@";
-"Connection is not checked automatically." = "不会自动检查连接。";
 "Connection successful. The model returned a response." = "连接成功。模型已返回响应。";
 "Continue" = "继续";
 "Continue without changing anything, or explicitly enable polishing above. No audio or text is sent by this guide." = "可直接继续，不会更改任何设置；也可点击上方按钮开启润色。此引导不会发送音频或文字。";
@@ -266,7 +258,6 @@
 "Download Speech Model" = "下载语音模型";
 "Download and verify this model before using it." = "请先下载并校验此模型，再开始使用。";
 "Download failed" = "下载失败";
-"Download once. Transcribe locally with Qwen3 ASR." = "一次下载，即可使用 Qwen3 ASR 在本机转写。";
 "Download paused" = "下载已暂停";
 "Download source" = "下载来源";
 "Downloaded" = "已下载";
@@ -284,7 +275,6 @@
 "English" = "英语";
 "English or Japanese" = "英语或日语";
 "Enter a language or regional variant. Translation quality depends on your AI model." = "输入语言名称或地区变体。翻译质量取决于你的 AI 模型。";
-"Enter a model ID or fetch available models." = "输入模型 ID，或获取可用模型列表。";
 "Enter a speech recognition API key in Settings first" = "请先在设置中填写语音识别 API 密钥";
 "Enter an API key for this language model service." = "请输入此语言模型服务的 API 密钥。";
 "Enter an HTTPS URL without credentials, a query, or a fragment." = "请输入不含凭据、查询参数或片段的 HTTPS URL。";
@@ -316,12 +306,10 @@
 "Follows your text cursor without taking focus. Clicks pass through." = "跟随文字光标，不抢占焦点。点击可穿透悬浮窗。";
 "Applies when you use AI polishing. Translation has its own language." = "使用 AI 润色时生效。翻译使用单独的语言设置。";
 "For AI polish, e.g. Always use digits for numbers." = "用于 AI 润色，例如：数字一律使用阿拉伯数字。";
-"Free router limits and availability vary. Other models may be paid." = "免费路由的限额和可用性会变化。其他模型可能收费。";
 "French" = "法语";
 "Future" = "未来日期";
 "Gemini Generate Content" = "Gemini Generate Content";
 "German" = "德语";
-"Get an API key" = "获取 API 密钥";
 "Go to the next step. You can finish this step later." = "前往下一步。此步骤可稍后完成。";
 "Grant %@ access" = "授予%@访问权限";
 "Grant access" = "授予权限";
@@ -488,7 +476,6 @@
 "Ready" = "就绪";
 "Ready · kept in memory" = "已就绪 · 常驻内存";
 "Recent history" = "最近记录";
-"Recognition engine" = "识别引擎";
 "Recognizing" = "识别中";
 "Recommended" = "推荐";
 "Recommended · MLX 4-bit · Smaller download and memory footprint" = "推荐 · MLX 4 位量化 · 下载更小、内存占用更低";
@@ -527,7 +514,6 @@
 "Right Option" = "右 Option";
 "Right Shift ⇧" = "右 Shift ⇧";
 "Romanian" = "罗马尼亚语";
-"Runs only when clicked. Your provider may charge for tests." = "仅在点击时运行。服务商可能会对测试收费。";
 "Russian" = "俄语";
 "Sample text" = "示例文字";
 "Sample text only. No audio recording or AI requests." = "仅展示示例文字，不会录音或发起 AI 请求。";
@@ -546,7 +532,6 @@
 "Select text, press the shortcut, then copy the translation or replace the selection." = "选中文字并按快捷键，然后复制译文或替换选中的文字。";
 "Selected day" = "选中日期";
 "Selected-text translation" = "选中文字翻译";
-"Send a short test prompt using the current provider and model." = "使用当前服务商和模型发送简短的测试提示词。";
 "Sends selected text and the target language to your provider; no voice recording." = "将选中的文字和目标语言发送给服务商，不会录音。";
 "Serbian" = "塞尔维亚语";
 "Service configured. No connection test has been run by this guide." = "服务已配置，此引导未进行连接测试。";
@@ -554,9 +539,7 @@
 "Settings" = "设置";
 "Settings…" = "设置…";
 "Setup guide" = "设置引导";
-"Setup needed" = "需要配置";
 "Setup summary" = "设置概览";
-"Shared AI service" = "共用 AI 服务";
 "Short" = "短文本";
 "Show calendar" = "显示日历";
 "Show daily %@" = "显示每日%@";
@@ -752,7 +735,6 @@
 "Your primary, secondary, and selected languages stay available even when unchecked. Translation quality depends on your AI model." = "即使取消勾选，主要语言、次要语言和当前所选语言仍会显示。翻译质量取决于你的 AI 模型。";
 "Your recent dictations, edits, and translations." = "最近的语音输入、编辑和翻译记录。";
 "Your spellings belong here" = "在这里收录你的专用词语";
-"Your voice. On your Mac." = "你的声音，在你的 Mac 上处理。";
 "You’re in control" = "由你决定";
 "hold" = "按住";
 "interface.language.english" = "English";
@@ -760,7 +742,6 @@
 "macOS Reduce Motion keeps indicators still. Your preference is saved." = "macOS 的“减弱动态效果”设置使指示器保持静止。你的偏好已保存。";
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS 的“降低透明度”设置使背景保持不透明。你的偏好已保存。";
 "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS 找不到此 App 的登录项。请将 Talkless 重新安装到“应用程序”文件夹后重试。";
-"openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key." = "openrouter/free 使用动态变化的免费模型，不会回退到付费模型。需要你自己的 OpenRouter 密钥。";
 "the selected model" = "所选模型";
 "toggle" = "切换";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@”将不再用作词典提示。此操作不会删除历史记录或忽略待确认建议。";
@@ -820,10 +801,7 @@
 "Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "需要先配置 AI 服务；配置之前，选中文字时按听写键仍是普通听写。";
 "ASR 2.0 · Duration billing" = "实时识别 2.0 · 按时长计费";
 "ASR 2.0 · Concurrent billing" = "实时识别 2.0 · 按并发计费";
-"Local · Qwen (offline)" = "本地离线 · 千问";
-"Online · Doubao" = "在线服务 · 豆包";
 "Enter a Doubao Speech API key in Speech recognition settings." = "请在“语音识别”设置中填写豆包语音 API Key。";
-"Doubao rejected the connection. Check your Speech API key and enabled ASR resource." = "豆包拒绝了连接，请检查语音 API Key 和已开通的识别资源。";
 "Could not connect to Doubao. Check your network and try again." = "无法连接豆包，请检查网络后重试。";
 "Doubao recognition timed out. Check your network and try again." = "豆包识别超时，请检查网络后重试。";
 "Doubao returned an invalid recognition response. No partial text was inserted." = "豆包返回的识别结果无效，未输入不完整文字。";
@@ -833,18 +811,10 @@
 "Doubao online recognition" = "豆包在线语音识别";
 "Doubao Speech API key" = "豆包语音 API Key";
 "Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key." = "保存在 Mac 钥匙串中。请使用新版豆包语音控制台的 API Key，不是火山方舟模型密钥。";
-"Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording." = "说话时音频直接发送给豆包，并实时预览文字。需要联网并自行开通语音服务，费用由服务商收取。Talkless 不中转，也不保存录音。";
-"This configures speech recognition only. AI polishing uses the separate AI service settings." = "这里仅配置语音识别。AI 润色仍使用独立的“AI 服务”设置。";
 "Doubao ASR resource" = "识别套餐";
-"Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested." = "选择豆包语音控制台中已开通的实时识别 2.0 计费资源。“配置完整”不代表已通过连接测试。";
-"Open Doubao Speech console" = "打开豆包语音控制台";
 "Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests." = "已选择豆包在线识别。请在设置中确认语音 API Key 和资源；此引导不会发送测试请求。";
 "Paste your Doubao Speech API key here" = "粘贴豆包语音的 API Key";
 "Paste your API key here" = "请粘贴 API Key";
-"Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty." = "请从服务商获取密钥，密钥保存在 Mac 钥匙串中；本地服务可以留空。";
-"Get the API key from the selected provider's console. It is stored in your Mac's Keychain." = "请从所选服务商的控制台获取 API Key，密钥保存在 Mac 钥匙串中。";
-"Verify connection" = "验证连接";
-"Verifying connection…" = "正在验证连接…";
 "Connection verified. Doubao accepted the recognition configuration." = "连接验证成功，豆包已接受识别配置。";
 "Not verified. Paste your key, then verify the connection." = "尚未验证，请粘贴密钥后点击“验证连接”。";
 "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply." = "仅发送凭据和识别配置，不打开麦克风、不发送音频；不代表已验证识别准确率。服务商计费规则仍适用。";
@@ -864,13 +834,6 @@
 "How it works" = "使用说明";
 "Speaking mode" = "说话方式";
 "Dictation shortcut" = "听写快捷键";
-"Use a Doubao Speech key, not an Ark key. Stored in Keychain." = "填写豆包语音密钥，不是方舟密钥。保存在钥匙串中。";
-"Connection verified" = "连接成功";
-"Paste a key, then verify." = "填入密钥后验证连接。";
-"Use offline recognition if online fails" = "在线识别失败时，自动切换到本地";
-"Requires a downloaded model. Keeps it in memory while enabled." = "需先下载千问模型，开启后会额外占用内存。";
-"Download Qwen in Local offline before using this option." = "请先切到“本地离线”下载千问模型。";
-"Privacy and connection details" = "隐私与连接说明";
 "Update to %@…" = "更新到 %@…";
 "On this Mac" = "本机识别";
 "Doubao cloud" = "豆包云端";
@@ -879,9 +842,7 @@
 "Test" = "测试";
 "The key works." = "密钥可用。";
 "Create one in the Doubao Speech console. Saved in your Keychain." = "在火山引擎「豆包语音」控制台创建，保存在本机钥匙串。";
-"Fall back to this Mac when offline" = "联网失败时改用本机识别";
 "Needs the local model downloaded." = "需要先下载本机模型。";
-"Switch to On this Mac once to download the model." = "先切到“本机识别”下载模型。";
 "More options" = "更多选项";
 "Match the plan enabled in your Doubao Speech console." = "与豆包语音控制台里开通的套餐保持一致。";
 "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly." = "录音直接发给豆包，Talkless 不中转、不保存，费用由豆包向你收取。";
@@ -897,3 +858,6 @@
 "Sends a short test prompt. Your provider may charge for it." = "发送一条简短的测试消息，服务商可能会计费。";
 "No AI service yet" = "还没有设置 AI 服务";
 "Change…" = "更改…";
+"Use this Mac if Doubao fails" = "豆包不可用时改用本机识别";
+"No local model yet, so there is no fallback. Switch to On this Mac once to download it." = "还没有本机模型，暂时无法兜底。先切到“本机识别”下载一次。";
+"Doubao is not set up. Using this Mac for this recording." = "豆包还没设置好，这次改用本机识别。";

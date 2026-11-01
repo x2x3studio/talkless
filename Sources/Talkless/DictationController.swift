@@ -368,14 +368,15 @@ final class DictationController: ObservableObject {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             return
         }
-        if settings.needsLocalModel, ModelManager.shared.operationModelID != nil {
+        let localSelected = settings.asrEngine == .qwen
+        let modelBusy = ModelManager.shared.operationModelID != nil
+        if localSelected, modelBusy {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             hud.show(.error(L10n.tr("Wait for the model operation to finish before starting dictation.")))
             return
         }
-        let fallbackEnabled = settings.asrEngine == .doubao && settings.onlineLocalFallback
         var qwenDirectory: URL?
-        if settings.needsLocalModel {
+        if localSelected {
             do { qwenDirectory = try settings.resolvedQwenModelDirectory() }
             catch {
                 operation.record("recording_blocked", ["reason": "model_unavailable", "stage": "startup"])
@@ -383,7 +384,11 @@ final class DictationController: ObservableObject {
                 onModelSetupRequested?()
                 return
             }
+        } else if settings.onlineLocalFallback, !modelBusy {
+            // Fallback is a safety net: without a usable local model, online still works alone.
+            qwenDirectory = try? settings.resolvedQwenModelDirectory()
         }
+        let fallbackEnabled = settings.asrEngine == .doubao && settings.onlineLocalFallback && qwenDirectory != nil
         switch Self.microphoneStatus {
         case .notDetermined:
             operation.record("permission_blocked", ["permission": "microphone", "reason": "not_determined", "stage": "startup"])
@@ -414,12 +419,9 @@ final class DictationController: ObservableObject {
         diagnosticOperation = operation
         let generation = self.generation
         acceptsRecognitionHUDUpdates = true
-        let session: any TranscriptionSession
-        switch settings.asrEngine {
-        case .qwen:
-            guard let qwenDirectory else { return }
-            session = QwenTranscriptionSession(
-                modelDirectory: qwenDirectory,
+        func localSession(_ directory: URL) -> any TranscriptionSession {
+            QwenTranscriptionSession(
+                modelDirectory: directory,
                 language: nil,
                 contextualStrings: dictionaryTerms,
                 onStatus: { [weak self] _ in
@@ -433,6 +435,13 @@ final class DictationController: ObservableObject {
                     self.hud.show(.error(message))
                 }
             )
+        }
+        let session: any TranscriptionSession
+        var usesLocalSession = localSelected
+        switch settings.asrEngine {
+        case .qwen:
+            guard let qwenDirectory else { return }
+            session = localSession(qwenDirectory)
         case .doubao:
             do {
                 let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
@@ -457,10 +466,17 @@ final class DictationController: ObservableObject {
                     })
                 } else { session = online }
             } catch {
-                operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
-                hud.show(.error(error.localizedDescription))
-                onModelSetupRequested?()
-                return
+                guard fallbackEnabled, let qwenDirectory else {
+                    operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
+                    hud.show(.error(error.localizedDescription))
+                    onModelSetupRequested?()
+                    return
+                }
+                // Online cannot start (for example, no key yet): record locally instead.
+                operation.record("recognition_fallback", ["fallback": "true", "stage": "startup"])
+                hud.model.notice = L10n.tr("Doubao is not set up. Using this Mac for this recording.")
+                session = localSession(qwenDirectory)
+                usesLocalSession = true
             }
         }
         session.onPartial = { [weak self] partial in
@@ -478,7 +494,7 @@ final class DictationController: ObservableObject {
             }
         }
         self.session = session
-        recordingModelDirectory = settings.asrEngine == .qwen ? qwenDirectory?.standardizedFileURL : nil
+        recordingModelDirectory = usesLocalSession ? qwenDirectory?.standardizedFileURL : nil
         recordingPreparationGeneration = preparationGeneration
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
