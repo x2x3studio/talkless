@@ -377,8 +377,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             setupWindow = window
         }
         setupGuide.present()
-        NSApp.activate()
-        setupWindow?.makeKeyAndOrderFront(nil)
+        if let setupWindow { AppWindowPresentation.show(setupWindow) }
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -407,7 +406,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             window.center()
             settingsWindow = window
         }
-        NSApp.activate()
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        if let settingsWindow { AppWindowPresentation.show(settingsWindow) }
     }
 }

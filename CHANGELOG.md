@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Settings and setup windows are shown after menu tracking ends, independently of asynchronous app activation, and restored when minimized. Focus is applied again once the app becomes active.
+
+## 2026.1101.25885
+
 ### Added
 - Doubao streaming ASR 2.0 provides live online recognition using your own Speech API key, stored separately in Keychain. Duration billing is selected by default.
 

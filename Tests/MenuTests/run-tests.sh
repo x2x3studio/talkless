@@ -28,3 +28,8 @@ xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Tests/MenuTests/ApplicationEditMenuTests.swift" \
   -o "$APP/Contents/MacOS/menu-tests"
 "$APP/Contents/MacOS/menu-tests"
+xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
+  "$ROOT/Sources/Talkless/AppWindowPresentation.swift" \
+  "$ROOT/Tests/MenuTests/WindowPresentationTests.swift" \
+  -o "$APP/Contents/MacOS/menu-tests"
+"$APP/Contents/MacOS/menu-tests"
