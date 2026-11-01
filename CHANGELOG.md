@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Changed
+- Pip now stays in one place in the menu bar: the slot is laid out for the widest mark, and only the mark changes. Idle shows "?", dictation shows "!" until the words are recognized, and AI polishing or voice editing shows "@".
+
+## 2026.1101.57034
+
+### Changed
 - The menu bar icon is back to Pip with its "?" (listening), "!" (recognizing) and "@" (AI polishing or voice editing) marks, now centered in its slot so it no longer leans left. The slot keeps one width, so nothing beside it shifts.
 
 ## 2026.1101.54169

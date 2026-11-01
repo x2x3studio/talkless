@@ -20,13 +20,13 @@ try #"""
 import AppKit
 
 @main struct MenuIconTests {
-    /// `canonical` undoes the state's centering shift, so geometry checks share Pip's original
+    /// `canonical` undoes the slot's centering shift, so geometry checks share Pip's original
     /// coordinates; the shift itself is checked separately on the real image.
     @MainActor static func raster(_ image: NSImage, scale: Int, canonical state: MenuBarIcon.State? = nil) -> NSBitmapImageRep {
         let bitmap = bitmap(width: 25 * scale, height: 18 * scale)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        let shift = state.map { MenuBarIcon.offset(for: $0) } ?? 0
+        let shift = state == nil ? 0 : MenuBarIcon.offset
         image.draw(in: CGRect(x: -shift * CGFloat(scale), y: 0, width: 25 * CGFloat(scale), height: 18 * CGFloat(scale)))
         NSGraphicsContext.restoreGraphicsState()
         return bitmap
@@ -111,15 +111,14 @@ import AppKit
         }
         precondition(minAlpha(around: CGPoint(x: 505, y: 649), radius: 0.5) < 0.6,
                      "Optical smile must remain open at native size")
-        // Badge column x 17..<24 pt: "?" while listening, "!" while recognizing, a wider "@"
-        // while AI works, nothing while idle. Measure the ink's horizontal extent.
+        // Mark column x 18..<24 pt (Pip's ink ends by 17.25): "?" while idle, "!" while
+        // dictating and recognizing, a wider "@" while AI works. Measure the ink's extent.
         var columns = Set<Int>(), rows = Set<Int>()
-        for y in 0..<18 * scale { for x in 17 * scale..<24 * scale where alpha(bitmap, x, y) > 0.5 && alpha(idleBitmap(scale), x, y) == 0 { columns.insert(x); rows.insert(y) } }
+        for y in 0..<18 * scale { for x in 18 * scale..<24 * scale where alpha(bitmap, x, y) > 0.5 { columns.insert(x); rows.insert(y) } }
         let width = CGFloat(columns.count) / CGFloat(scale), height = CGFloat(rows.count) / CGFloat(scale)
         switch state {
-        case .idle: precondition(columns.isEmpty, "Idle has no badge")
-        case .recording: precondition(width >= 3 && width <= 5 && height >= 5, "Listening shows a legible question mark")
-        case .processing: precondition(width >= 1 && width <= 2.5 && height >= 5, "Recognition shows a narrow exclamation mark")
+        case .idle: precondition(width >= 3 && width <= 5 && height >= 5, "Idle shows a legible question mark")
+        case .recording, .processing: precondition(width >= 1 && width <= 2.5 && height >= 5, "Dictation shows a narrow exclamation mark")
         case .aiProcessing: precondition(width >= 3.5 && height >= 3.5 && height < 5.5, "AI processing shows a compact at sign")
         }
     }
@@ -239,19 +238,23 @@ import AppKit
                 let image = MenuBarIcon.image(for: state)
                 precondition(image.isTemplate)
                 precondition(image.size == NSSize(width: 25, height: 18), "Every state keeps one width, so neighbors never shift")
-                // Pip alone, or Pip with its mark, is centered: no state leans left.
+                // Pip starts at the same place in every state; the widest pair ("@") is centered.
                 let real = raster(image, scale: 4)
                 var inked = [Int]()
                 for x in 0..<real.pixelsWide where (0..<real.pixelsHigh).contains(where: { alpha(real, x, $0) > 0.05 }) { inked.append(x) }
                 let left = CGFloat(inked.first!) / 4, right = 25 - CGFloat(inked.last! + 1) / 4
-                precondition(left >= 1 && right >= 1 && abs(left - right) <= 1, "\(state): margins \(left) vs \(right) must match")
-                precondition(MenuBarIcon.offset(for: state) == MenuBarIcon.offset(for: state).rounded(), "Whole-point shifts keep Pip crisp at 1x")
+                precondition(left == 1.75 + MenuBarIcon.offset, "\(state): Pip must not move (left edge \(left))")
+                if state == .aiProcessing {
+                    precondition(right >= 1 && abs(left - right) <= 1, "The widest pair is centered: \(left) vs \(right)")
+                }
+                precondition(MenuBarIcon.offset == MenuBarIcon.offset.rounded(), "A whole-point shift keeps Pip crisp at 1x")
                 precondition(image.accessibilityDescription == state.accessibilityDescription)
                 let bitmap = raster(image, scale: scale, canonical: state)
                 checkRaster(bitmap, state: state, scale: scale)
                 for y in 0..<18 * scale {
                     for x in 0..<25 * scale {
-                        let pip = alpha(idleMask, x, y)
+                        // Pip's region only; the idle "?" is not part of Pip.
+                        let pip = x < 35 * scale / 2 ? alpha(idleMask, x, y) : 0
                         if pip > 0 {
                             precondition(alpha(bitmap, x, y) == pip, "State changes must not move or alter Pip")
                         } else if alpha(bitmap, x, y) > 0 {
@@ -259,7 +262,7 @@ import AppKit
                             for dx in -1...1 { for dy in -1...1 {
                                 let nx = x + dx, ny = y + dy
                                 guard nx >= 0, ny >= 0, nx < 25 * scale, ny < 18 * scale else { continue }
-                                precondition(alpha(idleMask, nx, ny) == 0, "State badge must stay separate from Pip")
+                                precondition(nx >= 35 * scale / 2 || alpha(idleMask, nx, ny) == 0, "State badge must stay separate from Pip")
                             } }
                         }
                     }
@@ -295,7 +298,8 @@ import AppKit
                 precondition(appearances[0] != appearances[2], "Native light and dark appearances must differ")
                 precondition(appearances[0] != appearances[1], "Native selected appearance must differ")
             }
-            precondition(Set(rendered).count == MenuBarIcon.State.allCases.count, "States need distinct badges at both native scales")
+            precondition(Set(rendered).count == 3 && rendered[1] == rendered[2],
+                         "Idle, dictation and AI work look different; dictation keeps \"!\" through recognition")
         }
         if let output {
             // ICNS supplies the actual optical-size variants in the review sheet.

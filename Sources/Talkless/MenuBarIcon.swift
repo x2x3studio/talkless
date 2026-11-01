@@ -3,7 +3,8 @@ import AppKit
 @MainActor
 enum MenuBarIcon {
     enum State: CaseIterable {
-        /// Listening shows "?", recognition "!", and AI work, both polishing and voice editing, "@".
+        /// Idle shows "?", dictation "!" until the words are recognized, and AI work, both
+        /// polishing and voice editing, "@". Pip itself never moves.
         case idle, recording, processing, aiProcessing
 
         var accessibilityDescription: String {
@@ -15,11 +16,10 @@ enum MenuBarIcon {
             }
         }
 
-        var badge: String? {
+        var badge: String {
             switch self {
-            case .idle: nil
-            case .recording: "?"
-            case .processing: "!"
+            case .idle: "?"
+            case .recording, .processing: "!"
             case .aiProcessing: "@"
             }
         }
@@ -41,20 +41,18 @@ enum MenuBarIcon {
         mark.boundingRect(with: NSSize(width: 20, height: 20), options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
     }
 
-    /// Pip's ink spans x 1.75–17 in the unshifted layout, a mark 18.3 onward. The whole group,
-    /// Pip alone or Pip with its mark, is centered in the slot so no state leans left. Whole
-    /// points keep Pip crisp at 1x.
-    static func offset(for state: State) -> CGFloat {
-        let pip: ClosedRange<CGFloat> = {
-            let box = PipArtwork.path(small: true).boundingBoxOfPath
-            return (9.5 + (box.minX - 512) * 0.027)...(9.5 + (box.maxX - 512) * 0.027)
-        }()
-        let right = state.badge.map { 18.3 + markInk(mark($0)).width } ?? pip.upperBound
-        return ((size.width - (right - pip.lowerBound)) / 2 - pip.lowerBound).rounded()
-    }
+    /// Pip's ink starts at x 1.75 in the unshifted layout and a mark's at 18.3. The widest
+    /// pair is centered in the slot and every state uses that one shift, so Pip never moves
+    /// and only the mark changes. Whole points keep Pip crisp at 1x.
+    static let offset: CGFloat = {
+        let box = PipArtwork.path(small: true).boundingBoxOfPath
+        let left = 9.5 + (box.minX - 512) * 0.027
+        let right = State.allCases.map { 18.3 + markInk(mark($0.badge)).width }.max()!
+        return ((size.width - (right - left)) / 2 - left).rounded()
+    }()
 
     static func image(for state: State) -> NSImage {
-        let shift = offset(for: state)
+        let shift = offset
         let image = NSImage(size: size, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
             context.translateBy(x: shift, y: 0)
@@ -68,7 +66,8 @@ enum MenuBarIcon {
             context.addPath(PipArtwork.path(small: true))
             context.fillPath(using: .evenOdd)
             context.restoreGState()
-            if let badge = state.badge {
+            do {
+                let badge = state.badge
                 let mark = mark(badge)
                 // In the mark's rows (y 1.5–8.5) Pip's ink ends by x 16.75, at the cheek;
                 // starting the mark's ink at 18.3 keeps a clear pixel even at 1x, so the pair
