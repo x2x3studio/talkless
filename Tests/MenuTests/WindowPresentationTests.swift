@@ -51,8 +51,14 @@ import AppKit
                             precondition(!window.isMiniaturized && window.isVisible,
                                          "Showing a minimized window restores it")
                             window.orderOut(nil)
-                            print("PASS first menu presentation, tracking-mode deferral, reuse and minimized-window restoration")
-                            exit(0)
+                            precondition(window.collectionBehavior.contains(.moveToActiveSpace), "Settings follows the user's current desktop")
+                            AppWindowPresentation.show(window)
+                            window.close()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                precondition(!window.isVisible, "Closing before deferred presentation cancels that request")
+                                print("PASS first presentation, tracking deferral, reuse, minimized restore, active Space and close-before-show")
+                                exit(0)
+                            }
                         }
                     }
                 }

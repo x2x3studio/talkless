@@ -360,6 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func quit() { NSApp.terminate(nil) }
 
     private func openSetupGuide() {
+        NSApp.activate()
         if setupWindow == nil {
             let hosting = NSHostingController(rootView: SetupGuideLiveView(
                 controller: controller,
@@ -402,6 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func openSettings() {
+        // Request activation before first-use SwiftUI/window construction consumes the menu action.
+        NSApp.activate()
         if settingsWindow == nil {
             let hosting = NSHostingController(rootView: SettingsView(controller: controller, updateController: updateController))
             let window = NSWindow(contentViewController: hosting)

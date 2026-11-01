@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Request app activation before creating Settings and explicitly wake deferred window presentation after menu tracking. Settings follows the active desktop; closing a window cancels pending presentation requests.
+
+## 2026.1101.31817
+
 ### Added
 - Optional local Qwen fallback for failed online recognition. Enabling it preloads and keeps the local model in memory; failed online sessions replay the complete recording locally once, without mixing partial transcripts.
 
