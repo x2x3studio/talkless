@@ -16,11 +16,14 @@ if [[ -z "${TALKLESS_RELEASE_TOOL:-}" ]]; then
     TOOL_BIN="$(swift build --package-path "$ROOT/Tools/ReleaseTool" --build-system native -c release --show-bin-path)"
     export TALKLESS_RELEASE_TOOL="$TOOL_BIN/ReleaseTool"
 fi
-# The compiler's location is part of SwiftPM's build identity. Key it to the adapter's
-# contents: a changed adapter still invalidates old objects, while an unchanged one keeps
-# incremental builds (a fresh path every run recompiled all of MLX). No personal paths in
-# the compiler's location or generated replacement sources.
-ADAPTER_HASH="$(shasum -a 256 "$TALKLESS_RELEASE_TOOL" | cut -c1-16)"
+# The compiler's location is part of SwiftPM's build identity. Key it to the adapter's source
+# and the toolchain: a changed adapter still invalidates old objects, while an unchanged one
+# keeps incremental builds (a fresh path every run recompiled all of MLX). Rebuilt binaries
+# are not byte-identical, so their own hash would change every clean CI run. No personal
+# paths in the compiler's location or generated replacement sources.
+ADAPTER_HASH="$( { xcrun swiftc --version 2>&1
+    (cd "$ROOT/Tools/ReleaseTool" && find Package.swift Sources -type f | LC_ALL=C sort \
+        | while IFS= read -r file; do printf '%s\n' "$file"; cat "$file"; done); } | shasum -a 256 | cut -c1-16)"
 COMPILER_STAGE="/tmp/talkless-compiler-$(id -u)-$ADAPTER_HASH"
 if [[ -e "$COMPILER_STAGE" || -L "$COMPILER_STAGE" ]]; then
     # /tmp is shared: reuse only a real directory this user created, never a planted one.

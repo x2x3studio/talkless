@@ -62,7 +62,7 @@ jobs:
           fetch-depth: 0
           # Cleaned below instead, so pinned dependency checkouts survive on this runner.
           clean: false
-      - name: Clean workspace, keeping the SwiftPM build cache
+      - name: Clean workspace, keeping the SwiftPM build caches
         # This is our own runner: keep .build so dependency checkouts (re-cloning mlx-swift's
         # submodules took about 12 minutes) and compiled objects (all of MLX, about 3 minutes)
         # are reused, and only changed code is rebuilt. SwiftPM still verifies the pinned
@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           git reset --hard --quiet
-          git clean -ffdx --quiet -e /.build/
+          git clean -ffdx --quiet -e /.build/ -e /Tools/ReleaseTool/.build/
           git status --porcelain --ignored
       - name: Generate calendar version
         run: |

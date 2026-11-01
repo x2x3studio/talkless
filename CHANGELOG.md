@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2026.1101.51474
+
 ### Changed
 - History and the dictionary now page through entries 50 at a time with previous and next buttons and a "Page x of n" indicator, instead of a Show more button or one long list.
 - Diagnostics record how long the interface stopped responding while Settings is open (over 150 ms), how often Settings redraws, and which page was showing. No text is recorded. Export diagnostics after Settings feels slow so the cause can be found.
