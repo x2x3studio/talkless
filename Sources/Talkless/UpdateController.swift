@@ -249,7 +249,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         alert.messageText = L10n.tr("Finish Dictation First")
         alert.informativeText = L10n.tr("Talkless will not quit or install an update while recording or processing speech. Finish dictation, then try again.")
         alert.addButton(withTitle: L10n.tr("OK"))
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
 

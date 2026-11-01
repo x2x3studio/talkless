@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- Settings now opens on the first click from the menu bar. Talkless takes activation for explicit window requests instead of asking for it, so the window no longer opens hidden behind the frontmost app.
 - With Doubao cloud and "Use this Mac if Doubao fails" on, a missing local model no longer blocks dictation; Doubao recordings simply run without fallback until the model is downloaded. A model download or deletion in progress no longer blocks Doubao either.
 - With the switch on and a local model ready, Doubao that cannot start (for example, no key saved) now records locally instead of stopping. Local mode still only uses local recognition.
 

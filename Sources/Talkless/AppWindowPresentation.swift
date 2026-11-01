@@ -1,9 +1,12 @@
 import AppKit
 import OSLog
 
-/// Ask for activation synchronously in the user action, then order the window after menu
-/// tracking unwinds. Deferring the activation request itself can lose the click's activation
-/// opportunity; scheduling a default-mode block also needs an explicit run-loop wakeup.
+/// Activate synchronously in the user action, then order the window after menu tracking
+/// unwinds; scheduling a default-mode block also needs an explicit run-loop wakeup.
+///
+/// Cooperative `NSApp.activate()` is routinely refused for this accessory app after a status
+/// menu click, and an inactive app's `orderFrontRegardless` window lands *behind* the active
+/// app's windows: "visible" to AppKit, hidden from the user until a second attempt.
 @MainActor
 final class AppWindowPresentation: NSObject {
     private static let shared = AppWindowPresentation()
@@ -26,6 +29,12 @@ final class AppWindowPresentation: NSObject {
 
     static func show(_ window: NSWindow) { shared.request(window) }
 
+    /// Explicit user requests to show Talkless UI: take activation instead of asking for it.
+    static func activateApp() {
+        guard !NSApp.isActive else { return }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func request(_ window: NSWindow) {
         requestID += 1
         let token = requestID
@@ -33,8 +42,8 @@ final class AppWindowPresentation: NSObject {
         record("requested", window: window)
         window.collectionBehavior.remove(.canJoinAllSpaces)
         window.collectionBehavior.insert(.moveToActiveSpace)
-        // Request while still handling the click, not from a later run-loop block.
-        NSApp.activate()
+        // Activate while still handling the click, not from a later run-loop block.
+        Self.activateApp()
         afterMenuTracking { [weak self, weak window] in
             guard let self, let window, self.requestID == token else { return }
             self.order(window)
@@ -44,6 +53,8 @@ final class AppWindowPresentation: NSObject {
 
     private func order(_ window: NSWindow) {
         if window.isMiniaturized { window.deminiaturize(nil) }
+        // Menu tracking can swallow the first activation; retry once it has unwound.
+        Self.activateApp()
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         record("ordered", window: window)
