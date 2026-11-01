@@ -101,7 +101,7 @@ If polishing fails, the raw transcript is inserted instead, with a brief error m
 Two formatting options in **Dictation** apply on this Mac to every dictation, with or without smart text cleanup, as the last step before insertion:
 
 - **Punctuation:** Keep all punctuation (default), No punctuation at sentence end (drops a final period or comma on each line; question and exclamation marks stay), or Spaces instead of punctuation. Decimals, versions and URLs are never changed.
-- **Spaces around numbers and English:** No spaces (default) or Spaces before and after, between Chinese and Latin words or numbers, as in “用 Python 写 3 个脚本”.
+- **Spaces around numbers and English:** No spaces (default) or Spaces before and after, between Chinese and Latin words or numbers, for example around “Python” or “3” in a Chinese sentence.
 
 ### Edit selected text by voice
 
