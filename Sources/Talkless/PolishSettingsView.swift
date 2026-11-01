@@ -101,10 +101,19 @@ struct AIServiceSettingsView: View {
                     .id(localization.locale.identifier)
                 }
 
-                SecureField(L10n.tr("API key"), text: $settings.llmAPIKey)
-                    .help(provider == .custom
-                          ? L10n.tr("Stored in your Mac's Keychain. Localhost endpoints can use an empty key.")
-                          : L10n.tr("Stored in your Mac's Keychain."))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.tr("API key"))
+                    SecureField(L10n.tr("API key"), text: $settings.llmAPIKey,
+                                prompt: Text(L10n.tr("Paste your API key here")))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel(L10n.tr("API key"))
+                    Text(provider == .custom
+                         ? L10n.tr("Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty.")
+                         : L10n.tr("Get the API key from the selected provider's console. It is stored in your Mac's Keychain."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if let error = settings.llmCredentialSaveError {
                     Text(error)

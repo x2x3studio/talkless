@@ -91,6 +91,37 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
         }
     }
 
+    /// Validate credentials/resource by sending only the configuration frame and waiting for
+    /// a valid service acknowledgment. No microphone, audio packet or recognition accuracy test.
+    static func validateConnection(config: DoubaoConfig, socket injected: (any DoubaoSocket)? = nil,
+                                   timeout: TimeInterval = 10) async throws {
+        let request = try config.request()
+        let socket = injected ?? DoubaoWebSocket(request: request)
+        do {
+            try await withTaskCancellationHandler {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    defer { group.cancelAll(); socket.close() }
+                    group.addTask {
+                        try Task.checkCancellation()
+                        try await socket.send(DoubaoProtocol.configuration())
+                        _ = try DoubaoProtocol.response(await socket.receive())
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(timeout))
+                        throw DoubaoError.timeout
+                    }
+                    _ = try await group.next()
+                    try Task.checkCancellation()
+                }
+            } onCancel: { socket.close() }
+        } catch {
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            if let error = error as? DoubaoError { throw error }
+            if let error = error as? URLError, error.code == .timedOut { throw DoubaoError.timeout }
+            throw DoubaoError.connection
+        }
+    }
+
     func feed(_ buffer: AVAudioPCMBuffer) {
         guard buffer.format.sampleRate == 16_000, buffer.format.channelCount == 1,
               buffer.format.commonFormat == .pcmFormatFloat32, let channel = buffer.floatChannelData?[0] else {

@@ -74,11 +74,8 @@ enum TextIO {
     }
 
     private static func postKey(_ key: CGKeyCode, flags: CGEventFlags) {
-        let source = CGEventSource(stateID: .hidSystemState)
-        let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
-        down?.flags = flags
-        up?.flags = flags
+        let down = SyntheticKeyboardEvents.make(key: key, down: true, flags: flags)
+        let up = SyntheticKeyboardEvents.make(key: key, down: false, flags: flags)
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
     }

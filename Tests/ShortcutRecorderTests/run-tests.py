@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-recorder-tests-") as work:
         str(root / "Sources/Talkless/TranslationShortcut.swift"),
         str(root / "Sources/Talkless/TranslationShortcutCapture.swift"),
         str(root / "Sources/Talkless/Hotkeys.swift"),
+        str(root / "Sources/Talkless/SyntheticKeyboardEvents.swift"),
         str(root / "Tests/ShortcutRecorderTests/ShortcutRecorderTests.swift"),
         "-o", str(binary),
     ], check=True)

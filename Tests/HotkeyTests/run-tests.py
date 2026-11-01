@@ -18,6 +18,8 @@ gesture_mode = "enum RecordingGestureMode:" + gesture_mode
 hotkeys = (ROOT / "Sources/Talkless/Hotkeys.swift").read_text()
 hotkeys = hotkeys.split("/// A standard keyboard shortcut", 1)[0]
 hotkeys = hotkeys.replace("private func handle(type:", "func handle(type:")
+hotkeys += (ROOT / "Sources/Talkless/SyntheticKeyboardEvents.swift").read_text()
+
 # Deterministic physical-state queries for event-tap recovery; never depend on the user's held keys.
 hotkeys = hotkeys.replace("CGEventSource.flagsState(.combinedSessionState)", "TestKeyboardState.flags")
 
@@ -324,6 +326,28 @@ TESTS = r'''
             precondition(test.state == .idle && test.stops == 0)
         }
         print("PASS accidental primary combo cancellation in Hold and Toggle")
+        for mode in RecordingGestureMode.allCases {
+            let test = GestureHarness()
+            test.settings.recordingGestureMode = mode
+            test.settings.triggerKey = .rightCommand
+            test.monitor.triggerKey = .rightCommand
+            let rightCommand = CGEventFlags.maskCommand.rawValue | 0x10
+            test.flags(base, key: 54, raw: rightCommand)
+            for key: CGKeyCode in [8, 9] {
+                let copy = SyntheticKeyboardEvents.make(key: key, down: true, flags: .maskCommand)!
+                copy.timestamp = base + 10_000_000
+                precondition(test.monitor.handle(type: .keyDown, event: copy), "Our copy/paste must reach the target app")
+                precondition(test.state == .recording, "Own clipboard automation must not cancel Command dictation")
+            }
+            // A real/unmarked Command-C must still cancel an accidental shortcut recording.
+            let physical = CGEvent(keyboardEventSource: nil, virtualKey: 8, keyDown: true)!
+            physical.flags = CGEventFlags(rawValue: rightCommand)
+            physical.timestamp = base + 20_000_000
+            precondition(test.monitor.handle(type: .keyDown, event: physical))
+            precondition(test.state == .idle, "Physical Command-C retains combo cancellation")
+        }
+        print("PASS own copy/paste cannot cancel right-Command dictation; real combinations still cancel")
+
 
         for mode in RecordingGestureMode.allCases {
             let stale = GestureHarness()

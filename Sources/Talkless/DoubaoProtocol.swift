@@ -15,7 +15,7 @@ enum DoubaoResource: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct DoubaoConfig: Sendable {
+struct DoubaoConfig: Sendable, Equatable {
     var apiKey: String
     var resource: DoubaoResource = .duration
 

@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Fixed
+- Clipboard automation no longer cancels a recording started by a modifier key. Physical keyboard combinations still retain their normal cancellation behavior.
+
+### Improved
+- Doubao and AI service key fields show paste instructions inside the input, plus visible credential guidance. Doubao now offers an explicit connection check that sends configuration only, not microphone audio; changing credentials clears its result.
+
+## 2026.1101.27458
+
+### Fixed
 - Settings and setup windows are shown after menu tracking ends, independently of asynchronous app activation, and restored when minimized. Focus is applied again once the app becomes active.
 
 ## 2026.1101.25885

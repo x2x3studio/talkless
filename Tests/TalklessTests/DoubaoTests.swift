@@ -47,7 +47,58 @@ private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
     func close() { lock.withLock { closed = true }; continuation.finish(throwing: CancellationError()) }
 }
 
+private actor ValidationGate {
+    private var continuation: CheckedContinuation<Void, Error>?
+    var ready: Bool { continuation != nil }
+    func wait() async throws {
+        try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+    func resume() { continuation?.resume(); continuation = nil }
+}
+
 @Suite struct DoubaoTests {
+    @Test func connectionCheckSendsNoAudio() async throws {
+        let socket = ScriptedDoubaoSocket()
+        try await DoubaoTranscriptionSession.validateConnection(config: .init(apiKey: "synthetic"), socket: socket)
+        #expect(socket.sent.count == 1)
+        #expect(socket.sent.first?[1] == 0x10, "Only configuration, never an audio packet")
+        let silent = ScriptedDoubaoSocket(); silent.respond = false
+        do {
+            try await DoubaoTranscriptionSession.validateConnection(config: .init(apiKey: "synthetic"), socket: silent, timeout: 0.1)
+            Issue.record("Expected timeout")
+        } catch { #expect(error is DoubaoError) }
+        let invalid = ScriptedDoubaoSocket()
+        do {
+            try await DoubaoTranscriptionSession.validateConnection(config: .init(apiKey: ""), socket: invalid)
+            Issue.record("Expected configuration error")
+        } catch { #expect(invalid.sent.isEmpty) }
+    }
+
+    @MainActor @Test func connectionReceiptIsInvalidatedAndErrorsAreSanitized() async throws {
+        let gate = ValidationGate()
+        let check = DoubaoConnectionCheck { _ in try await gate.wait() }
+        check.start(.init(apiKey: "synthetic"))
+        while !(await gate.ready) { await Task.yield() }
+        #expect(check.isChecking)
+        check.invalidate()
+        await gate.resume()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(!check.isChecking && check.outcome == nil, "Stale completion cannot verify a new key")
+        let failed = DoubaoConnectionCheck { _ in
+            throw NSError(domain: "synthetic", code: 1, userInfo: [NSLocalizedDescriptionKey: "secret-key-echo"])
+        }
+        failed.start(.init(apiKey: "synthetic"))
+        while failed.isChecking { await Task.yield() }
+        if case .failure(let message) = failed.outcome { #expect(!message.contains("secret-key-echo")) }
+        else { Issue.record("Expected sanitized failure") }
+        let success = DoubaoConnectionCheck { _ in }
+        success.start(.init(apiKey: "synthetic"))
+        while success.isChecking { await Task.yield() }
+        #expect(success.outcome == .success)
+        success.invalidate()
+        #expect(success.outcome == nil)
+    }
+
     @Test func headersAndConfiguration() throws {
         let request = try DoubaoConfig(apiKey: "synthetic-key").request()
         #expect(request.url?.host == "openspeech.bytedance.com")

@@ -61,6 +61,8 @@ final class HotkeyMonitor {
 
     /// Return false to consume the event.
     private func handle(type: CGEventType, event: CGEvent) -> Bool {
+        // Forward our clipboard automation, but never interpret it as a physical shortcut.
+        if SyntheticKeyboardEvents.isOurs(event) { return true }
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             reconcilePhysicalState()

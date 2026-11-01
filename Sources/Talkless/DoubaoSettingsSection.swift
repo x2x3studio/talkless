@@ -3,18 +3,51 @@ import SwiftUI
 /// Speech recognition credentials are independent of the AI polishing provider.
 struct DoubaoSettingsSection: View {
     @ObservedObject var settings: AppSettings
+    @StateObject private var connection = DoubaoConnectionCheck()
 
     var body: some View {
         Section(L10n.tr("Doubao online recognition")) {
-            SecureField(L10n.tr("Doubao Speech API key"), text: $settings.doubaoAPIKey)
-                .help(L10n.tr("Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key."))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.tr("Doubao Speech API key"))
+                SecureField(L10n.tr("Doubao Speech API key"), text: $settings.doubaoAPIKey,
+                            prompt: Text(L10n.tr("Paste your Doubao Speech API key here")))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(L10n.tr("Doubao Speech API key"))
+                Text(L10n.tr("Stored in your Mac's Keychain. Use a Speech API key from the new Doubao Speech console, not an Ark model key."))
+                    .settingsNote()
+            }
             if let error = settings.doubaoCredentialError {
                 Text(error).font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Label(settings.doubaoConfigured ? L10n.tr("Configuration complete") : L10n.tr("Setup needed"),
-                  systemImage: settings.doubaoConfigured ? "checkmark.circle" : "exclamationmark.circle")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    if connection.isChecking {
+                        ProgressView().controlSize(.small)
+                        Text(L10n.tr("Verifying connection…")).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(connection.isChecking ? L10n.tr("Verifying connection…") : L10n.tr("Verify connection")) {
+                        connection.start(settings.doubaoConfig)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(connection.isChecking || !settings.doubaoConfigured)
+                }
+                switch connection.outcome {
+                case .success:
+                    Label(L10n.tr("Connection verified. Doubao accepted the recognition configuration."), systemImage: "checkmark.circle")
+                        .foregroundStyle(.green).font(.caption)
+                case .failure(let message):
+                    Label(message, systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.orange).font(.caption)
+                case nil:
+                    Text(L10n.tr("Not verified. Paste your key, then verify the connection."))
+                        .settingsNote()
+                }
+                Text(L10n.tr("Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply."))
+                    .settingsNote()
+            }
             Text(L10n.tr("Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording."))
                 .settingsNote()
             Text(L10n.tr("This configures speech recognition only. AI polishing uses the separate AI service settings."))
@@ -31,5 +64,7 @@ struct DoubaoSettingsSection: View {
                 Link(L10n.tr("Open Doubao Speech console"), destination: URL(string: "https://console.volcengine.com/speech/app")!)
             }
         }
+        .onChange(of: settings.doubaoConfig) { _, _ in connection.invalidate() }
+        .onDisappear { connection.invalidate() }
     }
 }

@@ -839,3 +839,12 @@
 "Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested." = "Choose the ASR 2.0 billing resource enabled in your Doubao Speech console. Configuration complete does not mean the service has been tested.";
 "Open Doubao Speech console" = "Open Doubao Speech console";
 "Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests." = "Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests.";
+"Paste your Doubao Speech API key here" = "Paste your Doubao Speech API key here";
+"Paste your API key here" = "Paste your API key here";
+"Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty." = "Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty.";
+"Get the API key from the selected provider's console. It is stored in your Mac's Keychain." = "Get the API key from the selected provider's console. It is stored in your Mac's Keychain.";
+"Verify connection" = "Verify connection";
+"Verifying connection…" = "Verifying connection…";
+"Connection verified. Doubao accepted the recognition configuration." = "Connection verified. Doubao accepted the recognition configuration.";
+"Not verified. Paste your key, then verify the connection." = "Not verified. Paste your key, then verify the connection.";
+"Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply." = "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply.";
