@@ -186,14 +186,11 @@ struct DictationActivityView: View {
     @State private var metric: DictationActivityMetric = .characters
     @State private var showsTable: Bool
     @State private var selection: String?
-    @State private var hoveredDay: String?
-    @FocusState private var focusedDay: String?
     @State private var confirmsReset = false
     @State private var resetFailed = false
     @State private var showsInfo = false
     private let referenceDate: Date?
     private let useTexture: Bool
-    private let cellPitch: CGFloat = 16
 
     init(store: DictationActivityStore = .shared, referenceDate: Date? = nil,
          initialWeeks: Int = 26, initiallyShowsTable: Bool = false, useTexture: Bool = false) {
@@ -270,27 +267,10 @@ struct DictationActivityView: View {
                 }
             }
             summary(cells: cells)
-            VStack(alignment: .leading, spacing: 12) {
-                if showsTable {
-                    activityTable(cells: cells)
-                } else {
-                    heatmap(cells: cells, calendar: calendar)
-                    HStack {
-                        if let first = cells.first {
-                            Text("\(dateLabel(first.date, calendar: calendar)) – \(dateLabel(now, calendar: calendar, includeYear: true))")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        legend
-                    }
-                }
-                Divider()
-                let activeDay = hoveredDay ?? focusedDay ?? selection
-                let activeCell = cells.first(where: { $0.day == activeDay })
-                    ?? cells.last(where: { $0.coverage != .future })
-                dayDetails(activeCell, calendar: calendar, now: now)
-            }
+            // Hover and focus re-render only the calendar, not the summary or header.
+            ActivityCalendar(cells: cells, readouts: Dictionary(uniqueKeysWithValues: cells.map { ($0.day, $0.readout) }),
+                             calendar: calendar, now: now, weeks: weeks, metric: metric,
+                             showsTable: showsTable, useTexture: useTexture, selection: $selection)
             if let error = store.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .settingsNote()
@@ -298,8 +278,6 @@ struct DictationActivityView: View {
         }
         .padding(20)
         .background(ActivityPalette.surface(dark), in: RoundedRectangle(cornerRadius: 14))
-        .onChange(of: weeks) { _, _ in hoveredDay = nil; focusedDay = nil }
-        .onChange(of: showsTable) { _, _ in hoveredDay = nil; focusedDay = nil }
     }
 
     private func summary(cells: [DictationActivityCell]) -> some View {
@@ -312,7 +290,7 @@ struct DictationActivityView: View {
             HStack(spacing: 0) {
                 summaryMetric(.characters, value: characters.formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), label: L10n.tr("Characters"))
                 summaryMetric(.dictations, value: dictations.formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), label: L10n.tr("Dictations"))
-                summaryMetric(.minutes, value: durationLabel(minutes), label: L10n.tr("Recorded time"))
+                summaryMetric(.minutes, value: activityDurationLabel(minutes), label: L10n.tr("Recorded time"))
             }
             Text(L10n.format(activeDays == 1 ? "%lld active day in this period" : "%lld active days in this period", activeDays))
                 .font(.caption)
@@ -345,7 +323,58 @@ struct DictationActivityView: View {
         .accessibilityAddTraits(metric == item ? .isSelected : [])
     }
 
-    private func durationLabel(_ minutes: Double) -> String {
+}
+
+fileprivate func activityDurationLabel(_ minutes: Double) -> String { ActivityCalendar.durationLabel(minutes) }
+
+/// The heatmap or table and the selected day. Owns hover and focus so moving the pointer
+/// re-renders only this part, and unchanged day cells are skipped.
+private struct ActivityCalendar: View {
+    let cells: [DictationActivityCell]
+    let readouts: [String: String]
+    let calendar: Calendar
+    let now: Date
+    let weeks: Int
+    let metric: DictationActivityMetric
+    let showsTable: Bool
+    let useTexture: Bool
+    @Binding var selection: String?
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @State private var hoveredDay: String?
+    @FocusState private var focusedDay: String?
+    private let cellPitch: CGFloat = 16
+    private var dark: Bool { colorScheme == .dark }
+
+    var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                if showsTable {
+                    activityTable(cells: cells)
+                } else {
+                    heatmap(cells: cells, calendar: calendar)
+                    HStack {
+                        if let first = cells.first {
+                            Text("\(dateLabel(first.date, calendar: calendar)) – \(dateLabel(now, calendar: calendar, includeYear: true))")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        legend
+                    }
+                }
+                Divider()
+                let activeDay = hoveredDay ?? focusedDay ?? selection
+                let activeCell = cells.first(where: { $0.day == activeDay })
+                    ?? cells.last(where: { $0.coverage != .future })
+                dayDetails(activeCell, calendar: calendar, now: now)
+            }
+        .onChange(of: weeks) { _, _ in hoveredDay = nil; focusedDay = nil }
+        .onChange(of: showsTable) { _, _ in hoveredDay = nil; focusedDay = nil }
+    }
+
+    private func durationLabel(_ minutes: Double) -> String { activityDurationLabel(minutes) }
+
+    fileprivate static func durationLabel(_ minutes: Double) -> String {
         if minutes >= 60 {
             return L10n.format("%@h %@m", (minutes / 60).rounded(.down).formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)), minutes.truncatingRemainder(dividingBy: 60).rounded(.down).formatted(.number.precision(.fractionLength(0)).locale(L10n.locale)))
         }
@@ -412,47 +441,51 @@ struct DictationActivityView: View {
     }
 
     private func dayButton(_ cell: DictationActivityCell, cells: [DictationActivityCell]) -> some View {
-        Button { selection = cell.day } label: {
-            swatch(bucket: cell.total.map { metric.bucket(for: metric.value(in: $0)) }, future: cell.coverage == .future)
-                .overlay {
-                    if selection == cell.day || hoveredDay == cell.day || focusedDay == cell.day {
-                        RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 1.5)
-                    }
+        let readout = readouts[cell.day] ?? cell.readout
+        return ActivityDayCell(
+            day: cell.day, bucket: cell.total.map { metric.bucket(for: metric.value(in: $0)) },
+            future: cell.coverage == .future,
+            outlined: selection == cell.day || hoveredDay == cell.day || focusedDay == cell.day,
+            selected: selection == cell.day, readout: readout, dark: dark,
+            texture: differentiateWithoutColor || useTexture, cellPitch: cellPitch,
+            focus: $focusedDay,
+            select: { selection = cell.day },
+            hover: { inside in hoveredDay = inside ? cell.day : (hoveredDay == cell.day ? nil : hoveredDay) },
+            move: { direction in
+                guard let index = cells.firstIndex(where: { $0.day == cell.day }) else { return }
+                let delta: Int
+                switch direction {
+                case .left: delta = -7
+                case .right: delta = 7
+                case .up: delta = -1
+                case .down: delta = 1
+                default: return
                 }
-                .padding(1)
-                .frame(width: cellPitch, height: cellPitch)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(cell.coverage == .future)
-        .focused($focusedDay, equals: cell.day)
-        .onHover { inside in hoveredDay = inside ? cell.day : (hoveredDay == cell.day ? nil : hoveredDay) }
-        .onMoveCommand { direction in
-            guard let index = cells.firstIndex(where: { $0.day == cell.day }) else { return }
-            let delta: Int
-            switch direction {
-            case .left: delta = -7
-            case .right: delta = 7
-            case .up: delta = -1
-            case .down: delta = 1
-            default: return
-            }
-            let target = index + delta
-            if cells.indices.contains(target), cells[target].coverage != .future { focusedDay = cells[target].day }
-        }
-        .help(cell.readout)
-        .accessibilityLabel(cell.readout)
-        .accessibilityAddTraits(selection == cell.day ? .isSelected : [])
+                let target = index + delta
+                if cells.indices.contains(target), cells[target].coverage != .future { focusedDay = cells[target].day }
+            })
+        .equatable()
     }
 
     private func swatch(bucket: Int?, future: Bool = false) -> some View {
+        ActivitySwatch(bucket: bucket, future: future, dark: dark, texture: differentiateWithoutColor || useTexture)
+    }
+}
+
+private struct ActivitySwatch: View {
+    let bucket: Int?
+    var future = false
+    let dark: Bool
+    let texture: Bool
+
+    var body: some View {
         RoundedRectangle(cornerRadius: 3)
             .fill(bucket.map { ActivityPalette.fill(bucket: $0, dark: dark) } ?? ActivityPalette.surface(dark))
             .overlay {
                 if bucket == nil && !future {
                     // A small neutral dash distinguishes unknown coverage from a measured zero.
                     Capsule().fill(Color.secondary.opacity(0.65)).frame(width: 5, height: 1)
-                } else if let bucket, bucket > 0, differentiateWithoutColor || useTexture {
+                } else if let bucket, bucket > 0, texture {
                     ActivityTexture(bucket: bucket)
                         .stroke(dark && bucket >= 3 || !dark && bucket <= 1 ? Color.black.opacity(0.55) : Color.white.opacity(0.7), lineWidth: 1)
                         .clipShape(RoundedRectangle(cornerRadius: 3))
@@ -460,7 +493,9 @@ struct DictationActivityView: View {
             }
             .frame(width: 14, height: 14)
     }
+}
 
+extension ActivityCalendar {
     private var legend: some View {
         HStack(spacing: 4) {
             Text(L10n.tr("Less")).padding(.trailing, 2)
@@ -492,5 +527,49 @@ struct DictationActivityView: View {
         .monospacedDigit()
         .frame(height: 230)
         .accessibilityLabel(L10n.tr("Daily activity table. Not recorded and future values are not zero. Since start means the first day of tracking."))
+    }
+}
+
+/// One day of the heatmap. Equatable on what it draws, so hovering one day redraws two cells.
+private struct ActivityDayCell: View, Equatable {
+    let day: String
+    let bucket: Int?
+    let future: Bool
+    let outlined: Bool
+    let selected: Bool
+    let readout: String
+    let dark: Bool
+    let texture: Bool
+    let cellPitch: CGFloat
+    let focus: FocusState<String?>.Binding
+    let select: () -> Void
+    let hover: (Bool) -> Void
+    let move: (MoveCommandDirection) -> Void
+
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.day == b.day && a.bucket == b.bucket && a.future == b.future && a.outlined == b.outlined
+            && a.selected == b.selected && a.readout == b.readout && a.dark == b.dark && a.texture == b.texture
+    }
+
+    var body: some View {
+        Button(action: select) {
+            ActivitySwatch(bucket: bucket, future: future, dark: dark, texture: texture)
+                .overlay {
+                    if outlined {
+                        RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 1.5)
+                    }
+                }
+                .padding(1)
+                .frame(width: cellPitch, height: cellPitch)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(future)
+        .focused(focus, equals: day)
+        .onHover(perform: hover)
+        .onMoveCommand(perform: move)
+        .help(readout)
+        .accessibilityLabel(readout)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

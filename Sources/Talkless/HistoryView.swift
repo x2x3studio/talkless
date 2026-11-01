@@ -8,6 +8,9 @@ struct HistoryView: View {
     @State private var confirmClear = false
     @State private var search = ""
     @State private var filter = Filter.all
+    /// Rendering every saved entry (up to 500) at once made Settings stall; show a page at a time.
+    @State private var limit = Self.pageSize
+    static let pageSize = 50
 
     enum Filter: Hashable, CaseIterable {
         case all, dictation, edit, translation
@@ -46,10 +49,10 @@ struct HistoryView: View {
     }
 
     /// Newest day first; entries keep their newest-first order within a day.
-    private var days: [(day: Date, entries: [HistoryEntry])] {
+    private func days(_ entries: ArraySlice<HistoryEntry>) -> [(day: Date, entries: [HistoryEntry])] {
         let calendar = Calendar.current
         var groups: [(day: Date, entries: [HistoryEntry])] = []
-        for entry in filteredEntries {
+        for entry in entries {
             let day = calendar.startOfDay(for: entry.date)
             if groups.last?.day == day { groups[groups.count - 1].entries.append(entry) }
             else { groups.append((day, [entry])) }
@@ -68,20 +71,30 @@ struct HistoryView: View {
                                detail: L10n.tr("Your dictations, voice edits, and translations will appear here."))
                 } else {
                     toolbar
-                    if filteredEntries.isEmpty {
+                    // Filter once per update; the search touches every saved entry.
+                    let entries = filteredEntries
+                    if entries.isEmpty {
                         emptyState(symbol: "magnifyingglass", title: L10n.tr("No matching history"),
                                    detail: L10n.tr("Try another search or filter."))
                     } else {
                         LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
-                            ForEach(days, id: \.day) { group in
+                            ForEach(days(entries.prefix(limit)), id: \.day) { group in
                                 daySection(group.day, entries: group.entries)
                             }
+                        }
+                        if entries.count > limit {
+                            Button(L10n.format("Show %lld more (%lld left)", min(Self.pageSize, entries.count - limit), entries.count - limit)) {
+                                limit += Self.pageSize
+                            }
+                            .frame(maxWidth: .infinity)
                         }
                     }
                 }
             }
             .padding(28)
         }
+        .onChange(of: search) { _, _ in limit = Self.pageSize }
+        .onChange(of: filter) { _, _ in limit = Self.pageSize }
         .alert(L10n.tr("Clear saved history?"), isPresented: $confirmClear) {
             Button(L10n.tr("Cancel"), role: .cancel) {}
             Button(L10n.tr("Clear history"), role: .destructive) { history.clear() }

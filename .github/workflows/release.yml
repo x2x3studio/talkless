@@ -65,13 +65,12 @@ jobs:
       - name: Clean workspace, keeping the SwiftPM build cache
         # This is our own runner: keep .build so dependency checkouts (re-cloning mlx-swift's
         # submodules took about 12 minutes) and compiled objects (all of MLX, about 3 minutes)
-        # are reused, and only changed code is rebuilt. Release output and binary artifacts
-        # (including Sparkle's sign_update) are removed and re-fetched every run.
+        # are reused, and only changed code is rebuilt. SwiftPM still verifies the pinned
+        # versions; release output (dist) is always removed and rebuilt.
         run: |
           set -euo pipefail
           git reset --hard --quiet
           git clean -ffdx --quiet -e /.build/
-          rm -rf .build/artifacts
           git status --porcelain --ignored
       - name: Generate calendar version
         run: |

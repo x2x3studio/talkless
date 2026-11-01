@@ -841,3 +841,4 @@
 "Doubao is not set up. Using offline recognition for this recording." = "豆包还没设置好，这次改用离线识别。";
 "Doubao failed. Offline recognition will finish this recording." = "豆包识别失败，录音结束后改用离线识别。";
 "Doubao failed. Using offline recognition for this recording." = "豆包识别失败，这次改用离线识别。";
+"Show %lld more (%lld left)" = "再显示 %lld 条（还剩 %lld 条）";

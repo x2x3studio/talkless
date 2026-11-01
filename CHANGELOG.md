@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- Settings › History shows 50 entries at a time with a Show more button, instead of drawing all 500 at once. Opening History, and Settings updates after each dictation or translation, are several times faster. Hovering the activity calendar redraws only the affected days, and the microphone list redraws only when devices change.
 - Speech recognition choices are now named Offline (the local model) and Doubao online, and the fallback switch reads "Allow falling back to offline recognition", with a note on when it applies.
 
 ## 2026.1101.46792

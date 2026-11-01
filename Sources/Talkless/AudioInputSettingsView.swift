@@ -66,8 +66,10 @@ struct AudioInputSettingsView: View {
 
     private func refreshDevices() {
         do {
-            devices = try loadDevices()
-            discoveryError = nil
+            // Assign only on change: polling must not redraw the whole Dictation page every 2 s.
+            let found = try loadDevices()
+            if found != devices { devices = found }
+            if discoveryError != nil { discoveryError = nil }
         } catch {
             // Keep the last successful list and the explicit UID during temporary errors.
             discoveryError = error.localizedDescription
