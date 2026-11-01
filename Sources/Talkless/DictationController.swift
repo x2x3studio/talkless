@@ -693,7 +693,7 @@ final class DictationController: ObservableObject {
                 }
                 stage = "insertion"
                 stageStarted = DispatchTime.now().uptimeNanoseconds
-                operation?.record("paste_attempt", ["empty": String(output.isEmpty)])
+                operation?.record("paste_attempt", TextIO.insertionContext().merging(["empty": String(output.isEmpty)]) { $1 })
                 // Show the final words during the existing insertion await without
                 // delaying input or claiming that cleanup is still running.
                 // Compare against the recognizer's words so dictionary fixes are visible too.

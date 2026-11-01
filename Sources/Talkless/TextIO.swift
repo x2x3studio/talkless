@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 
 /// Read selected text and insert text into the frontmost app. Both require Accessibility permission.
 @MainActor
@@ -56,6 +57,25 @@ enum TextIO {
         guard let data = pasteboard.data(forType: NSPasteboard.PasteboardType("vscode-editor-data")),
               let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
         return info["isFromEmptySelection"] as? Bool == true
+    }
+
+    /// Non-content facts that can swallow a paste: the Globe key's system action (it fires when
+    /// Fn is released after dictating) and whether an input method is active.
+    static func insertionContext() -> [String: String] {
+        let globe = switch UserDefaults(suiteName: "com.apple.HIToolbox")?.object(forKey: "AppleFnUsageType") as? Int {
+        case 0: "none"
+        case 1: "input_source"
+        case 2: "emoji"
+        case 3: "dictation"
+        case nil: "default"
+        default: "unknown"
+        }
+        var inputMethod = false
+        if let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+           let type = TISGetInputSourceProperty(source, kTISPropertyInputSourceType) {
+            inputMethod = (Unmanaged<CFString>.fromOpaque(type).takeUnretainedValue() as String) == (kTISTypeKeyboardInputMode as String)
+        }
+        return ["globe_action": globe, "input_method": String(inputMethod)]
     }
 
     /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the

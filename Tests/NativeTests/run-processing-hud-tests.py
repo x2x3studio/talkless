@@ -121,6 +121,7 @@ enum PolishValidation {
     static func validate(source: String, output: String) throws -> String { output }
 }
 @MainActor enum TextIO {
+    static func insertionContext() -> [String: String] { ["globe_action": "none", "input_method": "false"] }
     static var inserted: [String] = []
     static var onInsert: (String) -> Void = { _ in }
     static func insert(_ text: String) async {

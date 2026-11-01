@@ -53,7 +53,7 @@ final class Diagnostics: @unchecked Sendable {
         "include_crash_reports", "streaming", "cold_start", "hands_free", "polish_enabled", "opposite_finish",
         "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
         "before_interleaved", "device_changed", "device_available", "format_changed", "audio_delivered", "recovered",
-        "resolved_device_available", "route_matches_requested", "formats_compatible", "selected_device_changed", "actual_device_changed",
+        "input_method", "resolved_device_available", "route_matches_requested", "formats_compatible", "selected_device_changed", "actual_device_changed",
     ]
     private static let enumValues: [String: Set<String>] = [
         "engine": ["qwen", "doubao"],
@@ -70,6 +70,7 @@ final class Diagnostics: @unchecked Sendable {
         ],
         "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
         "recording_mode": ["hold", "toggle"],
+        "globe_action": ["none", "input_source", "emoji", "dictation", "default", "unknown"],
         "route_kind": ["direct", "aggregate", "unknown"],
         "state": ["idle", "recording", "processing"],
         "permission": ["microphone", "accessibility"],
