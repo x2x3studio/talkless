@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Improved
+- AI polishing now explicitly addresses homophones, accent-related recognition errors, and phonetic spellings of technical terms, with examples of corrections and words that should be preserved. Dictionary hints still require matching context rather than overriding ordinary words.
+
+## 2026.1031.65045
+
+### Improved
 - All clipboard use now follows one set of rules: pasting results, reading a selection for voice editing or translation, and every Copy button. Copying AI connection diagnostics no longer lets a pending paste restore overwrite what you just copied.
 
 ## 2026.1031.64297

@@ -40,11 +40,12 @@ Supply credentials through your existing secret-management workflow, never sourc
 | `TALKLESS_TEST_BASE_URL` | Explicit override for that base |
 | `ANTHROPIC_AUTH_TOKEN` | Bearer credential |
 | `TALKLESS_LIVE_MODEL` | Model ID; default `mai-code-2-flash` |
-| `TALKLESS_LIVE_SUITE` | `legacy` (default, 8 cases) or `challenge` (20 cases) |
-| `TALKLESS_LIVE_CASES` | Comma-separated unique known case names; overrides suite selection, at most 20 |
+| `TALKLESS_LIVE_PROTOCOL` | `responses` (default) or `chat` (Chat Completions); other values are rejected |
+| `TALKLESS_LIVE_SUITE` | `legacy` (default, 8 cases), `challenge` (20 cases), or `recognition` (21 synthetic ASR-error cases) |
+| `TALKLESS_LIVE_CASES` | Comma-separated unique known case names; overrides suite selection, at most 25 |
 | `TALKLESS_LIVE_REPORT` | New simple `.json` filename under `.build/PolishIntegration/`; default `results.json` |
 
-Despite the credential variable names, this harness uses **Responses with bearer authentication**, not native Messages. It trims the base and trailing slashes, then appends `/responses` unless already present. It does not insert `/v1`: supply a base ending in `/v1` or a full `/v1/responses` URL when needed. A local preflight rejects production URL normalization that changes that exact endpoint before sending requests.
+Despite the credential variable names, this harness uses **Responses with bearer authentication** by default, not native Messages. Set `TALKLESS_LIVE_PROTOCOL=chat` to use Chat Completions. It trims the base and trailing slashes, then appends `/responses` (or `/chat/completions`) unless already present. It does not insert `/v1`: supply a base ending in `/v1` or a full `/v1/responses` URL when needed. A local preflight rejects production URL normalization that changes that exact endpoint before sending requests.
 
 The following command is a live, potentially chargeable action, not part of the offline checks:
 
@@ -56,6 +57,16 @@ TALKLESS_RUN_LIVE_TESTS=1 bash Tests/PolishIntegration/run-tests.sh
 For a challenge run, additionally set `TALKLESS_LIVE_SUITE=challenge` and a new `TALKLESS_LIVE_REPORT` filename. Filenames may contain letters, digits, `_` and `-`, followed by `.json`. Existing reports are rejected rather than overwritten.
 
 Legacy cases cover Chinese/English/Japanese cleanup, self-correction, dictionary spellings, explicit translation, embedded questions, numbers/negation and bullet formatting. Challenge adds dictionary ambiguity, multilingual passages, literal code/URLs, instruction-like quoted content and spoken-versus-mentioned formatting. The 20-case challenge consists of 18 challenge fixtures plus the first two legacy cases.
+
+## Recognition-correction cases
+
+`TALKLESS_LIVE_SUITE=recognition` runs 21 synthetic text cases from `RecognitionCases.swift`: Mandarin accent-like confusions, homophones, English terms rendered phonetically in Chinese, dictionary hints, numbers, and preservation of valid names/technical/literary words. These are **text-only post-ASR tests**, not recordings or a measurement of accent recognition accuracy. Prompts cannot recover acoustic evidence absent from the transcript. Examples in the prompt differ from the test sentences.
+
+This iteration consulted the actual source prompts in [OpenLess's light style](https://github.com/Open-Less/openless/blob/HEAD/openless-all/app/crates/openless-core/src/style_packs.rs) and [SpeakMore's text polishing](https://github.com/zephyr4123/speakmore/blob/HEAD/src/server/tasks/dictate/polish-prompt.mjs). The adopted ideas are explicit ASR correction, phonetic restoration of technical terms, and complete before/after examples. Talkless retains its own language/script choice, numeric and negation preservation, JSON envelope and conservative formatting; it does not adopt forced Simplified Chinese, blanket numeral conversion or aggressive list rewriting.
+
+A locally generated pinyin-field experiment was discarded: it improved one model but degraded another and produced a numeric-value error. The shipped prompt does not add pinyin or extra requests. Some experimental models/protocols returned HTTP 400; those runs are transport failures, not quality scores. The private `mai-code-2-flash` model later became unavailable, so final verification used `gpt-5.6-luna` without changing the user's configured provider or model.
+
+Final live smoke check of the guarded prompt on `gpt-5.6-luna`: **21/21 recognition cases** and **20/20 challenge cases** passed in one run each. This is a synthetic smoke result, not an accuracy guarantee. Earlier Luna runs already passed all recognition cases with the old prompt. An intermediate candidate incorrectly capitalized ordinary dictionary words and deleted a grammatical subject/verb; the final rules explicitly guard those cases. The spoken-newline assertion was corrected to allow blank lines between the two requested lines, without weakening its newline requirement.
 
 ## Output and limits
 

@@ -26,6 +26,8 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/LLMAPITransport.swift" \
   "$ROOT/Sources/Talkless/LLMClient.swift" \
   "$ROOT/Sources/Talkless/Prompts.swift" \
+  "$ROOT/Sources/Talkless/DictionaryTerms.swift" \
+  "$ROOT/Tests/PolishIntegration/RecognitionCases.swift" \
   "$ROOT/Tests/PolishIntegration/main.swift" \
   -o "$WORK/polish-integration"
 "$WORK/polish-integration" "$WORK/$REPORT"

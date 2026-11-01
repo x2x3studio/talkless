@@ -20,6 +20,7 @@ enum OutputLanguage {
 final class AppSettings {
     var outputLanguage: OutputLanguage = .original
     var dictionaryTerms: [String] = []
+    var activeDictionaryReplacements: [DictionaryReplacement] = []
     var customInstructions = ""
     var appToneEnabled = false
 }
@@ -266,7 +267,7 @@ let challengeCases: [PolishCase] = [
     PolishCase(
         name: "spoken-formatting-command",
         input: "Meeting notes colon new line bring the draft new line keep the backup.",
-        checks: [containsAll(["Meeting notes", "bring the draft", "keep the backup"]), matches("Applies colon after heading", "(?i)Meeting notes\\s*[:\u{FF1A}]"), matches("Separates the two dictated lines", "(?i)bring the draft[^\\n]*\\n[^\\n]*keep the backup"), excludes(["new line", "colon"])]
+        checks: [containsAll(["Meeting notes", "bring the draft", "keep the backup"]), matches("Applies colon after heading", "(?i)Meeting notes\\s*[:\u{FF1A}]"), matches("Separates the two dictated lines", "(?i)bring the draft[^\\n]*\\n\\s*keep the backup"), excludes(["new line", "colon"])]
     ),
     PolishCase(
         name: "mentioned-formatting-words-not-commands",
@@ -323,16 +324,25 @@ struct PolishIntegration {
         }
         var base = rawBase.trimmingCharacters(in: .whitespacesAndNewlines)
         while base.hasSuffix("/") { base.removeLast() }
-        let endpoint = base.hasSuffix("/responses") ? base : base + "/responses"
+        // Responses by default; TALKLESS_LIVE_PROTOCOL=chat uses Chat Completions for models
+        // that a gateway only serves that way.
+        let protocolName = environment["TALKLESS_LIVE_PROTOCOL"] ?? "responses"
+        guard ["responses", "chat"].contains(protocolName) else {
+            print("ERROR: protocol must be responses or chat; no requests sent.")
+            exit(2)
+        }
+        let useChat = protocolName == "chat"
+        let suffix = useChat ? "/chat/completions" : "/responses"
+        let endpoint = base.hasSuffix(suffix) ? base : base + suffix
         let model = environment["TALKLESS_LIVE_MODEL"] ?? "mai-code-2-flash"
         let config = LLMClient.Config(baseURL: base, apiKey: rawKey, model: model,
-                                      apiProtocol: .responses, authMode: .bearer,
+                                      apiProtocol: useChat ? .chatCompletions : .responses, authMode: .bearer,
                                       maxOutputTokens: 1024, thinking: .modelDefault)
         do {
             // Fail before spending money if endpoint normalization changes the exact URL.
             let request = try LLMClient.makeRequest(system: "preflight", user: "preflight", config: config, timeout: 30)
             guard request.url?.absoluteString == endpoint else {
-                print("ERROR: production client rewrote the exact /responses endpoint; no requests sent.")
+                print("ERROR: production client rewrote the exact \(suffix) endpoint; no requests sent.")
                 exit(2)
             }
         } catch {
@@ -348,7 +358,7 @@ struct PolishIntegration {
             print("ERROR: report already exists; choose a new TALKLESS_LIVE_REPORT filename. No requests sent.")
             exit(2)
         }
-        let allCases = syntheticCases + challengeCases
+        let allCases = syntheticCases + challengeCases + recognitionCases
         let selectedCases: [PolishCase]
         if let selection = environment["TALKLESS_LIVE_CASES"] {
             let names = selection.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -362,13 +372,14 @@ struct PolishIntegration {
             switch environment["TALKLESS_LIVE_SUITE"] ?? "legacy" {
             case "legacy": selectedCases = syntheticCases
             case "challenge": selectedCases = challengeCases + Array(syntheticCases.prefix(2))
+            case "recognition": selectedCases = recognitionCases
             default:
-                print("ERROR: suite must be legacy or challenge; no requests sent.")
+                print("ERROR: suite must be legacy, challenge or recognition; no requests sent.")
                 exit(2)
             }
         }
-        guard selectedCases.count <= 20 else {
-            print("ERROR: at most 20 cases may run per invocation; no requests sent.")
+        guard selectedCases.count <= 25 else {
+            print("ERROR: at most 25 cases may run per invocation; no requests sent.")
             exit(2)
         }
         var results: [CaseResult] = []
