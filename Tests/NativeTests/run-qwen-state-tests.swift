@@ -23,16 +23,16 @@ let entryPoints = [
         .components(separatedBy: "// MARK: - Selected-text translation")[0]),
 ]
 for entryPoint in entryPoints {
-    precondition(entryPoint.components(separatedBy: "settings.dictionaryTerms").count == 2,
-                 "Each entry point must read the confirmed dictionary exactly once")
-    guard let snapshot = entryPoint.range(of: "let dictionaryTerms = settings.dictionaryTerms"),
+    precondition(entryPoint.components(separatedBy: "settings.recognitionTerms").count == 2,
+                 "Each entry point must read the dictionary (own plus learned terms) exactly once")
+    guard let snapshot = entryPoint.range(of: "let dictionaryTerms = settings.recognitionTerms"),
           let initializer = entryPoint.range(of: "QwenTranscriptionSession(") else {
         fatalError("Missing dictionary snapshot or Qwen initialization")
     }
     precondition(snapshot.upperBound < initializer.lowerBound, "Snapshot must precede session initialization")
     let arguments = entryPoint[initializer.upperBound...].components(separatedBy: "onStatus:")[0]
     precondition(arguments.contains("contextualStrings: dictionaryTerms"),
-                 "Every Qwen session must receive the immutable confirmed dictionary snapshot")
+                 "Every Qwen session must receive the immutable dictionary snapshot")
     precondition(entryPoint.contains("hud.model.setDictionaryTerms(dictionaryTerms)")
                  || entryPoint.contains("hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])"),
                  "Ordinary recording HUD must use the exact same snapshot as Qwen")

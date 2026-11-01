@@ -88,10 +88,14 @@ final class Diagnostics: @unchecked Sendable {
         return result
     }
 }
+enum OutputLanguage { case original, english }
 struct Settings {
     var polishEnabled = true
     var llmConfigured = true
     var llmConfig = 0
+    var outputLanguage = OutputLanguage.original
+    var learned: [(raw: String, output: String)] = []
+    mutating func learnFromDictation(raw: String, output: String, fired: Set<String>) { learned.append((raw, output)) }
 }
 struct Context { var name = "Fake app" }
 enum Prompts {
@@ -271,6 +275,11 @@ TESTS = r'''
         let entry = test.history.entries[0]
         precondition(entry.raw == "raw transcript" && entry.output == output)
         precondition(entry.kind == (editing ? .edit : .dictation))
+        // Only same-language polish output is learning evidence; edits never are.
+        let learnedOutput = enabled && configured && !failure ? "processed transcript" : "raw transcript"
+        precondition(editing ? test.settings.learned.isEmpty
+                     : test.settings.learned.count == 1 && test.settings.learned[0] == ("raw transcript", learnedOutput),
+                     "\(name): unexpected dictionary learning input")
         precondition(test.state == .idle && test.session == nil && test.processingTask == nil,
                      "Production finish must clear processing state")
         precondition(!test.aiInProgress, "Finishing clears the AI indicator")
@@ -557,7 +566,12 @@ final class Diagnostics: @unchecked Sendable {
     var dictionaryTerms: [String] { termReads += 1; return terms }
     var voiceEditEnabled = false
     var llmConfigured = true
-    var activeDictionaryReplacements: [DictionaryReplacement] = []
+    var recognitionReplacements: [DictionaryReplacement] = []
+    var recognitionTerms: [String] { dictionaryTerms }
+    func expireLearnedFixes() {}
+    enum Language { case original, english }
+    var outputLanguage = Language.original
+    func learnFromDictation(raw: String, output: String, fired: Set<String>) {}
     var doubaoConfig = "synthetic-config"
     var onlineLocalFallback = false
     var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
@@ -729,11 +743,11 @@ STARTUP_TESTS = r'''
     @MainActor static func main() async {
         do {
             let fixing = StartupHarness()
-            fixing.settings.activeDictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
+            fixing.settings.recognitionReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
             fixing.startRecording()
             await fixing.startupTask?.value
             // A Settings edit mid-recording must not change this recording's fixes.
-            fixing.settings.activeDictionaryReplacements = []
+            fixing.settings.recognitionReplacements = []
             FakeSession.latest?.onPartial?("open talk less")
             precondition(fixing.hud.model.preview == "open Talkless" && fixing.previewText == "open Talkless",
                          "Live preview shows the recording's dictionary fixes")

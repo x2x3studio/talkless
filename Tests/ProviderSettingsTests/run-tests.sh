@@ -22,6 +22,8 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/DoubaoProtocol.swift" \
   "$ROOT/Sources/Talkless/UserDefaultsCoding.swift" \
   "$ROOT/Sources/Talkless/DictionaryTerms.swift" \
+  "$ROOT/Sources/Talkless/DictionaryLearning.swift" \
+  "$ROOT/Sources/Talkless/DictionaryCorrectionExtractor.swift" \
   "$ROOT/Tests/ProviderSettingsTests/HUDAppearanceTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/ShortcutSettingsTests.swift" \
   "$ROOT/Tests/ProviderSettingsTests/ConnectionTestResultTests.swift" \

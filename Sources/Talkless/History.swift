@@ -27,7 +27,7 @@ final class HistoryStore: ObservableObject {
     private let writer = DispatchQueue(label: "app.talkless.history", qos: .utility)
 
     // Injectable paths/stores keep synthetic tests away from the user's Application Support.
-    init(url: URL? = nil, activity: DictationActivityStore? = nil, observeDictionaryReview: Bool = true) {
+    init(url: URL? = nil, activity: DictationActivityStore? = nil) {
         self.url = url ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Talkless", isDirectory: true)
             .appendingPathComponent("history.json")
@@ -37,9 +37,6 @@ final class HistoryStore: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             entries = Array(((try? decoder.decode([HistoryEntry].self, from: data)) ?? []).prefix(Self.limit))
-        }
-        if observeDictionaryReview {
-            DictionaryReviewStore.shared.observeHistory($entries.eraseToAnyPublisher())
         }
     }
 

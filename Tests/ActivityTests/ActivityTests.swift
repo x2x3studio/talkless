@@ -1,13 +1,6 @@
 import Combine
 import Foundation
 
-// Production History.swift can be compiled without settings, models, or any real singleton.
-@MainActor final class DictionaryReviewStore {
-    static let shared = DictionaryReviewStore()
-    func observeHistory(_ publisher: AnyPublisher<[HistoryEntry], Never>) {
-        fatalError("Synthetic activity tests must not initialize dictionary review")
-    }
-}
 
 @MainActor private final class TestClock {
     var date: Date
@@ -175,7 +168,7 @@ struct ActivityTests {
         historyEncoder.dateEncodingStrategy = .iso8601
         try historyEncoder.encode([old]).write(to: historyURL, options: .atomic)
         let historyActivity = DictationActivityStore(url: historyActivityURL, now: { clock.date }, timeZone: utc)
-        let history = HistoryStore(url: historyURL, activity: historyActivity, observeDictionaryReview: false)
+        let history = HistoryStore(url: historyURL, activity: historyActivity)
         check(historyActivity.days.isEmpty, "History init never imports preexisting history")
         let current = entry(clock.date)
         history.add(current)
@@ -190,7 +183,7 @@ struct ActivityTests {
         check(historyActivity.reset(), "activity-only clear succeeds")
         check(history.entries.count == 1, "activity clear preserves history text")
         let historyReloadActivity = DictationActivityStore(url: historyActivityURL, now: { clock.date }, timeZone: utc)
-        _ = HistoryStore(url: historyURL, activity: historyReloadActivity, observeDictionaryReview: false)
+        _ = HistoryStore(url: historyURL, activity: historyReloadActivity)
         check(historyReloadActivity.days.isEmpty, "History init does not resurrect reset activity")
         for _ in 0..<502 { history.add(entry(clock.date, output: "x")) }
         check(history.entries.count == 500, "history cap remains 500")

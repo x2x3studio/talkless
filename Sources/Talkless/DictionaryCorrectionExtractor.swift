@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import NaturalLanguage
 
@@ -9,7 +8,7 @@ struct DictionaryCorrection: Equatable, Sendable {
     let outputSnippet: String
 }
 
-/// This is spelling evidence, not semantic correction or a replacement rule. No model is called.
+/// Spelling evidence from one dictation; `DictionaryLearning` decides when it becomes a fix. No model is called.
 /// Character-aware word alignment preserves Latin identifiers and finds short Han corrections.
 enum DictionaryCorrectionExtractor {
     static let maximumCharacters = 1_200
@@ -22,11 +21,6 @@ enum DictionaryCorrectionExtractor {
     private struct Change {
         var source: Range<Int>
         var output: Range<Int>
-    }
-
-    static func extract(from entry: HistoryEntry, legacyDismissals: Bool = false) -> [DictionaryCorrection] {
-        guard entry.kind == .dictation else { return [] }
-        return extract(raw: entry.raw, output: entry.output, legacyDismissals: legacyDismissals)
     }
 
     /// Legacy alignment is used only to recover existing dismissal digests, never new suggestions.
@@ -205,211 +199,5 @@ enum DictionaryCorrectionExtractor {
         return (start == text.startIndex ? "" : "…")
             + text[start..<end].replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
             + (end == text.endIndex ? "" : "…")
-    }
-}
-
-struct DictionaryCandidate: Identifiable, Sendable {
-    var id: String { DictionaryTerms.reviewKey(term) }
-    let term: String
-    let correction: DictionaryCorrection
-    let date: Date
-    let app: String
-    let evidenceEntryID: UUID
-    var entryIDs: Set<UUID>
-    var occurrenceCount: Int { entryIDs.count }
-}
-
-enum DictionaryReviewScanner {
-    static let historyLimit = 500
-    static let candidateLimit = 100
-
-    struct Result: Sendable {
-        let candidates: [DictionaryCandidate]
-        let dismissed: Set<String>
-    }
-
-    static func scan(_ entries: [HistoryEntry], excluding excluded: Set<String> = []) -> [DictionaryCandidate] {
-        scanWithDismissals(entries, excluding: excluded, dismissed: []).candidates
-    }
-
-    static func scanWithDismissals(_ entries: [HistoryEntry], excluding excluded: Set<String>,
-                                   dismissed: Set<String>) -> Result {
-        var evidence: [(HistoryEntry, DictionaryCorrection, String)] = []
-        var migratedDismissals = dismissed
-        var seenEntries = Set<UUID>()
-        // Resolve legacy decisions before capping candidates: an older case variant may dismiss
-        // newer evidence too. The immutable input lets every observed variant share that decision.
-        for entry in entries.prefix(historyLimit) {
-            if Task.isCancelled { return Result(candidates: [], dismissed: dismissed) }
-            guard seenEntries.insert(entry.id).inserted else { continue }
-            let corrections = DictionaryCorrectionExtractor.extract(from: entry)
-            if !dismissed.isEmpty {
-                let legacyCorrections = DictionaryCorrectionExtractor.extract(from: entry, legacyDismissals: true)
-                for term in Set((corrections + legacyCorrections).map(\.term)) {
-                    let legacy = DictionaryTerms.legacyReviewKeys(term).intersection(dismissed)
-                    if !legacy.isEmpty {
-                        migratedDismissals.subtract(legacy)
-                        migratedDismissals.insert(DictionaryTerms.reviewKey(term))
-                    }
-                }
-            }
-            for correction in corrections {
-                evidence.append((entry, correction, DictionaryTerms.reviewKey(correction.term)))
-            }
-        }
-        let excluded = excluded.union(migratedDismissals)
-        var candidates: [String: DictionaryCandidate] = [:]
-        // History is newest-first. Keep its original display spelling and count distinct dictations.
-        for (entry, correction, key) in evidence {
-            if Task.isCancelled { return Result(candidates: [], dismissed: dismissed) }
-            guard !excluded.contains(key) else { continue }
-            if candidates[key] != nil {
-                candidates[key]?.entryIDs.insert(entry.id)
-            } else if candidates.count < candidateLimit {
-                candidates[key] = DictionaryCandidate(term: correction.term, correction: correction,
-                                                      date: entry.date, app: entry.app, evidenceEntryID: entry.id, entryIDs: [entry.id])
-            }
-        }
-        let sorted = candidates.values.sorted {
-            if $0.occurrenceCount != $1.occurrenceCount { return $0.occurrenceCount > $1.occurrenceCount }
-            if $0.date != $1.date { return $0.date > $1.date }
-            return $0.term < $1.term
-        }
-        return Result(candidates: sorted, dismissed: migratedDismissals)
-    }
-}
-
-@MainActor
-final class DictionaryReviewStore: ObservableObject {
-    static let shared = DictionaryReviewStore(settings: .shared)
-    static let dismissalStorageKey = "dictionaryReview.dismissed.v1"
-    @Published private(set) var candidates: [DictionaryCandidate] = []
-    @Published private(set) var isScanning = false
-    @Published private(set) var hasScanned = false
-    @Published private(set) var dismissedCount = 0
-    @Published private(set) var lastScanEntryCount = 0
-    private let settings: AppSettings
-    private let defaults: UserDefaults
-    private var dismissed: Set<String>
-    private var latestEntries: [HistoryEntry] = []
-    private var manuallyScannedIDs = Set<UUID>()
-    private var authorizedEntries: [HistoryEntry] {
-        settings.dictionaryReviewEnabled ? latestEntries : latestEntries.filter { manuallyScannedIDs.contains($0.id) }
-    }
-    private var subscriptions = Set<AnyCancellable>()
-    private var historySubscription: AnyCancellable?
-    private var scanTask: Task<Void, Never>?
-    private var generation = 0
-
-    init(settings: AppSettings, defaults: UserDefaults = .standard) {
-        self.settings = settings
-        self.defaults = defaults
-        dismissed = defaults.decoded(Set<String>.self, forKey: Self.dismissalStorageKey) ?? []
-        dismissedCount = dismissed.count
-        settings.$dictionaryReviewEnabled.dropFirst().sink { [weak self] enabled in
-            guard let self else { return }
-            if enabled { self.scanHistory(manual: false) }
-            else { self.cancelScan() } // Do not finish a pending automatic scan after opting out.
-        }.store(in: &subscriptions)
-        settings.$dictionary.dropFirst().sink { [weak self] dictionary in
-            guard let self else { return }
-            self.objectWillChange.send()
-            guard self.hasScanned else { return }
-            if !self.authorizedEntries.isEmpty { self.scheduleScan(self.authorizedEntries, dictionary: dictionary) }
-        }.store(in: &subscriptions)
-    }
-
-    var pendingCandidates: [DictionaryCandidate] {
-        let confirmed = Set(settings.dictionaryTerms.map(DictionaryTerms.reviewKey))
-        return candidates.filter { !dismissed.contains($0.id) && !confirmed.contains($0.id) }
-    }
-
-    /// The existing history publisher is the source of truth; suggestions never write to history.
-    func observeHistory(_ publisher: AnyPublisher<[HistoryEntry], Never>) {
-        historySubscription = publisher.sink { [weak self] entries in
-            guard let self else { return }
-            self.latestEntries = Array(entries.prefix(DictionaryReviewScanner.historyLimit))
-            if self.settings.dictionaryReviewEnabled {
-                self.scanHistory(manual: false)
-            } else if !self.manuallyScannedIDs.isEmpty {
-                self.scheduleScan(self.authorizedEntries)
-            } else {
-                // Revoking automatic scanning permits pruning deleted evidence, never fresh extraction.
-                let remaining = Set(self.latestEntries.map(\.id))
-                self.candidates = self.candidates.compactMap { candidate in
-                    guard remaining.contains(candidate.evidenceEntryID) else { return nil }
-                    var candidate = candidate
-                    candidate.entryIDs.formIntersection(remaining)
-                    return candidate
-                }
-            }
-        }
-    }
-
-    /// Explicitly scanning once does not opt the user into future history mining.
-    func scanHistory(manual: Bool = true) {
-        hasScanned = true
-        if manual { manuallyScannedIDs = Set(latestEntries.map(\.id)) }
-        scheduleScan(latestEntries)
-    }
-
-    @discardableResult
-    func accept(_ candidate: DictionaryCandidate) -> Bool {
-        guard pendingCandidates.contains(where: { $0.id == candidate.id }),
-              let dictionary = DictionaryTerms.adding(candidate.term, to: settings.dictionary) else { return false }
-        settings.dictionary = dictionary
-        return true
-    }
-
-    func dismiss(_ candidate: DictionaryCandidate) {
-        guard candidates.contains(where: { $0.id == candidate.id }) else { return }
-        dismissed.insert(candidate.id)
-        persistDismissals()
-    }
-
-    /// An explicit UI action is required to show previously dismissed spellings again.
-    func resetDismissals() {
-        dismissed.removeAll()
-        persistDismissals()
-    }
-
-    private func persistDismissals(rescan: Bool = true) {
-        defaults.setEncoded(dismissed, forKey: Self.dismissalStorageKey)
-        dismissedCount = dismissed.count
-        if rescan {
-            // Replace pending migration even with no history, so stale evidence is also pruned.
-            if hasScanned { scheduleScan(authorizedEntries) }
-            else { cancelScan() }
-        }
-    }
-
-    private func cancelScan() {
-        generation += 1
-        scanTask?.cancel()
-        scanTask = nil
-        isScanning = false
-    }
-
-    private func scheduleScan(_ entries: [HistoryEntry], dictionary: String? = nil) {
-        cancelScan()
-        let token = generation
-        let excluded = Set(DictionaryTerms.terms(in: dictionary ?? settings.dictionary).map(DictionaryTerms.reviewKey))
-        let dismissed = self.dismissed
-        isScanning = true
-        scanTask = Task { [weak self] in
-            let work = Task.detached(priority: .utility) {
-                DictionaryReviewScanner.scanWithDismissals(entries, excluding: excluded, dismissed: dismissed)
-            }
-            let result = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
-            guard let self, !Task.isCancelled, token == self.generation else { return }
-            if self.dismissed != result.dismissed {
-                self.dismissed = result.dismissed
-                self.persistDismissals(rescan: false)
-            }
-            self.candidates = result.candidates
-            self.lastScanEntryCount = entries.count
-            self.isScanning = false
-            self.scanTask = nil
-        }
     }
 }

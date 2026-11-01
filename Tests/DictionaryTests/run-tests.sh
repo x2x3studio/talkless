@@ -17,9 +17,10 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/DoubaoProtocol.swift" \
   "$ROOT/Sources/Talkless/UserDefaultsCoding.swift" \
   "$ROOT/Sources/Talkless/DictionaryTerms.swift" \
+  "$ROOT/Sources/Talkless/DictionaryLearning.swift" \
+  "$ROOT/Sources/Talkless/DictionaryCorrectionExtractor.swift" \
   "$ROOT/Sources/Talkless/History.swift" \
   "$ROOT/Sources/Talkless/DictationActivity.swift" \
-  "$ROOT/Sources/Talkless/DictionaryReview.swift" \
   "$ROOT/Sources/Talkless/DictionaryView.swift" \
   "$ROOT/Sources/Talkless/SettingsStyle.swift" \
   "$ROOT/Tests/DictionaryTests/DictionaryTests.swift" \

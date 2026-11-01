@@ -76,8 +76,8 @@ enum DictionaryTerms {
     }
 }
 
-/// An explicit "heard as" spelling the user wants fixed every time, independent of AI polish.
-/// Rules exist only after a user action (edit a term, or "Always fix" in Review).
+/// A "heard as" spelling fixed every time, independent of AI polish. Manual rules come from
+/// editing a term; learned ones from `DictionaryLearning`.
 struct DictionaryReplacement: Codable, Equatable, Hashable, Sendable {
     var heard: String
     var term: String
@@ -104,7 +104,7 @@ enum DictionaryReplacements {
             return L10n.format("“%@” is already the term itself.", value)
         }
         if terms.contains(where: { DictionaryTerms.reviewIdentity($0) == identity }) {
-            return L10n.format("“%@” is in My terms, so it cannot be replaced.", value)
+            return L10n.format("“%@” is already a correct spelling in your dictionary, so it cannot be replaced.", value)
         }
         if let other = rules.first(where: { DictionaryTerms.reviewIdentity($0.heard) == identity && $0.term != term }) {
             return L10n.format("“%@” already fixes to “%@”.", value, other.term)
@@ -137,19 +137,26 @@ enum DictionaryReplacements {
     /// width and diacritics. Latin/number spellings only match whole words; Han spellings
     /// match anywhere because Chinese has no spaces.
     static func apply(_ rules: [DictionaryReplacement], to text: String) -> (text: String, count: Int) {
-        guard !rules.isEmpty, !text.isEmpty else { return (text, 0) }
-        var matches: [(range: Range<String.Index>, term: String)] = []
+        let result = applyTracking(rules, to: text)
+        return (result.text, result.count)
+    }
+
+    /// Like `apply`, also reporting which heard spellings (by review identity) changed the text.
+    static func applyTracking(_ rules: [DictionaryReplacement], to text: String)
+        -> (text: String, count: Int, fired: Set<String>) {
+        guard !rules.isEmpty, !text.isEmpty else { return (text, 0, []) }
+        var matches: [(range: Range<String.Index>, term: String, heard: String)] = []
         for rule in rules {
             guard let heard = DictionaryTerms.validated(rule.heard), heard.count >= 2 else { continue }
             var start = text.startIndex
             while start < text.endIndex,
                   let range = text.range(of: heard, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
                                          range: start..<text.endIndex) {
-                if isWholeWord(range, in: text) { matches.append((range, rule.term)) }
+                if isWholeWord(range, in: text) { matches.append((range, rule.term, heard)) }
                 start = text.index(after: range.lowerBound)
             }
         }
-        guard !matches.isEmpty else { return (text, 0) }
+        guard !matches.isEmpty else { return (text, 0, []) }
         matches.sort {
             $0.range.lowerBound != $1.range.lowerBound ? $0.range.lowerBound < $1.range.lowerBound
                 : text.distance(from: $0.range.lowerBound, to: $0.range.upperBound) > text.distance(from: $1.range.lowerBound, to: $1.range.upperBound)
@@ -157,14 +164,18 @@ enum DictionaryReplacements {
         var result = ""
         var cursor = text.startIndex
         var count = 0
+        var fired = Set<String>()
         for match in matches where match.range.lowerBound >= cursor {
             result += text[cursor..<match.range.lowerBound]
             result += match.term
-            if text[match.range] != match.term { count += 1 }
+            if text[match.range] != match.term {
+                count += 1
+                fired.insert(DictionaryTerms.reviewIdentity(match.heard))
+            }
             cursor = match.range.upperBound
         }
         result += text[cursor...]
-        return (result, count)
+        return (result, count, fired)
     }
 
     private static func isWordCharacter(_ character: Character) -> Bool {

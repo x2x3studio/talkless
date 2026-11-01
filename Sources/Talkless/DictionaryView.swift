@@ -2,68 +2,115 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A two-stage dictionary: only My terms supplies recognition/polish hints, and only explicit
-/// "heard as" spellings on those terms are replaced automatically.
+/// Every row reads "heard → written". Learned fixes come and go on their own; terms you add
+/// stay until you delete them.
 struct DictionaryView: View {
     @ObservedObject private var settings: AppSettings
-    @ObservedObject private var review: DictionaryReviewStore
 
-    init(settings: AppSettings = .shared, review: DictionaryReviewStore = .shared) {
+    init(settings: AppSettings = .shared) {
         self.settings = settings
-        self.review = review
     }
-    @State private var section = Section.terms
     @State private var search = ""
-    @State private var page = 0
     @State private var editor: TermEditor?
     @State private var termToDelete: String?
-    @State private var showResetDismissals = false
     @State private var message = ""
-    private let pageSize = 50
 
-    private enum Section: Hashable { case terms, review }
     private struct TermEditor: Identifiable {
         let id = UUID()
         let original: String?
     }
 
-    private var filteredTerms: [String] {
+    private func matches(_ values: [String]) -> Bool {
+        search.isEmpty || values.contains { $0.localizedStandardContains(search) }
+    }
+
+    private var learned: [LearnedFix] {
+        settings.learnedDictionary.fixes.filter(\.active)
+            .filter { matches([$0.heard, $0.term]) }
+            .sorted { $0.lastSeen > $1.lastSeen }
+    }
+
+    private var pendingCount: Int { settings.learnedDictionary.fixes.filter { !$0.active }.count }
+
+    private var manualTerms: [String] {
         let rules = settings.activeDictionaryReplacements
         return settings.dictionaryTerms.filter { term in
-            search.isEmpty || term.localizedStandardContains(search)
-                || rules.contains { $0.term == term && $0.heard.localizedStandardContains(search) }
+            matches([term] + DictionaryReplacements.rules(for: term, in: rules).map(\.heard))
         }
-    }
-    private var currentPage: Int { min(page, max(0, (filteredTerms.count - 1) / pageSize)) }
-    private var visibleTerms: [String] {
-        Array(filteredTerms.dropFirst(currentPage * pageSize).prefix(pageSize))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.tr("My terms help recognition and AI polish. Add how a term is often misheard, and Talkless fixes that spelling every time, even with AI polish off."))
+            Text(L10n.tr("Each entry turns what the recognizer heard into what you meant. It also helps recognition and AI polish get it right the first time."))
                 .font(.callout).foregroundStyle(.secondary)
-            Picker(L10n.tr("Dictionary section"), selection: $section) {
-                Text(L10n.format("My terms (%lld)", settings.dictionaryTerms.count)).tag(Section.terms)
-                Text(L10n.format("Review (%lld)", review.pendingCandidates.count)).tag(Section.review)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.tr("Learn from my dictations")).font(.body.weight(.medium))
+                    Text(L10n.tr("When polish keeps fixing the same word, Talkless learns it. Fixes unused for 30 days retire on their own. Everything stays on this Mac."))
+                        .settingsNote()
+                }
+                Spacer(minLength: 8)
+                Toggle(L10n.tr("Learn from my dictations"), isOn: $settings.dictionaryLearningEnabled)
+                    .toggleStyle(.switch).labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(12)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
 
-            if section == .terms { termsContent }
-            else { reviewContent }
+            HStack {
+                TextField(L10n.tr("Search"), text: $search)
+                    .textFieldStyle(.roundedBorder)
+                Button(L10n.tr("Add…")) { editor = TermEditor(original: nil) }
+                Menu {
+                    Button(L10n.tr("Import…"), action: importTerms)
+                    Button(L10n.tr("Export…"), action: exportTerms).disabled(settings.dictionaryTerms.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .accessibilityLabel(L10n.tr("More dictionary actions"))
+            }
 
-            if !message.isEmpty {
-                Text(message).font(.caption).foregroundStyle(.secondary)
-                    .accessibilityLabel(L10n.format("Dictionary status: %@", message))
+            List {
+                if settings.dictionaryLearningEnabled, !learned.isEmpty {
+                    Section(L10n.format("Learned automatically (%lld)", learned.count)) {
+                        ForEach(learned) { fix in learnedRow(fix) }
+                    }
+                }
+                if !manualTerms.isEmpty {
+                    Section(L10n.format("Added by you (%lld)", manualTerms.count)) {
+                        ForEach(manualTerms, id: \.self) { term in manualRow(term) }
+                    }
+                }
+            }
+            .listStyle(.inset)
+            .overlay {
+                if learned.isEmpty && manualTerms.isEmpty {
+                    emptyState(title: search.isEmpty ? L10n.tr("Nothing learned yet") : L10n.tr("No matches"),
+                               detail: search.isEmpty ? L10n.tr("Keep dictating with AI polish on, and words it keeps fixing show up here. You can also add one yourself.") : L10n.tr("Try another search or add a new entry."),
+                               symbol: "character.book.closed")
+                }
+            }
+
+            HStack {
+                if settings.dictionaryLearningEnabled, pendingCount > 0 {
+                    Text(L10n.format("Watching %lld more spellings until they repeat.", pendingCount))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !message.isEmpty {
+                    Text(message).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.format("Dictionary status: %@", message))
+                }
             }
         }
         .sheet(item: $editor) { item in
             DictionaryTermEditor(original: item.original, settings: settings) { saved in
-                message = item.original == nil ? L10n.format("Added “%@” to My terms.", saved) : L10n.format("Saved “%@”.", saved)
+                message = item.original == nil ? L10n.format("Added “%@”.", saved) : L10n.format("Saved “%@”.", saved)
             }
         }
-        .alert(L10n.tr("Delete this term?"), isPresented: Binding(
+        .alert(L10n.tr("Delete this entry?"), isPresented: Binding(
             get: { termToDelete != nil }, set: { if !$0 { termToDelete = nil } }
         )) {
             Button(L10n.tr("Cancel"), role: .cancel) { termToDelete = nil }
@@ -77,126 +124,68 @@ struct DictionaryView: View {
                 termToDelete = nil
             }
         } message: {
-            Text(L10n.format("“%@” will no longer be a dictionary hint, and its heard spellings will no longer be fixed. This does not delete history or dismiss review suggestions.", termToDelete ?? ""))
-        }
-        .alert(L10n.tr("Reset dismissed suggestions?"), isPresented: $showResetDismissals) {
-            Button(L10n.tr("Cancel"), role: .cancel) {}
-            Button(L10n.tr("Reset dismissals")) { review.resetDismissals(); message = L10n.tr("Dismissed spellings can appear in Review again.") }
-        } message: {
-            Text(L10n.tr("Previously dismissed spellings may reappear from your scanned history. No terms will be added automatically."))
+            Text(L10n.format("“%@” and its fixes will be removed. History is unchanged.", termToDelete ?? ""))
         }
     }
 
-    private var termsContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                TextField(L10n.tr("Search terms"), text: $search)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: search) { _, _ in page = 0 }
-                Button(L10n.tr("Add term…")) { editor = TermEditor(original: nil) }
-                Menu {
-                    Button(L10n.tr("Import…"), action: importTerms)
-                    Button(L10n.tr("Export…"), action: exportTerms).disabled(settings.dictionaryTerms.isEmpty)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .menuStyle(.borderlessButton).fixedSize()
-                .accessibilityLabel(L10n.tr("More dictionary actions"))
-            }
-            List(visibleTerms, id: \.self) { term in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(term).font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled).lineLimit(2)
-                            .help(term)
-                        let heard = DictionaryReplacements.rules(for: term, in: settings.activeDictionaryReplacements).map(\.heard)
-                        if !heard.isEmpty {
-                            Text(L10n.format("Fixes: %@", heard.joined(separator: L10n.tr(", "))))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    Button { editor = TermEditor(original: term) } label: { Image(systemName: "pencil") }
-                        .accessibilityLabel(L10n.format("Edit %@", term)).help(L10n.tr("Edit term"))
-                    Button { termToDelete = term } label: { Image(systemName: "trash") }
-                        .accessibilityLabel(L10n.format("Delete %@", term)).help(L10n.tr("Delete term"))
-                }
-                .padding(.vertical, 5)
-            }
-            .listStyle(.inset)
-            .overlay {
-                if filteredTerms.isEmpty {
-                    emptyState(title: search.isEmpty ? L10n.tr("Your spellings belong here") : L10n.tr("No matching terms"),
-                               detail: search.isEmpty ? L10n.tr("Add a name, project, or technical term, or confirm a suggestion in Review.") : L10n.tr("Try another search or add a new term."),
-                               symbol: "character.book.closed")
-                }
-            }
-            HStack {
-                Text(L10n.tr("Capitalization is preserved. Existing terms are never shortened."))
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if filteredTerms.count > pageSize {
-                    Button { page = max(0, currentPage - 1) } label: { Image(systemName: "chevron.left") }
-                        .disabled(currentPage == 0).accessibilityLabel(L10n.tr("Previous terms page"))
-                    Text("\(currentPage + 1) / \((filteredTerms.count + pageSize - 1) / pageSize)")
-                        .font(.caption).monospacedDigit()
-                    Button { page = currentPage + 1 } label: { Image(systemName: "chevron.right") }
-                        .disabled((currentPage + 1) * pageSize >= filteredTerms.count)
-                        .accessibilityLabel(L10n.tr("Next terms page"))
-                }
+    private func mapping(heard: [String], term: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if heard.isEmpty {
+                Text(term).font(.system(.body, design: .monospaced).weight(.medium))
+            } else {
+                Text(heard.joined(separator: L10n.tr(", ")))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .strikethrough(true, color: .secondary.opacity(0.6))
+                Image(systemName: "arrow.right").font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.tr("becomes"))
+                Text(term).font(.system(.body, design: .monospaced).weight(.medium))
             }
         }
+        .lineLimit(2)
+        .textSelection(.enabled)
     }
 
-    private var reviewContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 7) {
-                Toggle(L10n.tr("Automatically find suggestions in local history"), isOn: $settings.dictionaryReviewEnabled)
-                    .toggleStyle(.switch).controlSize(.small)
-                Text(L10n.tr("Off by default. Scanning compares raw dictation with saved AI-polished text on this Mac; it sends nothing and makes no AI requests. AI edits can be wrong—accept only spellings you recognize."))
+    private func learnedRow(_ fix: LearnedFix) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                mapping(heard: [fix.heard], term: fix.term)
+                Text(L10n.format("Seen %lld times · Fixed %lld times · Last used %@", fix.observations, fix.applied,
+                                 fix.lastSeen.formatted(.relative(presentation: .named).locale(L10n.locale))))
                     .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button(review.isScanning ? L10n.tr("Scanning…") : L10n.tr("Scan history")) {
-                        review.scanHistory()
-                        message = ""
-                    }
-                    .disabled(review.isScanning)
-                    if review.isScanning { ProgressView().controlSize(.small) }
-                    Spacer()
-                    if review.dismissedCount > 0 {
-                        Button(L10n.format("Reset dismissed (%lld)…", review.dismissedCount)) { showResetDismissals = true }
-                            .font(.caption)
-                    }
-                }
             }
-            .padding(12)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
-
-            List(review.pendingCandidates) { candidate in
-                DictionaryCandidateRow(candidate: candidate, canAlwaysFix: alwaysFixProblem(candidate) == nil, accept: {
-                    if review.accept(candidate) { message = L10n.format("Added “%@” to My terms. No replacement rule was created.", candidate.term) }
-                }, alwaysFix: {
-                    guard alwaysFixProblem(candidate) == nil, review.accept(candidate) else { return }
-                    settings.dictionaryReplacements.append(DictionaryReplacement(heard: candidate.correction.source, term: candidate.term))
-                    message = L10n.format("Added “%@”. “%@” will now be fixed automatically.", candidate.term, candidate.correction.source)
-                }, dismiss: {
-                    review.dismiss(candidate)
-                    message = L10n.format("Dismissed “%@”. It will stay hidden until you reset dismissals.", candidate.term)
-                })
+            Spacer(minLength: 8)
+            Button(L10n.tr("Keep")) {
+                settings.keepLearnedFix(fix)
+                message = L10n.format("“%@” moved to Added by you and will not retire.", fix.term)
             }
-            .listStyle(.inset)
-            .overlay {
-                if review.pendingCandidates.isEmpty, !review.isScanning {
-                    emptyState(title: review.hasScanned ? L10n.tr("No spellings to review") : L10n.tr("Your history stays unscanned"),
-                               detail: review.hasScanned ? L10n.tr("Only small spelling changes are suggested. You can always add a term yourself.") : L10n.tr("Choose Scan history for a one-time local scan, or turn on automatic suggestions."),
-                               symbol: "text.magnifyingglass")
-                }
-            }
-            Text(review.hasScanned
-                 ? L10n.format("%lld recent entries scanned · Up to 100 suggestions · Edits and translations excluded", review.lastScanEntryCount)
-                 : L10n.tr("Scans up to 500 recent entries · Suggestions are never accepted automatically"))
-                .font(.caption).foregroundStyle(.secondary)
+            .help(L10n.tr("Keep this fix permanently"))
+            Button { settings.removeLearnedFix(fix)
+                message = L10n.format("Removed. “%@” will not be learned again.", fix.heard)
+            } label: { Image(systemName: "trash") }
+                .accessibilityLabel(L10n.format("Delete %@", fix.heard))
+                .help(L10n.tr("Delete and never learn this fix again"))
         }
+        .padding(.vertical, 4)
+    }
+
+    private func manualRow(_ term: String) -> some View {
+        let heard = DictionaryReplacements.rules(for: term, in: settings.activeDictionaryReplacements).map(\.heard)
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                mapping(heard: heard, term: term)
+                if heard.isEmpty {
+                    Text(L10n.tr("Recognition hint only. Add how it is misheard to fix it every time."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            Button { editor = TermEditor(original: term) } label: { Image(systemName: "pencil") }
+                .accessibilityLabel(L10n.format("Edit %@", term)).help(L10n.tr("Edit"))
+            Button { termToDelete = term } label: { Image(systemName: "trash") }
+                .accessibilityLabel(L10n.format("Delete %@", term)).help(L10n.tr("Delete"))
+        }
+        .padding(.vertical, 4)
     }
 
     /// Adds terms and fixes from a text file; existing entries are never deleted or changed.
@@ -231,12 +220,6 @@ struct DictionaryView: View {
         }
     }
 
-    /// Review evidence is a recorded mishearing, so it can become a fix in one step.
-    private func alwaysFixProblem(_ candidate: DictionaryCandidate) -> String? {
-        DictionaryReplacements.problem(heard: candidate.correction.source, term: candidate.term,
-                                       rules: settings.activeDictionaryReplacements, terms: settings.dictionaryTerms)
-    }
-
     private func emptyState(title: String, detail: String, symbol: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: symbol).font(.title2).foregroundStyle(.secondary)
@@ -246,59 +229,6 @@ struct DictionaryView: View {
         }
         .padding(24)
         .allowsHitTesting(false)
-    }
-}
-
-private struct DictionaryCandidateRow: View {
-    let candidate: DictionaryCandidate
-    let canAlwaysFix: Bool
-    let accept: () -> Void
-    let alwaysFix: () -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(candidate.term).font(.system(.headline, design: .monospaced))
-                    .textSelection(.enabled)
-                Spacer()
-                Text(L10n.format(candidate.occurrenceCount == 1 ? "%lld dictation" : "%lld dictations", candidate.occurrenceCount))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                evidence(label: L10n.tr("Heard"), text: candidate.correction.sourceSnippet)
-                evidence(label: L10n.tr("Polished"), text: candidate.correction.outputSnippet)
-            }
-            HStack {
-                Text(candidate.date, format: .dateTime.month().day().locale(L10n.locale))
-                    .font(.caption).foregroundStyle(.secondary)
-                if !candidate.app.isEmpty {
-                    Text("· \(candidate.app)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                Button(L10n.tr("Dismiss"), action: dismiss).help(L10n.tr("Hide this spelling until dismissals are reset"))
-                Button(L10n.tr("Accept"), action: accept)
-                    .help(L10n.tr("Add this spelling to My terms, not a replacement rule"))
-                    .accessibilityLabel(L10n.format("Accept %@ into My terms", candidate.term))
-                if canAlwaysFix {
-                    Button(L10n.tr("Always fix"), action: alwaysFix)
-                        .help(L10n.format("Add “%@” to My terms and always replace “%@” with it", candidate.term, candidate.correction.source))
-                        .accessibilityLabel(L10n.format("Always fix %@ as %@", candidate.correction.source, candidate.term))
-                }
-            }
-        }
-        .padding(.vertical, 9)
-    }
-
-    private func evidence(label: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(label).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                .frame(width: 50, alignment: .leading)
-            Text(text).font(.callout).lineLimit(3).textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 
@@ -325,7 +255,7 @@ struct DictionaryTermEditor: View {
 
     private var validation: String? {
         guard let term = DictionaryTerms.validated(text) else { return L10n.tr("Enter one non-empty term, without line breaks.") }
-        if settings.dictionaryTerms.contains(term), term != original { return L10n.tr("This exact spelling is already in My terms.") }
+        if settings.dictionaryTerms.contains(term), term != original { return L10n.tr("This entry already exists.") }
         // Other terms' rules only; this term's existing rules are being replaced.
         let otherRules = settings.activeDictionaryReplacements.filter { $0.term != original && $0.term != term }
         let otherTerms = settings.dictionaryTerms.filter { $0 != original }
@@ -337,23 +267,24 @@ struct DictionaryTermEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(original == nil ? L10n.tr("Add a term") : L10n.tr("Edit term")).font(.title2.weight(.semibold))
-            Text(L10n.tr("Use the spelling you want Talkless to recognize. Capitalization and spaces within the term are kept."))
-                .font(.callout).foregroundStyle(.secondary)
-            TextField(L10n.tr("Name, project, or technical term"), text: $text)
-                .textFieldStyle(.roundedBorder).focused($focused)
+            Text(original == nil ? L10n.tr("Add an entry") : L10n.tr("Edit entry")).font(.title2.weight(.semibold))
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.tr("Often heard as (optional)")).font(.callout.weight(.medium))
-                TextField(L10n.tr("One per line, e.g. a wrong spelling you keep getting"), text: $heardText, axis: .vertical)
+                Text(L10n.tr("Heard as")).font(.callout.weight(.medium))
+                TextField(L10n.tr("What recognition writes by mistake, one per line"), text: $heardText, axis: .vertical)
                     .textFieldStyle(.roundedBorder).lineLimit(2...5)
-                Text(L10n.tr("These exact spellings are replaced with the term after recognition. Latin words match whole words only."))
+                Text(L10n.tr("Optional. Leave empty to use the entry only as a recognition hint. Latin words match whole words only."))
                     .settingsNote()
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.tr("Write as")).font(.callout.weight(.medium))
+                TextField(L10n.tr("The correct spelling, e.g. Talkless"), text: $text)
+                    .textFieldStyle(.roundedBorder).focused($focused)
             }
             if let validation { Text(validation).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Spacer()
                 Button(L10n.tr("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(original == nil ? L10n.tr("Add term") : L10n.tr("Save changes")) { save() }
+                Button(original == nil ? L10n.tr("Add") : L10n.tr("Save changes")) { save() }
                     .keyboardShortcut(.defaultAction).disabled(validation != nil)
             }
         }

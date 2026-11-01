@@ -20,8 +20,7 @@ import Testing
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let activity = DictationActivityStore(url: directory.appendingPathComponent("activity.json"))
-        let history = HistoryStore(url: directory.appendingPathComponent("history.json"), activity: activity,
-                                   observeDictionaryReview: false)
+        let history = HistoryStore(url: directory.appendingPathComponent("history.json"), activity: activity)
         let now = Date()
         let calendar = Calendar.current
         func entry(_ kind: HistoryEntry.Kind, _ app: String, _ raw: String, _ output: String, daysAgo: Int, minutes: Int) -> HistoryEntry {
@@ -100,7 +99,12 @@ import Testing
         let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
         settings.audioInputDeviceUID = "test-mic"
         settings.dictionary = "Talkless\nSwiftUI"
-        let review = DictionaryReviewStore(settings: settings, defaults: defaults)
+        settings.dictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
+        for second in 0..<2 {
+            settings.learnFromDictation(raw: "Please open Notian before our meeting.", output: "Please open Notion before our meeting.",
+                                        fired: [], at: Date() - Double(3_600 * 26 + second))
+        }
+        settings.learnFromDictation(raw: "Use Figmer here.", output: "Use Figma here.", fired: [], at: Date())
         let customSuite = "\(suite)-custom"
         let customDefaults = UserDefaults(suiteName: customSuite)!
         defer { customDefaults.removePersistentDomain(forName: customSuite) }
@@ -157,7 +161,7 @@ import Testing
                     ("processing", AnyView(Form {
                         DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
                     }.formStyle(.grouped))),
-                    ("dictionary", AnyView(DictionaryView(settings: settings, review: review).padding(28))),
+                    ("dictionary", AnyView(DictionaryView(settings: settings).padding(28))),
                     ("term-editor", AnyView(DictionaryTermEditor(original: "Talkless", settings: settings) { _ in })),
                     ("overlay", AnyView(OverlaySettingsView(appearance: .constant(HUDAppearance())))),
                 ]

@@ -2,8 +2,20 @@
 
 ## Unreleased
 
+### Added
+- The dictionary now learns on its own. When AI polish keeps making the same spelling fix (twice, or three times for two-character Chinese words), the fix takes effect automatically and its word becomes a recognition and polish hint. Fixes unused for 30 days retire on their own, and a fix that polish undoes retires at once. Existing local history is read once to get started. Learning is local, on by default and can be turned off.
+
+### Changed
+- The dictionary lists every entry as "heard → written", split into Learned automatically and Added by you. Learned rows show how often the mishearing was seen and fixed, with Keep (never retire) and delete (never learn again). The Review tab and its manual Accept/Always fix steps are gone.
+
+## 2026.1101.41567
+
 ### Fixed
 - Settings now opens on the first click from the menu bar. Talkless takes activation for explicit window requests instead of asking for it, so the window no longer opens hidden behind the frontmost app.
+
+## 2026.1101.36907
+
+### Fixed
 - With Doubao cloud and "Use this Mac if Doubao fails" on, a missing local model no longer blocks dictation; Doubao recordings simply run without fallback until the model is downloaded. A model download or deletion in progress no longer blocks Doubao either.
 - With the switch on and a local model ready, Doubao that cannot start (for example, no key saved) now records locally instead of stopping. Local mode still only uses local recognition.
 

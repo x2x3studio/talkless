@@ -349,10 +349,11 @@ final class DictationController: ObservableObject {
     private func startRecording() {
         guard !shortcutCaptureActive, state == .idle else { return }
         let audioInputDeviceUID = settings.audioInputDeviceUID
-        // One confirmed-term snapshot for this recognizer and its live HUD. Pending
-        // suggestions are not in dictionaryTerms; later Settings edits wait until next time.
-        let dictionaryTerms = settings.dictionaryTerms
-        let replacements = settings.activeDictionaryReplacements
+        // One term snapshot (My terms plus learned terms) for this recognizer and its live HUD;
+        // later Settings edits and newly learned fixes wait until next time.
+        settings.expireLearnedFixes()
+        let dictionaryTerms = settings.recognitionTerms
+        let replacements = settings.recognitionReplacements
         recordingReplacements = replacements
         hud.model.setDictionaryTerms([])
         hud.model.revisionOriginal = nil
@@ -606,7 +607,7 @@ final class DictationController: ObservableObject {
                 operation?.record("recognition_finish", ["num_samples": String(samples.count)])
                 let recognized = try await session.finish(samples: samples)
                 // Explicit dictionary fixes run before polish, so they also work with polish off.
-                let fixed = DictionaryReplacements.apply(replacements, to: recognized)
+                let fixed = DictionaryReplacements.applyTracking(replacements, to: recognized)
                 let raw = fixed.text
                 operation?.record("recognition_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
                     "empty": String(raw.isEmpty), "replacement_count": String(fixed.count)])
@@ -626,6 +627,7 @@ final class DictationController: ObservableObject {
                 var output = raw
                 var kind = HistoryEntry.Kind.dictation
                 var polishError: String?
+                var polished = false
                 if let selection = editSelection {
                     kind = .edit
                     stage = "edit"
@@ -655,6 +657,7 @@ final class DictationController: ObservableObject {
                         let emptyOutput = output.isEmpty
                         if emptyOutput { output = raw }
                         output = try PolishValidation.validate(source: raw, output: output)
+                        polished = !emptyOutput
                         operation?.record("polish_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
                             "empty": String(emptyOutput), "fallback": String(emptyOutput)])
                     } catch is CancellationError {
@@ -668,6 +671,11 @@ final class DictationController: ObservableObject {
                     }
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
+                if kind == .dictation {
+                    // Same-language polish is evidence of how the recognizer mishears this user.
+                    let sameLanguage = polished && self.settings.outputLanguage == .original
+                    self.settings.learnFromDictation(raw: raw, output: sameLanguage ? output : raw, fired: fixed.fired)
+                }
 
                 self.lastTranscript = output
                 // Never lose the words when they cannot be pasted where dictation started.
@@ -827,7 +835,7 @@ final class DictationController: ObservableObject {
         generation += 1
         let generation = self.generation
         let modelPreparation = preparationGeneration
-        let dictionaryTerms = settings.dictionaryTerms
+        let dictionaryTerms = settings.recognitionTerms
         previewText = ""
         hud.model.preview = ""
         hud.model.isEditMode = false

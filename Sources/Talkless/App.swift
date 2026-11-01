@@ -89,6 +89,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
             return
         }
+        // Learn from dictations already on this Mac once, then keep learning as you dictate.
+        settings.seedLearnedDictionary(from: HistoryStore.shared.entries
+            .filter { $0.kind == .dictation }.map { ($0.raw, $0.output, $0.date) })
+        settings.expireLearnedFixes()
         ModelManager.shared.beforeModelChange = { [weak self] _ in
             guard let self else { return }
             try await self.controller.prepareForModelChange()

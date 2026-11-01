@@ -217,8 +217,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.setEncoded(dictionaryReplacements, forKey: Self.dictionaryReplacementsKey) }
     }
     private static let dictionaryReplacementsKey = "dictionaryReplacements.v1"
-    /// Local suggestion mining is opt-in; it never sends history to a service.
-    @Published var dictionaryReviewEnabled: Bool { didSet { save(dictionaryReviewEnabled, "dictionaryReviewEnabled") } }
+    /// Learn fixes from how dictations get corrected. Local only; on by default.
+    @Published var dictionaryLearningEnabled: Bool { didSet { save(dictionaryLearningEnabled, "dictionaryLearningEnabled") } }
+    @Published var learnedDictionary: LearnedDictionary {
+        didSet { if learnedDictionary != oldValue { defaults.setEncoded(learnedDictionary, forKey: Self.learnedDictionaryKey) } }
+    }
+    private static let learnedDictionaryKey = "dictionaryLearning.v1"
+    /// Spellings dismissed in the former Review list are never learned.
+    private let dismissedReviewTerms: Set<String>
     @Published var customInstructions: String { didSet { save(customInstructions, "customInstructions") } }
 
     /// Tests supply an isolated defaults suite and in-memory credential store.
@@ -289,7 +295,9 @@ final class AppSettings: ObservableObject {
         if storedLanguages != languages { d.setEncoded(languages, forKey: Self.translationLanguagesKey) }
         dictionary = d.string(forKey: "dictionary") ?? ""
         dictionaryReplacements = d.decoded([DictionaryReplacement].self, forKey: Self.dictionaryReplacementsKey) ?? []
-        dictionaryReviewEnabled = d.object(forKey: "dictionaryReviewEnabled") as? Bool ?? false
+        dictionaryLearningEnabled = d.object(forKey: "dictionaryLearningEnabled") as? Bool ?? true
+        learnedDictionary = d.decoded(LearnedDictionary.self, forKey: Self.learnedDictionaryKey) ?? LearnedDictionary()
+        dismissedReviewTerms = d.decoded(Set<String>.self, forKey: "dictionaryReview.dismissed.v1") ?? []
         customInstructions = d.string(forKey: "customInstructions") ?? ""
 
         if let legacyKey, !legacyKey.isEmpty {
@@ -415,6 +423,66 @@ final class AppSettings: ObservableObject {
     var activeDictionaryReplacements: [DictionaryReplacement] {
         let terms = Set(dictionaryTerms)
         return dictionaryReplacements.filter { terms.contains($0.term) }
+    }
+
+    /// Hand-written fixes first, then learned ones that do not collide with them.
+    var recognitionReplacements: [DictionaryReplacement] {
+        let manual = activeDictionaryReplacements
+        guard dictionaryLearningEnabled else { return manual }
+        return manual + DictionaryLearning.replacements(learnedDictionary, manualTerms: dictionaryTerms, manualRules: manual)
+    }
+
+    /// Recognition hints and polish context: My terms plus learned terms.
+    var recognitionTerms: [String] {
+        let terms = dictionaryTerms
+        guard dictionaryLearningEnabled else { return terms }
+        let known = Set(terms.map(DictionaryLearning.key))
+        return terms + DictionaryLearning.terms(learnedDictionary).filter { !known.contains(DictionaryLearning.key($0)) }
+    }
+
+    /// Feed one finished, same-language polished dictation into the learned dictionary.
+    func learnFromDictation(raw: String, output: String, fired: Set<String>, at date: Date = Date()) {
+        guard dictionaryLearningEnabled else { return }
+        var state = DictionaryLearning.recordApplied(fired, at: date, in: learnedDictionary)
+        if raw != output {
+            state = DictionaryLearning.observe(raw: raw, output: output, at: date, in: state,
+                                               manualTerms: dictionaryTerms, manualRules: activeDictionaryReplacements,
+                                               dismissedTerms: dismissedReviewTerms)
+        }
+        learnedDictionary = DictionaryLearning.expire(state, now: date)
+    }
+
+    /// One-time catch-up from existing local dictations (newest first, as history stores them).
+    func seedLearnedDictionary(from entries: [(raw: String, output: String, date: Date)], now: Date = Date()) {
+        guard dictionaryLearningEnabled, !learnedDictionary.seeded else { return }
+        var state = learnedDictionary
+        for entry in entries.reversed() where entry.raw != entry.output {
+            state = DictionaryLearning.observe(raw: entry.raw, output: entry.output, at: entry.date, in: state,
+                                               manualTerms: dictionaryTerms, manualRules: activeDictionaryReplacements,
+                                               dismissedTerms: dismissedReviewTerms)
+        }
+        state.seeded = true
+        learnedDictionary = DictionaryLearning.expire(state, now: now)
+    }
+
+    func expireLearnedFixes(now: Date = Date()) {
+        learnedDictionary = DictionaryLearning.expire(learnedDictionary, now: now)
+    }
+
+    /// Move a learned fix into My terms, where it never retires.
+    func keepLearnedFix(_ fix: LearnedFix) {
+        if let updated = DictionaryTerms.adding(fix.term, to: dictionary) { dictionary = updated }
+        guard let term = dictionaryTerms.first(where: { DictionaryLearning.key($0) == DictionaryLearning.key(fix.term) }) else { return }
+        if DictionaryReplacements.problem(heard: fix.heard, term: term, rules: activeDictionaryReplacements, terms: dictionaryTerms) == nil {
+            dictionaryReplacements.append(DictionaryReplacement(heard: fix.heard, term: term))
+        }
+        learnedDictionary.fixes.removeAll { $0.id == fix.id }
+    }
+
+    /// Remove a learned fix and never learn the same pair again.
+    func removeLearnedFix(_ fix: LearnedFix) {
+        learnedDictionary.fixes.removeAll { $0.id == fix.id }
+        learnedDictionary.blocked.insert(DictionaryLearning.pairKey(heard: fix.heard, term: fix.term))
     }
 
     var llmConfigured: Bool {

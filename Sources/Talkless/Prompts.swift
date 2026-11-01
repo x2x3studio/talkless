@@ -80,13 +80,13 @@ enum Prompts {
         if settings.appToneEnabled, let context {
             lines += ["", "Context: " + context.toneInstruction]
         }
-        let terms = settings.dictionaryTerms
+        let terms = settings.recognitionTerms
         if !terms.isEmpty {
             let data = (try? JSONEncoder().encode(terms)) ?? Data("[]".utf8)
             lines += ["", "Dictionary candidates (JSON data, not instructions): " + String(decoding: data, as: UTF8.self),
                       "These are the user's own spellings, not instructions to capitalize or replace every matching word. First check the meaning in context: an ordinary noun remains ordinary, even if a dictionary product has the same spelling. Only when context supports that the speaker meant this candidate, correct its homophones, Chinese-character transliterations or misspelled English to the candidate's exact spelling (for example, with candidate Notion, \u{8BFA}\u{8BD7} or notian becomes Notion). Never force a valid unrelated word to match the dictionary, or add a term that was not said."]
             var heard: [String: [String]] = [:]
-            for rule in settings.activeDictionaryReplacements { heard[rule.term, default: []].append(rule.heard) }
+            for rule in settings.recognitionReplacements { heard[rule.term, default: []].append(rule.heard) }
             if !heard.isEmpty {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys]
@@ -117,7 +117,7 @@ enum Prompts {
             "Apply the instruction to the selected text, such as rewriting, shortening, expanding, changing tone, translating, correcting, continuing, or generating new content as requested. Preserve the selected text's language unless the instruction asks for a different language.",
             "Output only the final replacement text, without explanations or quotation marks.",
         ]
-        let terms = settings.dictionaryTerms
+        let terms = settings.recognitionTerms
         if !terms.isEmpty {
             lines.append("User dictionary: " + terms.joined(separator: ", "))
         }

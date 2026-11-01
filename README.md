@@ -10,7 +10,7 @@ Website: [typeless.x2x3.com](https://typeless.x2x3.com)
 
 - **Dictation:** local speech recognition with live text that stays visible through processing. Hold to talk or tap to toggle, with a quiet, customizable overlay.
 - **Optional AI:** polish dictation, edit selected text by voice, or translate a selection using your own provider.
-- **Personal dictionary:** add preferred spellings and review suggested corrections from local history.
+- **Self-learning dictionary:** learns the words recognition keeps getting wrong from your own dictations, retires fixes that are no longer needed, and lets you add your own.
 - **History and activity:** copy past results and see daily dictation totals.
 - **Simple setup:** a guided first run, English and Simplified Chinese interfaces, and configurable shortcuts.
 

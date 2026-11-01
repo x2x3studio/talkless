@@ -65,7 +65,7 @@ Thinking policy is automatic, not a user-facing switch. The app requests it off 
 
 Only protocol-defined final text reaches processing. Refusals, incomplete/truncated results, tool calls, empty text and reasoning-only output are rejected. Literal markup and code fences in final text are preserved. Polishing additionally checks that source tags, backtick spans and fenced code remain present with their occurrence counts; it does not prove semantic equivalence or preserve every numeric value by validation. Missing configuration or a polishing failure retains the raw transcript. There are no application retries, model substitutions or protocol fallbacks. Voice editing and translation have their own error paths rather than the raw-dictation fallback.
 
-Dictionary review compares local raw/polished history without extra API requests. Only explicitly accepted terms become dictionary hints; review candidates are not automatically applied. See the [user guide](user-guide.md).
+The dictionary learns from local raw/polished pairs without extra API requests: a spelling fix that polish makes repeatedly takes effect automatically and retires after 30 days without use. Learned and hand-written entries are both sent as dictionary context. See the [user guide](user-guide.md#personal-dictionary).
 
 ## Validation
 

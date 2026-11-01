@@ -1,6 +1,4 @@
 import AppKit
-import Combine
-import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -53,13 +51,6 @@ struct DictionaryTests {
         func settings(_ d: DictionaryMemoryDefaults) -> AppSettings {
             AppSettings(defaults: d, credentialStore: DictionaryMemoryCredentials())
         }
-        func settled(_ store: DictionaryReviewStore) async {
-            for _ in 0..<400 {
-                if !store.isScanning { return }
-                try? await Task.sleep(for: .milliseconds(5))
-            }
-            fatalError("Scan did not settle")
-        }
 
         check(extraction("Please open Talkles for this meeting.", "Please open Talkless for this meeting.").map(\.term) == ["Talkless"], "Latin spelling correction")
         check(extraction("Talkles", "Talkless").map(\.term) == ["Talkless"], "standalone spelling")
@@ -106,38 +97,11 @@ struct DictionaryTests {
         check(extraction("We want to use the red car", "We want to use the blue car").isEmpty, "unrelated vocabulary change excluded")
         check(extraction("\u{6211}\u{4EEC}\u{4ECA}\u{5929}\u{4E0B}\u{5348}\u{5F00}\u{4F1A}", "We will have a meeting this afternoon").isEmpty, "cross-script translation excluded")
         check(extraction("We use \u{98DE}\u{4E66} for this meeting", "We use Feishu for this meeting").isEmpty, "isolated translated name excluded")
-        check(DictionaryCorrectionExtractor.extract(from: entry(kind: .edit)).isEmpty, "voice edits never mined")
-        check(DictionaryCorrectionExtractor.extract(from: entry(kind: .translation)).isEmpty, "translations never mined")
         check(extraction(String(repeating: "a", count: 2_000), "Talkless").isEmpty, "oversize strings rejected")
         check(extraction(String(repeating: "word ", count: 170) + "Talkles", String(repeating: "word ", count: 170) + "Talkless").isEmpty, "token alignment cap")
         let long = extraction(String(repeating: "x", count: 80) + " please use Talkles for this", String(repeating: "x", count: 80) + " please use Talkless for this")
         check(long.first?.sourceSnippet.hasPrefix("…") == true, "snippets bounded around change")
         check(long.first?.sourceSnippet.contains("Talkles") == true, "snippet includes original spelling")
-
-        let repeated = entry("Talkles is open and Talkles works well", "Talkless is open and Talkless works well")
-        let second = entry()
-        let scanned = DictionaryReviewScanner.scan([repeated, repeated, second, entry(kind: .edit)])
-        check(scanned.count == 1, "repeated spelling grouped")
-        check(scanned.first?.occurrenceCount == 2, "occurrences count distinct dictation IDs only")
-        let caseEntries = [entry("Talkles", "TALKLESS"), entry("Talkles", "Talkless"), entry("talkles", "talkless")]
-        let caseRepeated = entry("Talkles is open and talkles works well", "Talkless is open and TALKLESS works well")
-        let caseScanned = DictionaryReviewScanner.scan(caseEntries + [caseRepeated, caseRepeated])
-        check(caseScanned.count == 1, "case variants share one review suggestion")
-        check(caseScanned.first?.occurrenceCount == 4, "case variants count distinct entries, not repeated mentions")
-        check(caseScanned.first?.term == "TALKLESS" && caseScanned.first?.evidenceEntryID == caseEntries[0].id,
-              "newest evidence retains its original display spelling")
-        check(caseScanned.first?.correction.outputSnippet == "TALKLESS", "newest snippet is not normalized")
-        check(DictionaryReviewScanner.scan(caseEntries, excluding: [DictionaryTerms.reviewKey("Talkless")]).isEmpty,
-              "normalized exclusion suppresses every case variant")
-        check(DictionaryReviewScanner.scan([entry("Use open ai for this task", "Use OpenAI for this task"), entry("Use open ai for this task", "Use OPENAI for this task")]).count == 1, "multiword case variants share a review decision")
-        check(DictionaryReviewScanner.scan([entry("talkless", "TALKLESS"), entry("Please check user_id in this file", "Please check user_ID in this file")]).isEmpty,
-              "case-only history never yields candidates")
-        let cappedHistory = Array(repeating: entry("unchanged", "unchanged"), count: 500) + [entry()]
-        check(DictionaryReviewScanner.scan(cappedHistory).isEmpty, "only recent 500 inspected")
-        let many = (0..<140).map { entry("Please use Project\($0)x for the event", "Please use Project\($0)y for the event") }
-        check(DictionaryReviewScanner.scan(many).count == 100, "review candidates capped")
-        let exclusions = Set((0..<100).map { DictionaryTerms.reviewKey("Project\($0)y") })
-        check(DictionaryReviewScanner.scan(many, excluding: exclusions).count == 40, "excluded spellings cannot starve later candidates")
 
         let rawDictionary = "  OpenAI \r\n\tTalkless\t\nOpenAI\n\nopenAI\r\u{98DE}\u{4E66}\u{2028}My  Project\n"
         check(DictionaryTerms.terms(in: rawDictionary) == ["OpenAI", "Talkless", "openAI", "\u{98DE}\u{4E66}", "My  Project"], "legacy terms preserved with case and spacing")
@@ -168,256 +132,103 @@ struct DictionaryTests {
         let defaults = DictionaryMemoryDefaults()
         defaults.set(rawDictionary, forKey: "dictionary")
         let app = settings(defaults)
-        check(!app.dictionaryReviewEnabled, "automatic mining off by default")
         check(app.dictionary == rawDictionary, "legacy storage loaded unchanged")
-        let store = DictionaryReviewStore(settings: app, defaults: defaults)
-        let history = CurrentValueSubject<[HistoryEntry], Never>([entry()])
-        store.observeHistory(history.eraseToAnyPublisher())
-        check(!store.hasScanned && store.candidates.isEmpty && !store.isScanning, "observing history does not mine before opt-in")
-        store.scanHistory()
-        await settled(store)
-        check(store.hasScanned && store.candidates.isEmpty, "explicit scan excludes already-confirmed terms")
-        check(store.pendingCandidates.isEmpty, "confirmed spelling excluded from review")
-        check(!app.dictionaryReviewEnabled, "manual scan does not opt in")
-        app.dictionary = "ExistingTerm"
-        await settled(store)
-        check(store.pendingCandidates.count == 1, "unconfirmed spelling remains available")
-        let candidate = store.pendingCandidates[0]
-        check(defaults.data(forKey: DictionaryReviewStore.dismissalStorageKey) == nil, "scan does not persist text or decisions")
-        check(store.accept(candidate), "accept confirms candidate")
-        check(app.dictionary == "ExistingTerm\nTalkless", "only accepted output spelling appended")
-        check(!store.accept(candidate), "repeat accept is idempotent")
-        check(history.value.count == 1 && history.value[0].raw.contains("Talkles"), "accept never mutates history")
-        app.dictionary = DictionaryTerms.replacing("Talkless", with: nil, in: app.dictionary)!
-        check(store.pendingCandidates.count == 1, "dictionary deletion does not erase evidence")
-        store.dismiss(candidate)
-        check(store.pendingCandidates.isEmpty && store.dismissedCount == 1, "dismiss hides candidate")
-        let savedDismissals = defaults.data(forKey: DictionaryReviewStore.dismissalStorageKey)!
-        check(!String(decoding: savedDismissals, as: UTF8.self).contains("Talkless"), "dismissal persistence uses digest not transcript")
-        let restarted = DictionaryReviewStore(settings: settings(defaults), defaults: defaults)
-        restarted.observeHistory(history.eraseToAnyPublisher())
-        restarted.scanHistory()
-        await settled(restarted)
-        check(restarted.pendingCandidates.isEmpty && restarted.dismissedCount == 1, "dismissal survives restart")
-        restarted.resetDismissals()
-        await settled(restarted)
-        check(restarted.pendingCandidates.count == 1, "only explicit reset restores dismissal")
-
-        let caseDefaults = DictionaryMemoryDefaults()
-        let caseSettings = settings(caseDefaults)
-        let caseStore = DictionaryReviewStore(settings: caseSettings, defaults: caseDefaults)
-        let caseHistory = CurrentValueSubject<[HistoryEntry], Never>(caseEntries)
-        caseStore.observeHistory(caseHistory.eraseToAnyPublisher())
-        caseStore.scanHistory()
-        await settled(caseStore)
-        let chosenCase = caseStore.pendingCandidates[0]
-        for spelling in ["Talkless", "talkless", "TALKLESS", "tAlKlEsS"] {
-            caseSettings.dictionary = spelling
-            check(!caseStore.accept(chosenCase), "accept cannot add a case-variant duplicate: \(spelling)")
-            await settled(caseStore)
-            check(caseStore.pendingCandidates.isEmpty, "confirmed term suppresses all review cases: \(spelling)")
-            check(caseSettings.dictionaryTerms == [spelling], "recognition hints retain confirmed spelling: \(spelling)")
-        }
-        caseSettings.dictionary = "ExistingTerm"
-        await settled(caseStore)
-        check(caseStore.accept(caseStore.pendingCandidates[0]), "case-aggregated candidate accepts")
-        check(caseSettings.dictionary == "ExistingTerm\nTALKLESS", "accept saves chosen original uppercase spelling without normalization")
-        await settled(caseStore)
-        caseStore.scanHistory()
-        await settled(caseStore)
-        check(caseStore.pendingCandidates.isEmpty, "accepted case variants stay suppressed after rescan")
-        caseSettings.dictionary = ""
-        await settled(caseStore)
-        caseStore.dismiss(caseStore.pendingCandidates[0])
-        await settled(caseStore)
-        caseHistory.send([entry("talkles", "talkless")])
-        caseStore.scanHistory()
-        await settled(caseStore)
-        check(caseStore.pendingCandidates.isEmpty && caseStore.dismissedCount == 1, "dismissal covers a differently cased future rescan")
-        let caseRestarted = DictionaryReviewStore(settings: settings(caseDefaults), defaults: caseDefaults)
-        caseRestarted.observeHistory(caseHistory.eraseToAnyPublisher())
-        caseRestarted.scanHistory()
-        await settled(caseRestarted)
-        check(caseRestarted.pendingCandidates.isEmpty, "case-insensitive dismissal survives restart")
-        caseRestarted.resetDismissals()
-        await settled(caseRestarted)
-        check(caseRestarted.pendingCandidates.first?.term == "talkless", "reset restores newest original case")
-        caseHistory.send([entry("talkless", "TALKLESS")])
-        caseRestarted.scanHistory()
-        await settled(caseRestarted)
-        check(caseRestarted.pendingCandidates.isEmpty, "case-only rescan stays empty after reset")
-
-        func legacyKey(_ term: String) -> String {
-            let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
-            return SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
-        }
-        let legacyDefaults = DictionaryMemoryDefaults()
-        let legacyDismissed: Set<String> = [legacyKey("TaLkLeSs"), legacyKey("Talkless"), legacyKey("UnseenTerm")]
-        let legacyData = try JSONEncoder().encode(legacyDismissed)
-        legacyDefaults.set(legacyData, forKey: DictionaryReviewStore.dismissalStorageKey)
-        let legacySettings = settings(legacyDefaults)
-        let legacyStore = DictionaryReviewStore(settings: legacySettings, defaults: legacyDefaults)
-        let legacyHistory = CurrentValueSubject<[HistoryEntry], Never>([entry("talkles", "talkless"), entry("Talkles", "TaLkLeSs")] + many)
-        legacyStore.observeHistory(legacyHistory.eraseToAnyPublisher())
-        check(legacyDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey) == legacyData,
-              "legacy decisions are not mined before authorized scan")
-        legacyStore.scanHistory()
-        await settled(legacyStore)
-        check(legacyStore.pendingCandidates.count == 100 && !legacyStore.pendingCandidates.contains(where: { $0.id == DictionaryTerms.reviewKey("Talkless") }),
-              "older observed mixed-case dismissal suppresses newer variants without starving candidate slots")
-        let migrated = try JSONDecoder().decode(Set<String>.self, from: legacyDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey)!)
-        check(migrated == [DictionaryTerms.reviewKey("Talkless"), legacyKey("UnseenTerm")], "observed legacy case decisions merge and unknown digests survive")
-        check(legacyStore.dismissedCount == 2, "migration counts merged review identities")
-        legacyHistory.send([entry("Talkles", "TALKLESS")])
-        let legacyRestarted = DictionaryReviewStore(settings: settings(legacyDefaults), defaults: legacyDefaults)
-        legacyRestarted.observeHistory(legacyHistory.eraseToAnyPublisher())
-        legacyRestarted.scanHistory()
-        await settled(legacyRestarted)
-        check(legacyRestarted.pendingCandidates.isEmpty, "migrated decision survives original evidence removal and restart")
-        legacyRestarted.resetDismissals()
-        await settled(legacyRestarted)
-        check(legacyRestarted.pendingCandidates.first?.term == "TALKLESS", "reset clears migrated and unknown legacy decisions")
-        let sameEntryLegacy = DictionaryReviewScanner.scanWithDismissals([
-            entry("Talkles is open and talkles works well", "Talkless is open and TaLkLeSs works well")
-        ], excluding: [], dismissed: [legacyKey("TaLkLeSs")])
-        check(sameEntryLegacy.candidates.isEmpty && sameEntryLegacy.dismissed == [DictionaryTerms.reviewKey("Talkless")],
-              "legacy migration checks every distinct case spelling within one entry")
-        let commonLegacy = DictionaryReviewScanner.scanWithDismissals([entry("talkles", "talkless")], excluding: [], dismissed: [legacyKey("Talkless")])
-        check(commonLegacy.candidates.isEmpty && commonLegacy.dismissed == [DictionaryTerms.reviewKey("Talkless")],
-              "legacy common case variant migrates even without original evidence")
-
-        let caseOnlyLegacy = DictionaryReviewScanner.scanWithDismissals([
-            entry("Use open ai for this task", "Use OPENAI for this task"),
-            entry("Use openai for this task", "Use OpenAI for this task")
-        ], excluding: [], dismissed: [legacyKey("OpenAI")])
-        check(caseOnlyLegacy.candidates.isEmpty && caseOnlyLegacy.dismissed == [DictionaryTerms.reviewKey("OpenAI")],
-              "legacy case-only evidence recovers mixed-case digest before new candidate aggregation")
-        let legacyEvidenceOnly = DictionaryReviewScanner.scanWithDismissals([
-            entry("Use openai for this task", "Use OpenAI for this task")
-        ], excluding: [], dismissed: [legacyKey("Unrelated")])
-        check(legacyEvidenceOnly.candidates.isEmpty && legacyEvidenceOnly.dismissed == [legacyKey("Unrelated")],
-              "migration-only case evidence never becomes a new suggestion or decision")
-
-        let resetDefaults = DictionaryMemoryDefaults()
-        let resetStore = DictionaryReviewStore(settings: settings(resetDefaults), defaults: resetDefaults)
-        let resetHistory = CurrentValueSubject<[HistoryEntry], Never>([
-            entry(), entry("Please use OtherTrem for this meeting", "Please use OtherTerm for this meeting")
-        ])
-        resetStore.observeHistory(resetHistory.eraseToAnyPublisher())
-        resetStore.scanHistory()
-        await settled(resetStore)
-        resetStore.dismiss(resetStore.pendingCandidates.first(where: { $0.term == "Talkless" })!)
-        await settled(resetStore)
-        check(resetStore.pendingCandidates.map(\.term) == ["OtherTerm"], "undismissed evidence remains before history clear")
-        resetHistory.send([])
-        check(resetStore.isScanning, "empty history schedules an authorized pruning scan")
-        resetStore.resetDismissals()
-        await settled(resetStore)
-        check(resetStore.dismissedCount == 0, "empty-history scan cannot restore reset dismissals")
-        check(resetStore.candidates.isEmpty && resetStore.pendingCandidates.isEmpty && resetStore.lastScanEntryCount == 0,
-              "reset replaces empty pruning scan without retaining undismissed deleted evidence")
-        let resetPersisted = try JSONDecoder().decode(Set<String>.self, from: resetDefaults.data(forKey: DictionaryReviewStore.dismissalStorageKey)!)
-        check(resetPersisted.isEmpty, "reset persistence survives cancelled migration")
-        resetHistory.send([entry()])
-        resetStore.scanHistory()
-        await settled(resetStore)
-        check(resetStore.pendingCandidates.count == 1, "reset suggestion can reappear on a later explicit scan")
-
-        let unicodeDefaults = DictionaryMemoryDefaults()
-        let unicodeSettings = settings(unicodeDefaults)
-        let unicodeStore = DictionaryReviewStore(settings: unicodeSettings, defaults: unicodeDefaults)
-        let unicodeHistory = CurrentValueSubject<[HistoryEntry], Never>([
-            entry("Please visit Cafe tomorrow morning", "Please visit Cafe\u{301} tomorrow morning"),
-            entry("Please visit CAFE tomorrow morning", "Please visit CAF\u{c9} tomorrow morning")
-        ])
-        unicodeStore.observeHistory(unicodeHistory.eraseToAnyPublisher())
-        unicodeStore.scanHistory()
-        await settled(unicodeStore)
-        check(unicodeStore.pendingCandidates.count == 1 && unicodeStore.pendingCandidates.first?.occurrenceCount == 2,
-              "Unicode canonical and case variants aggregate")
-        check(unicodeStore.accept(unicodeStore.pendingCandidates[0]), "Unicode suggestion accepts")
-        check(Array(unicodeSettings.dictionary.utf8) == Array("Cafe\u{301}".utf8), "accept preserves original decomposed Unicode bytes")
-        await settled(unicodeStore)
-        unicodeSettings.dictionary = "CAF\u{c9}"
-        await settled(unicodeStore)
-        check(unicodeStore.pendingCandidates.isEmpty, "confirmed composed uppercase spelling suppresses decomposed suggestion")
-        unicodeSettings.dictionary = ""
-        await settled(unicodeStore)
-        unicodeStore.dismiss(unicodeStore.pendingCandidates[0])
-        await settled(unicodeStore)
-        unicodeHistory.send([entry("Please visit CAFE tomorrow morning", "Please visit CAF\u{c9} tomorrow morning")])
-        unicodeStore.scanHistory()
-        await settled(unicodeStore)
-        check(unicodeStore.pendingCandidates.isEmpty, "Unicode dismissal suppresses differently composed and cased rescan")
-
-        let hanDefaults = DictionaryMemoryDefaults()
-        let hanSettings = settings(hanDefaults)
-        let hanStore = DictionaryReviewStore(settings: hanSettings, defaults: hanDefaults)
-        let hanHistory = CurrentValueSubject<[HistoryEntry], Never>([entry(hanRaw, hanOutput)])
-        hanStore.observeHistory(hanHistory.eraseToAnyPublisher())
-        hanStore.scanHistory()
-        await settled(hanStore)
-        check(hanStore.accept(hanStore.pendingCandidates[0]), "Han candidate accepts unchanged")
-        check(hanSettings.dictionary == "\u{98DE}\u{4E66}", "Han dictionary spelling preserved")
-        await settled(hanStore)
-        check(hanStore.pendingCandidates.isEmpty, "confirmed Han spelling excluded")
-        hanSettings.dictionary = ""
-        await settled(hanStore)
-        hanStore.dismiss(hanStore.pendingCandidates[0])
-        await settled(hanStore)
-        hanStore.scanHistory()
-        await settled(hanStore)
-        check(hanStore.pendingCandidates.isEmpty, "Han dismissal survives rescan")
-
-        let newEntry = entry("Please use NewTrem for this meeting", "Please use NewTerm for this meeting")
-        history.send([newEntry] + history.value)
-        await settled(store)
-        check(store.candidates.isEmpty, "one-time scan does not mine new history or dismissed terms")
-        app.dictionaryReviewEnabled = true
-        await settled(store)
-        check(store.candidates.count == 1, "opt-in scans existing local entries")
-        check(settings(defaults).dictionaryReviewEnabled, "opt-in persists")
-        check(app.dictionary == "ExistingTerm\n", "automatic scans never confirm terms")
-        let newer = entry("Please use OtherTrem for this meeting", "Please use OtherTerm for this meeting")
-        history.send([newer] + history.value)
-        await settled(store)
-        check(store.candidates.count == 2, "automatic mining observes future history")
-        app.dictionaryReviewEnabled = false
-        history.send([])
-        await settled(store)
-        check(store.candidates.isEmpty, "history clear removes cached evidence even after opting out")
-        check(store.dismissedCount == 1, "history clear does not reset dismissal")
-        check(app.dictionary == "ExistingTerm\n", "history clear does not erase confirmed terms")
-        let autoDefaults = DictionaryMemoryDefaults()
-        let autoSettings = settings(autoDefaults)
-        let automatic = DictionaryReviewStore(settings: autoSettings, defaults: autoDefaults)
-        let autoHistory = CurrentValueSubject<[HistoryEntry], Never>([entry()])
-        automatic.observeHistory(autoHistory.eraseToAnyPublisher())
-        autoSettings.dictionaryReviewEnabled = true
-        autoSettings.dictionaryReviewEnabled = false
-        autoHistory.send([newer])
-        check(!automatic.isScanning, "opt-out cancels automatic scan without authorizing manual rescan")
-        await settled(automatic)
-        check(automatic.candidates.isEmpty, "cancelled automatic results are not applied")
-
-        let capDefaults = DictionaryMemoryDefaults()
-        let capSettings = settings(capDefaults)
-        let capStore = DictionaryReviewStore(settings: capSettings, defaults: capDefaults)
-        let capHistory = CurrentValueSubject<[HistoryEntry], Never>(many)
-        capStore.observeHistory(capHistory.eraseToAnyPublisher())
-        capStore.scanHistory()
-        await settled(capStore)
-        let capFirst = capStore.pendingCandidates[0]
-        capStore.dismiss(capFirst)
-        await settled(capStore)
-        check(capStore.pendingCandidates.count == 100, "dismissal refills candidate slots")
-        check(capStore.accept(capStore.pendingCandidates[0]), "capped candidate can be accepted")
-        await settled(capStore)
-        check(capStore.pendingCandidates.count == 100, "acceptance refills candidate slots")
-        defaults.set(Data("malformed".utf8), forKey: DictionaryReviewStore.dismissalStorageKey)
-        check(DictionaryReviewStore(settings: app, defaults: defaults).dismissedCount == 0, "invalid local dismissal data handled safely")
         let roundTrip = try JSONDecoder().decode(HistoryEntry.self, from: JSONEncoder().encode(entry()))
         check(roundTrip.kind == .dictation, "history schema remains compatible")
+
+        // Self-learning dictionary.
+        let day: TimeInterval = 24 * 60 * 60
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let learnDefaults = DictionaryMemoryDefaults()
+        let learner = settings(learnDefaults)
+        check(learner.dictionaryLearningEnabled, "learning is on by default")
+        learner.learnFromDictation(raw: "Please open Talkles now.", output: "Please open Talkless now.", fired: [], at: start)
+        check(learner.learnedDictionary.fixes.count == 1 && !learner.learnedDictionary.fixes[0].active, "one sighting is only watched")
+        check(learner.recognitionReplacements.isEmpty && learner.recognitionTerms.isEmpty, "watched fixes do not apply")
+        learner.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + 60)
+        check(learner.learnedDictionary.fixes.first?.active == true, "a repeated correction takes effect automatically")
+        check(learner.recognitionReplacements == [DictionaryReplacement(heard: "Talkles", term: "Talkless")], "learned fix applies before polish")
+        check(learner.recognitionTerms == ["Talkless"], "learned term becomes a recognition and polish hint")
+        check(settings(learnDefaults).learnedDictionary == learner.learnedDictionary, "learned fixes persist across launches")
+        check(learner.dictionaryTerms.isEmpty, "learning never edits the user's own terms")
+
+        let tracked = DictionaryReplacements.applyTracking(learner.recognitionReplacements, to: "open talkles and Talkless")
+        check(tracked.text == "open Talkless and Talkless" && tracked.fired == [DictionaryLearning.key("Talkles")], "applied fixes are reported")
+        learner.learnFromDictation(raw: tracked.text, output: tracked.text, fired: tracked.fired, at: start + 20 * day)
+        check(learner.learnedDictionary.fixes[0].applied == 1 && learner.learnedDictionary.fixes[0].lastSeen == start + 20 * day,
+              "a fix that is still needed stays fresh")
+        learner.expireLearnedFixes(now: start + 49 * day)
+        check(learner.learnedDictionary.fixes.count == 1, "a fix used within 30 days stays")
+        learner.expireLearnedFixes(now: start + 51 * day)
+        check(learner.learnedDictionary.fixes.isEmpty, "a fix unused for 30 days retires on its own")
+
+        let han2 = "\u{75DB}\u{4E8B}", hanFixed = "\u{540C}\u{4E8B}"
+        check(DictionaryLearning.threshold(for: han2) == 3 && DictionaryLearning.threshold(for: "Talkles") == 2,
+              "two-character Chinese needs more evidence")
+        var hanState = LearnedDictionary()
+        for minute in 0..<2 {
+            hanState = DictionaryLearning.observe(raw: "\u{65B0}\u{6765}\u{7684}\(han2)\u{5F88}\u{597D}", output: "\u{65B0}\u{6765}\u{7684}\(hanFixed)\u{5F88}\u{597D}",
+                                                  at: start + Double(minute), in: hanState, manualTerms: [], manualRules: [])
+        }
+        check(hanState.fixes.allSatisfy { !$0.active }, "two sightings of a two-character Chinese fix are not enough")
+
+        let manualState = DictionaryLearning.observe(raw: "Talkles works.", output: "Talkless works.", at: start, in: LearnedDictionary(),
+                                                     manualTerms: ["Talkles"], manualRules: [])
+        check(manualState.fixes.isEmpty, "a spelling in My terms is never learned as a mistake")
+        var conflict = LearnedDictionary()
+        conflict = DictionaryLearning.observe(raw: "Use Notian here.", output: "Use Notion here.", at: start, in: conflict, manualTerms: [], manualRules: [])
+        conflict = DictionaryLearning.observe(raw: "Use Notian here.", output: "Use Nation here.", at: start + 1, in: conflict, manualTerms: [], manualRules: [])
+        check(conflict.fixes.count == 1 && conflict.fixes[0].term == "Nation" && conflict.fixes[0].observations == 1,
+              "conflicting corrections start over instead of guessing")
+        let protectedReplacements = DictionaryLearning.replacements(
+            LearnedDictionary(fixes: [LearnedFix(heard: "talk less", term: "TalkLess", firstSeen: start, lastSeen: start, observations: 2, active: true)]),
+            manualTerms: ["Talkless"], manualRules: [DictionaryReplacement(heard: "talk less", term: "Talkless")])
+        check(protectedReplacements.isEmpty, "hand-written fixes win over learned ones")
+
+        let undoDefaults = DictionaryMemoryDefaults()
+        let undo = settings(undoDefaults)
+        undo.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start)
+        undo.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + 1)
+        undo.learnFromDictation(raw: "Talkless works.", output: "Talkles works.", fired: [], at: start + 2)
+        check(!undo.learnedDictionary.fixes.contains { $0.active }, "polish reverting a learned fix retires it")
+
+        let removeDefaults = DictionaryMemoryDefaults()
+        let remover = settings(removeDefaults)
+        for second in 0..<2 { remover.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + Double(second)) }
+        remover.removeLearnedFix(remover.learnedDictionary.fixes[0])
+        for second in 2..<5 { remover.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + Double(second)) }
+        check(remover.learnedDictionary.fixes.isEmpty, "a removed fix is never learned again")
+
+        let keepDefaults = DictionaryMemoryDefaults()
+        let keeper = settings(keepDefaults)
+        for second in 0..<2 { keeper.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + Double(second)) }
+        keeper.keepLearnedFix(keeper.learnedDictionary.fixes[0])
+        check(keeper.dictionaryTerms == ["Talkless"] && keeper.activeDictionaryReplacements == [DictionaryReplacement(heard: "Talkles", term: "Talkless")]
+              && keeper.learnedDictionary.fixes.isEmpty, "keeping a fix moves it to the user's own entries")
+
+        let offDefaults = DictionaryMemoryDefaults()
+        let off = settings(offDefaults)
+        for second in 0..<2 { off.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + Double(second)) }
+        off.dictionaryLearningEnabled = false
+        check(off.recognitionReplacements.isEmpty && off.recognitionTerms.isEmpty, "turning learning off stops learned fixes")
+        off.learnFromDictation(raw: "Use Notian here.", output: "Use Notion here.", fired: [], at: start + 3)
+        check(off.learnedDictionary.fixes.count == 1, "nothing is learned while off")
+
+        let seedDefaults = DictionaryMemoryDefaults()
+        let seeder = settings(seedDefaults)
+        let now = Date()
+        let samples = [("Talkles works.", "Talkless works.", now - 60), ("Open Talkles.", "Open Talkless.", now - 120)]
+        seeder.seedLearnedDictionary(from: samples.map { (raw: $0.0, output: $0.1, date: $0.2) }, now: now)
+        check(seeder.learnedDictionary.seeded && seeder.learnedDictionary.fixes.first?.active == true, "existing history seeds learning once")
+        seeder.removeLearnedFix(seeder.learnedDictionary.fixes[0])
+        seeder.seedLearnedDictionary(from: samples.map { (raw: $0.0, output: $0.1, date: $0.2) }, now: now)
+        check(seeder.learnedDictionary.fixes.isEmpty, "seeding never runs twice")
+
+        let legacyDefaults = DictionaryMemoryDefaults()
+        legacyDefaults.set(try JSONEncoder().encode(Set([DictionaryTerms.reviewKey("Talkless")])), forKey: "dictionaryReview.dismissed.v1")
+        let legacy = settings(legacyDefaults)
+        for second in 0..<3 { legacy.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + Double(second)) }
+        check(legacy.learnedDictionary.fixes.isEmpty, "spellings dismissed in the old Review list are never learned")
 
         // Explicit "heard as" fixes.
         func fix(_ text: String, _ rules: [(String, String)]) -> String {
@@ -491,19 +302,13 @@ struct DictionaryTests {
         settings.dictionary = "Talkless\nOpenAI\nuser_ID\nMy  Project\n\u{98DE}\u{4E66}"
         settings.dictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless"),
                                            DictionaryReplacement(heard: "\u{6258}\u{514B}\u{52D2}\u{65AF}", term: "Talkless")]
-        let review = DictionaryReviewStore(settings: settings, defaults: defaults)
-        let history = CurrentValueSubject<[HistoryEntry], Never>([
-            HistoryEntry(kind: .dictation, app: "Synthetic Notes", raw: "Please open Notian before our meeting.",
-                         output: "Please open Notion before our meeting.", duration: 3),
-            HistoryEntry(kind: .dictation, app: "Synthetic Notes", raw: "\u{4ECA}\u{5929}\u{8BA8}\u{8BBA}\u{6DF1}\u{6E21}\u{5B66}\u{4E60}\u{7684}\u{6A21}\u{578B}",
-                         output: "\u{4ECA}\u{5929}\u{8BA8}\u{8BBA}\u{6DF1}\u{5EA6}\u{5B66}\u{4E60}\u{7684}\u{6A21}\u{578B}", duration: 3)
-        ])
-        review.observeHistory(history.eraseToAnyPublisher())
-        review.scanHistory()
-        while review.isScanning { try await Task.sleep(for: .milliseconds(10)) }
+        for second in 0..<2 {
+            settings.learnFromDictation(raw: "Please open Notian before our meeting.", output: "Please open Notion before our meeting.",
+                                        fired: [], at: Date() - Double(second))
+        }
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
-        let view = NSHostingView(rootView: DictionaryView(settings: settings, review: review).padding(28)
+        let view = NSHostingView(rootView: DictionaryView(settings: settings).padding(28)
             .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .light))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 650, height: 570),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -520,28 +325,7 @@ struct DictionaryTests {
             guard let data = image.representation(using: .png, properties: [:]) else { fatalError("No PNG data") }
             try data.write(to: directory.appendingPathComponent(name))
         }
-        try save("dictionary-terms.png")
-        func findReview(_ element: Any) -> (any NSAccessibilityProtocol)? {
-            guard let accessible = element as? any NSAccessibilityProtocol else { return nil }
-            let label = accessible.accessibilityLabel() ?? accessible.accessibilityTitle() ?? ""
-            if label.hasPrefix("Review (") { return accessible }
-            for child in accessible.accessibilityChildren() ?? [] {
-                if let found = findReview(child) { return found }
-            }
-            return nil
-        }
-        func segment(in parent: NSView) -> NSSegmentedControl? {
-            if let control = parent as? NSSegmentedControl { return control }
-            return parent.subviews.compactMap { segment(in: $0) }.first
-        }
-        if let button = findReview(view), button.accessibilityPerformPress() {
-            // SwiftUI exposes the native tab as an accessibility action on newer systems.
-        } else if let control = segment(in: view) {
-            control.selectedSegment = 1
-            control.sendAction(control.action, to: control.target)
-        } else { fatalError("Review tab unavailable") }
-        try await Task.sleep(for: .milliseconds(150))
-        try save("dictionary-review.png")
+        try save("dictionary.png")
         print("Dictionary screenshots saved to \(directory.path)")
         window.orderOut(nil)
     }
