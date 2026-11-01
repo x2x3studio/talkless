@@ -1,6 +1,6 @@
 # AI service and polishing
 
-Speech recognition and AI processing are separate: local Qwen3 ASR or Apple recognition does not need an AI service. Optional polishing sends the recognized text to your configured provider; cloud speech recognition also sends audio to its separately configured service. Talkless uses native HTTP requests, not Claude Code or another CLI.
+Speech recognition and AI processing are separate: local Qwen3 ASR does not need an AI service. Optional polishing sends the recognized text to your configured provider; Doubao online speech recognition streams audio to its separately configured service. Talkless uses native HTTP requests, not Claude Code or another CLI.
 
 ## Configuration
 
@@ -57,9 +57,9 @@ Both the model label and response are screened before display or copying. Known 
 
 ## Credentials, transport and response handling
 
-Polishing keys use macOS Keychain. Legacy plaintext polishing keys are removed only after successful migration; failed saves keep a key available for the current session, preserve any prior saved key and display an error. No new polishing keys are written to UserDefaults. The separate cloud-ASR key still uses plaintext UserDefaults. Non-secret settings and dictionary terms also use UserDefaults; history and managed model files use Application Support.
+Polishing keys use macOS Keychain. Legacy plaintext polishing keys are removed only after successful migration; failed saves keep a key available for the current session, preserve any prior saved key and display an error. No new polishing keys are written to UserDefaults. The dedicated Doubao Speech key also uses Keychain; it never reuses a retired provider key. Non-secret settings and dictionary terms also use UserDefaults; history and managed model files use Application Support.
 
-Generation/discovery use ephemeral sessions with cookies, URL caching and shared credential storage disabled. Responses requests include `store: false`; this is a request parameter, not a promise about a provider's retention policy. Generation, discovery and cloud-ASR requests use `User-Agent: Talkless/<CFBundleShortVersionString>`; development executables without a valid version use `Talkless/0.1.0`. Generation shares one session so connections can be reused. When a recording will be polished or edited, Talkless sends a credential-free `HEAD /` to the provider's origin as recording starts, only to open the connection early; it carries no text, key or model and its response is ignored. Localhost services are not preconnected.
+Generation/discovery use ephemeral sessions with cookies, URL caching and shared credential storage disabled. Responses requests include `store: false`; this is a request parameter, not a promise about a provider's retention policy. Generation and discovery requests use `User-Agent: Talkless/<CFBundleShortVersionString>`; development executables without a valid version use `Talkless/0.1.0`. Generation shares one session so connections can be reused. When a recording will be polished or edited, Talkless sends a credential-free `HEAD /` to the provider's origin as recording starts, only to open the connection early; it carries no text, key or model and its response is ignored. Localhost services are not preconnected.
 
 Thinking policy is automatic, not a user-facing switch. The app requests it off only for exact endpoint/model combinations supported by the client; otherwise it omits thinking parameters. It does not guarantee that a chosen model runs without reasoning.
 

@@ -544,7 +544,7 @@ final class Diagnostics: @unchecked Sendable {
     static func preconnect(baseURL: String, apiProtocol: String) { preconnects.append(baseURL) }
 }
 @MainActor final class FakeSettings {
-    enum Engine: String, CaseIterable { case qwen, apple, openAICompatible }
+    enum Engine: String, CaseIterable { case qwen, doubao }
     var asrEngine: Engine = .qwen
     var audioInputDeviceUID: String?
     var polishEnabled = true
@@ -558,10 +558,7 @@ final class Diagnostics: @unchecked Sendable {
     var voiceEditEnabled = false
     var llmConfigured = true
     var activeDictionaryReplacements: [DictionaryReplacement] = []
-    var speechLocale = "en-US"
-    var asrAPIKey = "synthetic-not-sent"
-    var asrBaseURL = "https://unused.invalid"
-    var asrModel = "synthetic"
+    var doubaoConfig = "synthetic-config"
     func resolvedQwenModelDirectory() throws -> URL { URL(fileURLWithPath: "/synthetic/model") }
 }
 struct AppContext { let name: String; let bundleID: String }
@@ -605,14 +602,10 @@ enum AVCaptureDevice {
         super.init(); terms = contextualStrings; self.onStatus = onStatus; self.onError = onError
     }
 }
-@MainActor final class AppleSpeechSession: FakeSession {
-    init(locale: Locale, contextualStrings: [String], onStatus: @escaping (String) -> Void) {
-        super.init(); terms = contextualStrings; self.onStatus = onStatus
+@MainActor final class DoubaoTranscriptionSession: FakeSession {
+    init(config: String, onError: @escaping (String) -> Void) throws {
+        super.init(); self.onError = onError
     }
-}
-@MainActor final class CloudTranscriptionSession: FakeSession {
-    struct Config { let baseURL: String; let apiKey: String; let model: String; let language: String?; let prompt: String? }
-    init(config: Config) { super.init(); prompt = config.prompt }
 }
 @MainActor final class FakeRecorder {
     static let sampleRate = 16_000.0
@@ -758,12 +751,8 @@ STARTUP_TESTS = r'''
             let old = FakeSession.latest!
             precondition(test.state == .recording && test.settings.termReads == 1)
             precondition(test.hud.model.dictionaryTerms == ["Talkless", "\u{5317}\u{4EAC}"])
-            if engine == .openAICompatible {
-                precondition(old.prompt == "Talkless, \u{5317}\u{4EAC}")
-                precondition(test.hud.model.preview.isEmpty && matched(test.hud.model).isEmpty,
-                             "Cloud recognition has no live partial to decorate")
-            } else {
-                precondition(old.terms == ["Talkless", "\u{5317}\u{4EAC}"])
+            do {
+                if engine == .qwen { precondition(old.terms == ["Talkless", "\u{5317}\u{4EAC}"]) }
                 old.onPartial?("Talkless \u{5317}\u{4EAC} NextSession")
                 precondition(matched(test.hud.model) == ["Talkless", "\u{5317}\u{4EAC}"])
                 old.onPartial?("Talkles")
@@ -836,7 +825,7 @@ STARTUP_TESTS = r'''
                          "Resuming after hidden error must preserve voice-edit exclusion")
             test.cancel()
         }
-        print("PASS production recording snapshots for Qwen/Apple/cloud, dynamic dictionary edits, partial revisions, processing exclusion, cancel/startup failures, stale generations, and voice edit")
+        print("PASS production recording snapshots for Qwen/Doubao, dynamic dictionary edits, partial revisions, processing exclusion, cancel/startup failures, stale generations, and voice edit")
 
         for status in [StartupHarness.Authorization.denied, .restricted] {
             StartupHarness.microphoneStatus = status

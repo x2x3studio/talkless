@@ -366,21 +366,10 @@ private struct AboutSettingsTab: View {
 
 private struct SpeechTab: View {
     @ObservedObject private var localization = LocalizationSettings.shared
-    @Environment(\.locale) private var interfaceLocale
     @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
     @ObservedObject var modelManager = ModelManager.shared
-    @State private var locales: [Locale] = []
-    @State private var downloadStatus = ""
-    @State private var downloadingAppleModel = false
-
-    private var controlsDisabled: Bool { controller.state != .idle || modelManager.isBusy }
-
-    private let presets: [(String, String, String)] = [
-        ("OpenAI", "https://api.openai.com/v1", "gpt-4o-transcribe"),
-        ("Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo"),
-        ("SiliconFlow", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
-    ]
+    private var controlsDisabled: Bool { controller.state != .idle || modelManager.operationModelID != nil }
 
     var body: some View {
         Form {
@@ -413,56 +402,12 @@ private struct SpeechTab: View {
                     }
                     .disabled(controlsDisabled)
                 }
-            } else if settings.asrEngine == .apple {
-                Section(L10n.tr("Apple On-device Recognition")) {
-                    Picker(L10n.tr("Language"), selection: $settings.speechLocale) {
-                        if locales.isEmpty {
-                            Text(settings.speechLocale).tag(settings.speechLocale)
-                        }
-                        ForEach(locales, id: \.identifier) { locale in
-                            Text(interfaceLocale.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
-                                .tag(locale.identifier)
-                        }
-                    }
-                    .id(localization.locale.identifier)
-                    .disabled(downloadingAppleModel || controlsDisabled)
-                    HStack {
-                        Button(L10n.tr("Download Speech Model")) { download() }
-                            .disabled(downloadingAppleModel || controlsDisabled)
-                        if downloadingAppleModel { ProgressView().controlSize(.small) }
-                        Text(downloadStatus).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(L10n.tr("On-device recognition with live previews while you speak."))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
             } else {
-                Section(L10n.tr("Cloud recognition")) {
-                    HStack {
-                        Text(L10n.tr("Presets"))
-                        ForEach(presets, id: \.0) { preset in
-                            Button(preset.0) {
-                                settings.asrBaseURL = preset.1
-                                settings.asrModel = preset.2
-                            }
-                        }
-                    }
-                    TextField(L10n.tr("API URL"), text: $settings.asrBaseURL)
-                    SecureField(L10n.tr("API Key"), text: $settings.asrAPIKey)
-                    if let error = settings.asrCredentialError {
-                        Text(error).font(.caption).foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    TextField(L10n.tr("Model"), text: $settings.asrModel)
-                    Text(L10n.tr("Uploads the full recording for transcription after you finish. Audio is not saved locally."))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                DoubaoSettingsSection(settings: settings)
+                    .disabled(controller.state != .idle)
             }
         }
         .formStyle(.grouped)
-        .task {
-            let all = await AppleSpeechSession.supportedLocales()
-            locales = all.sorted { $0.identifier < $1.identifier }
-        }
     }
 
     private func chooseModelDirectory() {
@@ -477,20 +422,6 @@ private struct SpeechTab: View {
         }
     }
 
-    private func download() {
-        downloadingAppleModel = true
-        downloadStatus = L10n.tr("Downloading…")
-        let locale = Locale(identifier: settings.speechLocale)
-        Task {
-            defer { downloadingAppleModel = false }
-            do {
-                try await AppleSpeechSession.prepareAssets(locale: locale)
-                downloadStatus = L10n.tr("Ready")
-            } catch {
-                downloadStatus = error.localizedDescription
-            }
-        }
-    }
 }
 
 // MARK: - Dictionary

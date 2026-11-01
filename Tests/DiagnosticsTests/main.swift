@@ -83,7 +83,7 @@ let schemaLogs = root.appendingPathComponent("schema")
 let schema = Diagnostics(directory: schemaLogs, crashReportsDirectory: absentReports)
 let operationID = UUID().uuidString
 let technicalFields = [
-    "operation_id": operationID, "generation": "12", "engine": "apple", "mode": "edit",
+    "operation_id": operationID, "generation": "12", "engine": "doubao", "mode": "edit",
     "recording_mode": "toggle", "hands_free": "true", "operation_ms": "15", "state": "recording",
     "polish_enabled": "false", "opposite_finish": "true", "empty": "false", "fallback": "true",
     "attempt": "1", "elapsed_ms": "1.25", "startup_ms": "200", "first_buffer_ms": "9",

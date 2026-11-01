@@ -44,20 +44,12 @@ enum RecordingGestureMode: String, CaseIterable, Identifiable {
 }
 
 enum ASREngine: String, CaseIterable, Identifiable {
-    /// Local Qwen3-ASR, running on Apple Silicon through MLX.
-    case qwen
-    /// On-device SpeechAnalyzer on macOS 26+: free, offline, with live previews.
-    case apple
-    /// Any service compatible with OpenAI `/audio/transcriptions` (OpenAI, Groq, SiliconFlow, etc.).
-    case openAICompatible
-
+    case qwen, doubao
     var id: String { rawValue }
-
     var title: String {
         switch self {
-        case .qwen: return L10n.tr("Qwen3-ASR (local, offline)")
-        case .apple: return L10n.tr("Apple on-device recognition (offline)")
-        case .openAICompatible: return L10n.tr("Cloud Whisper-compatible API")
+        case .qwen: L10n.tr("Local · Qwen (offline)")
+        case .doubao: L10n.tr("Online · Doubao")
         }
     }
 }
@@ -172,14 +164,14 @@ final class AppSettings: ObservableObject {
         }
         return directory
     }
-    /// The locale for on-device recognition, such as zh_CN or en_US.
-    @Published var speechLocale: String { didSet { save(speechLocale, "speechLocale") } }
-
-    @Published var asrBaseURL: String { didSet { save(asrBaseURL, "asrBaseURL") } }
-    /// Stored in Keychain. A failed save keeps the key for this session and reports why.
-    @Published var asrAPIKey: String { didSet { persistSpeechCredential() } }
-    @Published private(set) var asrCredentialError: String?
-    @Published var asrModel: String { didSet { save(asrModel, "asrModel") } }
+    /// Dedicated Speech API key; never shared with AI polishing or retired cloud providers.
+    @Published var doubaoAPIKey: String { didSet { persistDoubaoCredential() } }
+    @Published private(set) var doubaoCredentialError: String?
+    @Published var doubaoResource: DoubaoResource {
+        didSet { save(doubaoResource.rawValue, "doubaoResource") }
+    }
+    var doubaoConfig: DoubaoConfig { .init(apiKey: doubaoAPIKey, resource: doubaoResource) }
+    var doubaoConfigured: Bool { doubaoConfig.isConfigured }
 
     @Published var polishEnabled: Bool { didSet { save(polishEnabled, "polishEnabled") } }
     @Published private(set) var selectedPolishProvider: PolishProvider
@@ -269,11 +261,9 @@ final class AppSettings: ObservableObject {
         asrEngine = ASREngine(rawValue: d.string(forKey: "asrEngine") ?? "") ?? .qwen
         qwenModelDirectory = d.string(forKey: "qwenModelDirectory") ?? ""
         useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false
-        speechLocale = d.string(forKey: "speechLocale") ?? "zh_CN"
-        asrBaseURL = d.string(forKey: "asrBaseURL") ?? "https://api.openai.com/v1"
-        asrAPIKey = ""
-        asrCredentialError = nil
-        asrModel = d.string(forKey: "asrModel") ?? "gpt-4o-transcribe"
+        doubaoAPIKey = ""
+        doubaoCredentialError = nil
+        doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         voiceEditEnabled = d.object(forKey: "voiceEditEnabled") as? Bool ?? false
@@ -296,7 +286,10 @@ final class AppSettings: ObservableObject {
             legacyCredentialProvider = provider
             migrateLegacyCredential(legacyKey, for: provider)
         }
-        asrAPIKey = loadSpeechCredential(legacy: d.string(forKey: "asrAPIKey"))
+        // Retired choices fall back locally; upgrading never enables a new online provider.
+        if d.string(forKey: "asrEngine") != asrEngine.rawValue { d.set(asrEngine.rawValue, forKey: "asrEngine") }
+
+        doubaoAPIKey = loadDoubaoCredential()
         isLoadingProvider = true
         llmAPIKey = loadCredential(for: selected)
         llmCredentialSaveError = credentialErrors[selected]
@@ -381,34 +374,17 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// Earlier builds kept this key in plaintext defaults. Move it to Keychain once, and delete
-    /// the plaintext copy only after Keychain holds it.
-    private func loadSpeechCredential(legacy: String?) -> String {
-        do {
-            if let legacy, !legacy.isEmpty {
-                if let existing = try credentialStore.speechCredential(), !existing.isEmpty {
-                    defaults.removeObject(forKey: "asrAPIKey")
-                    return existing
-                }
-                try credentialStore.setSpeechCredential(legacy)
-                defaults.removeObject(forKey: "asrAPIKey")
-                return legacy
-            }
-            return try credentialStore.speechCredential() ?? ""
-        } catch {
-            asrCredentialError = credentialErrorMessage(error, saving: legacy?.isEmpty == false)
-            return legacy ?? ""
-        }
+    /// Never reuse a former cloud-provider key for Doubao. The dedicated account is isolated.
+    private func loadDoubaoCredential() -> String {
+        do { return try credentialStore.doubaoCredential() ?? "" }
+        catch { doubaoCredentialError = credentialErrorMessage(error, saving: false); return "" }
     }
 
-    private func persistSpeechCredential() {
+    private func persistDoubaoCredential() {
         do {
-            try credentialStore.setSpeechCredential(asrAPIKey)
-            defaults.removeObject(forKey: "asrAPIKey")
-            asrCredentialError = nil
-        } catch {
-            asrCredentialError = credentialErrorMessage(error, saving: true)
-        }
+            try credentialStore.setDoubaoCredential(doubaoAPIKey)
+            doubaoCredentialError = nil
+        } catch { doubaoCredentialError = credentialErrorMessage(error, saving: true) }
     }
 
     private func credentialErrorMessage(_ error: Error, saving: Bool) -> String {

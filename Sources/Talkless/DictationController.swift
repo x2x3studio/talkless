@@ -407,28 +407,19 @@ final class DictationController: ObservableObject {
                     self.hud.show(.error(message))
                 }
             )
-        case .apple:
-            session = AppleSpeechSession(
-                locale: Locale(identifier: settings.speechLocale),
-                contextualStrings: dictionaryTerms,
-                onStatus: { [weak self] _ in
+        case .doubao:
+            do {
+                session = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
                     guard let self, self.isCurrentRecognition(generation) else { return }
-                    self.hud.show(.working)
-                }
-            )
-        case .openAICompatible:
-            guard !settings.asrAPIKey.isEmpty else {
+                    self.cancel(reason: "recognition_error")
+                    self.hud.show(.error(message))
+                })
+            } catch {
                 operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
-                hud.show(.error(L10n.tr("Enter a speech recognition API key in Settings first")))
+                hud.show(.error(error.localizedDescription))
+                onModelSetupRequested?()
                 return
             }
-            session = CloudTranscriptionSession(config: .init(
-                baseURL: settings.asrBaseURL,
-                apiKey: settings.asrAPIKey,
-                model: settings.asrModel,
-                language: nil,
-                prompt: dictionaryTerms.isEmpty ? nil : dictionaryTerms.joined(separator: ", ")
-            ))
         }
         session.onPartial = { [weak self] partial in
             guard let self, self.isCurrentRecognition(generation) else { return }

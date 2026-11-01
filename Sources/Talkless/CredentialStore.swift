@@ -8,14 +8,14 @@ protocol CredentialStoring {
     func credential(for provider: PolishProvider) throws -> String?
     func setCredential(_ value: String, for provider: PolishProvider) throws
     /// The cloud speech-recognition key, separate from AI service keys.
-    func speechCredential() throws -> String?
-    func setSpeechCredential(_ value: String) throws
+    func doubaoCredential() throws -> String?
+    func setDoubaoCredential(_ value: String) throws
 }
 
 extension CredentialStoring {
-    // In-memory fakes that predate the speech key keep it for the session only.
-    func speechCredential() throws -> String? { nil }
-    func setSpeechCredential(_ value: String) throws {}
+    // Unimplemented storage must fail rather than claim a successful persistent save.
+    func doubaoCredential() throws -> String? { nil }
+    func setDoubaoCredential(_ value: String) throws { throw CredentialStoreError(status: errSecUnimplemented) }
 }
 
 @MainActor
@@ -23,7 +23,7 @@ struct CredentialStore: CredentialStoring {
     /// Keep this stable across releases, paths, and build configurations. Keychain access
     /// also depends on a stable signing identity; a service name cannot replace that.
     private let service = "com.x2x3studio.talkless.polish"
-    private static let speechAccount = "speech-recognition"
+    private static let doubaoAccount = "doubao-speech-recognition"
 
     func credential(for provider: PolishProvider) throws -> String? {
         try credential(account: provider.rawValue)
@@ -33,12 +33,12 @@ struct CredentialStore: CredentialStoring {
         try setCredential(value, account: provider.rawValue, label: "Talkless \(provider.title) API key")
     }
 
-    func speechCredential() throws -> String? {
-        try credential(account: Self.speechAccount)
+    func doubaoCredential() throws -> String? {
+        try credential(account: Self.doubaoAccount)
     }
 
-    func setSpeechCredential(_ value: String) throws {
-        try setCredential(value, account: Self.speechAccount, label: "Talkless speech recognition API key")
+    func setDoubaoCredential(_ value: String) throws {
+        try setCredential(value, account: Self.doubaoAccount, label: "Talkless Doubao Speech API key")
     }
 
     private func credential(account: String) throws -> String? {

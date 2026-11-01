@@ -16,7 +16,7 @@ Requires **Apple Silicon and macOS 26 or later**. You do not need Xcode to use a
 
 Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide does not test providers or send audio or text. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
 
-Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. Apple recognition, cloud recognition, and custom model folders are not verified by the guide; review those in Speech recognition settings. Existing installations are not forced through setup after an update.
+Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. Doubao online recognition and custom model folders are not verified by the guide; review those in Speech recognition settings. Existing installations are not forced through setup after an update.
 
 If macOS opens the emoji panel when you press Fn, set the Globe-key action to **Do Nothing** in **System Settings > Keyboard**, or choose another dictation key.
 
@@ -29,7 +29,7 @@ Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech re
 | Settings page | What you can change |
 | --- | --- |
 | **Dictation** | Microphone first, then recording mode and key, AI polishing, output language, app-aware tone, additional instructions and voice editing |
-| **Speech recognition** | Recognition engine, local model downloads, Apple recognition language, cloud recognition connection |
+| **Speech recognition** | Local Qwen or online Doubao, local model downloads and Doubao Speech credentials |
 | **Dictionary** | Confirmed terms, heard-as fixes, import/export and suggested spelling corrections |
 | **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |
 | **Overlay** | Preview, backdrop, opacity, animations and cursor following |
@@ -58,7 +58,7 @@ Choose **Settings > Dictation > Recording**:
 
 Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the AI polishing setting are captured when you start: with **Polish dictation with AI** on (and an AI service configured), every dictation is polished; with it off, none are.
 
-Local Qwen and Apple recognition show live text in the overlay; cloud recognition transcribes after you finish. The final text is pasted using the clipboard and Command-V. Keep the intended text field focused until it arrives: dictation uses the **current cursor**, rather than restoring focus to the app where you started. The previous clipboard contents are restored unless you copied something else in the meantime. If you need the result again, use History.
+Local Qwen and online Doubao both show live text in the overlay; Doubao streams audio while you speak and waits for its final response after recording ends. The final text is pasted using the clipboard and Command-V. Keep the intended text field focused until it arrives: dictation uses the **current cursor**, rather than restoring focus to the app where you started. The previous clipboard contents are restored unless you copied something else in the meantime. If you need the result again, use History.
 
 ### Change or reset shortcuts
 
@@ -75,8 +75,8 @@ An unavailable chosen microphone is not silently replaced. Reconnect it or choos
 Open **Settings > Speech recognition**:
 
 - **Qwen3-ASR (local, offline)** is the default. The built-in model is **Qwen3 ASR · 0.6B**, in MLX 4-bit format, with an approximately **713 MB** download. It runs on your Mac and stays loaded between dictations. Model weights are not included in the app or app updates.
-- **Apple on-device recognition (offline)** offers a recognition **Language** picker and **Download Speech Model**. Required language assets may also be downloaded on first use.
-- **Cloud Whisper-compatible API** uses a separate API URL, API key and model. Presets are available for OpenAI, Groq and SiliconFlow. It uploads the full recording after you finish, along with dictionary hints, and may incur provider charges. These settings are separate from **AI service**.
+- **Online · Doubao** streams audio directly to Doubao's bidirectional ASR 2.0 service with live previews. Enter a Speech API key from the new Doubao Speech console, not an Ark/chat-model key. The endpoint and model are built in. Under Advanced, choose duration-based (default) or concurrent billing to match your enabled resource. The key stays in Keychain; these credentials are separate from **AI service**. Connection failure cancels recognition rather than inserting a partial transcript. The app does not automatically retry or switch providers.
+- Retired Apple/Whisper-compatible selections fall back to local Qwen on upgrade. Old cloud keys are not reused or sent to Doubao; existing saved credentials are left untouched.
 
 Local model downloads support progress, cancel/resume, retry, selection with **Use**, and confirmed deletion. Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror may redirect to Hugging Face; availability depends on your network. Files are verified before use. Advanced settings also allow an explicit custom MLX model folder.
 
@@ -149,7 +149,7 @@ During ordinary dictation, words matching your confirmed dictionary have a **blu
 
 Matching respects capitalization and word boundaries for Latin terms, and uses direct character matching for Chinese terms. Longer overlapping terms take precedence. Highlights update as provisional recognition or final output changes. To keep long recordings responsive, dictionary highlighting scans the latest 1,024 characters; terms starting before that window are not annotated. The full transcript, paste output and saved history are unchanged.
 
-Live highlighting requires an engine that supplies partial text (local Qwen or Apple). Cloud recognition has no live partials, but its final transcript can be annotated after recognition. Voice-editing text, empty-state labels and errors are not annotated. Amber AI-change highlighting is separate from dictionary matching; a changed dictionary term can have both an amber background and a blue underline. Dictionary Review still provides saved before/after spelling evidence.
+Both Qwen and Doubao supply live previews for dictionary highlighting. Qwen receives recognition hints; Doubao currently uses the local heard-as fixes and optional AI polishing dictionary, without uploading a separate hotword list. Voice-editing text, empty-state labels and errors are not annotated. Amber AI-change highlighting is separate from dictionary matching; a changed dictionary term can have both an amber background and a blue underline. Dictionary Review still provides saved before/after spelling evidence.
 
 ## Overlay
 
@@ -209,12 +209,12 @@ For permission problems, open **System > Permissions**. Allow Talkless in macOS 
 
 ## Local data and privacy
 
-Local Qwen recognition does not upload audio. Apple recognition runs on-device after its required assets are available. Cloud recognition uploads recorded audio; optional AI features send the text and context needed for their requests. Review [AI providers and privacy](ai-polish.md) for details.
+Local Qwen recognition does not upload audio. Doubao online recognition streams recorded audio directly to Doubao; optional AI features send the text and context needed for their requests. Review [AI providers and privacy](ai-polish.md) for details.
 
 Talkless stores:
 
 - **App preferences:** settings, provider endpoints/model IDs, dictionary terms, dictionary fixes and dismissed suggestions in macOS UserDefaults.
-- **Credentials:** AI service keys and the cloud speech-recognition key are stored in macOS Keychain. A speech key that an earlier version kept in UserDefaults moves to Keychain on first launch and is then deleted from UserDefaults; if Keychain is unavailable, the key works for that session and Settings explains why.
+- **Credentials:** AI service keys and the dedicated Doubao Speech key are stored in macOS Keychain. Failed saves remain usable for the session and show an error in settings. Keys for retired cloud services are not imported into Doubao.
 - **`~/Library/Application Support/Talkless/`:** managed models in `Models/`, text history in `history.json`, text-free daily totals in `activity.json`, and rotating event logs in `Diagnostics/`.
 
 Logs exclude audio, transcripts, API keys and request contents. Use History's deletion controls for saved text and **Clear activity** for daily totals. Talkless does not use a `~/.talkless` configuration folder.

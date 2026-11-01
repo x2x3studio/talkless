@@ -56,7 +56,7 @@ final class Diagnostics: @unchecked Sendable {
         "resolved_device_available", "route_matches_requested", "formats_compatible", "selected_device_changed", "actual_device_changed",
     ]
     private static let enumValues: [String: Set<String>] = [
-        "engine": ["apple", "qwen", "openAICompatible"],
+        "engine": ["qwen", "doubao"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
         "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop"],

@@ -155,10 +155,8 @@ struct SetupGuideLiveView: View {
             case .deleting: ready = false; status = L10n.tr("Deleting…")
             }
             return (ready, L10n.format("%@: %@", entry.model.name, status))
-        case .apple:
-            return (false, L10n.tr("Apple recognition is selected. Language assets are checked when dictation starts; this guide has not verified them."))
-        case .openAICompatible:
-            return (false, L10n.tr("Cloud recognition is selected. Review its configuration in Speech recognition settings. This guide makes no test requests."))
+        case .doubao:
+            return (false, L10n.tr("Doubao online recognition is selected. Review its Speech API key and resource in settings; this guide makes no test requests."))
         }
     }
 }

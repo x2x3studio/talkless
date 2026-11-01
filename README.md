@@ -26,7 +26,7 @@ Talkless lives in the menu bar, not the Dock or input-source menu. Open **Settin
 
 ## Your data
 
-Local Qwen recognition runs on your Mac; it does not upload audio. The speech model is downloaded separately. AI features are optional and use your own provider and API key; they send the text needed for the request. Cloud speech recognition, if selected, sends audio to that provider.
+Local Qwen recognition runs on your Mac; it does not upload audio. The speech model is downloaded separately. AI features are optional and use your own provider and API key; they send the text needed for the request. Online recognition uses Doubao Speech with its own API key and streams audio directly to Doubao for live previews. Local Qwen and online Doubao are the only recognition choices; AI polishing providers are configured separately.
 
 History and diagnostic logs stay on your Mac. Logs exclude audio, transcripts, API keys, and prompts. Exporting diagnostics creates a local ZIP; nothing is uploaded automatically.
 

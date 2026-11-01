@@ -125,7 +125,6 @@ private struct APITests {
         defer { withExtendedLifetime(localization) {} }
         let tests: [(String, () async throws -> Void)] = [
             ("bundleVersionUserAgentAndSafeFallback", testUserAgent),
-            ("cloudTranscriptionHeadersAndPayload", testCloudTranscription),
             ("legacyConfigAndURLNormalization", testURLs),
             ("maliciousURLsAndValidation", testValidation),
             ("chatCompletionsHeadersAndPayload", testChat),
@@ -167,31 +166,6 @@ private struct APITests {
             try expect(LLMAPITransport.userAgent(version: version) == "Talkless/0.1.0", "invalid metadata did not fall back safely")
         }
         try expect(LLMAPITransport.userAgent() == expectedUserAgent, "User-Agent did not use the actual bundle version")
-    }
-
-    static func testCloudTranscription() async throws {
-        MockProtocol.install { request in
-            try expect(request.httpMethod == "POST", "cloud transcription not POST")
-            try expect(request.url?.absoluteString == "https://unit.test/proxy/v1/audio/transcriptions", "cloud endpoint changed")
-            try expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-asr-key", "cloud bearer changed")
-            try expect(request.timeoutInterval == 60, "cloud timeout changed")
-            guard let contentType = request.value(forHTTPHeaderField: "Content-Type"),
-                  contentType.hasPrefix("multipart/form-data; boundary=talkless-") else {
-                throw Failure(description: "cloud multipart content type changed")
-            }
-            let body = String(decoding: try requestBody(request), as: UTF8.self)
-            for (name, value) in [("model", "selected-asr-model"), ("response_format", "json"), ("language", "zh"), ("prompt", "Talkless")] {
-                try expect(body.contains("name=\"\(name)\"\r\n\r\n\(value)\r\n"), "cloud \(name) field changed")
-            }
-            try expect(body.contains("filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF"), "cloud WAV body missing")
-            return .reply(200, #"{"text":"  Recognized text\n"}"#)
-        }
-        let session = URLSession(configuration: MockProtocol.configuration)
-        defer { session.invalidateAndCancel() }
-        let value = CloudTranscriptionSession.Config(baseURL: "https://unit.test/proxy/v1", apiKey: "test-only-asr-key",
-            model: "selected-asr-model", language: "zh", prompt: "Talkless")
-        let result = try await CloudTranscriptionSession.transcribe(samples: [0, 0.25, -0.25], config: value, session: session)
-        try expect(result == "Recognized text" && MockProtocol.count == 1, "cloud transcript or request count changed")
     }
 
     static func testURLs() async throws {

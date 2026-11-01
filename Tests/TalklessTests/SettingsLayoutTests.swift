@@ -114,6 +114,12 @@ import Testing
                                                  setCaptureActive: { _ in true }, resetKey: { nil })
                     }.formStyle(.grouped))),
                     ("ai-service", AnyView(AIServiceSettingsView(settings: settings))),
+                    ("doubao", AnyView(Form {
+                        Picker(L10n.tr("Recognition engine"), selection: .constant(ASREngine.doubao)) {
+                            ForEach(ASREngine.allCases) { Text($0.title).tag($0) }
+                        }
+                        DoubaoSettingsSection(settings: settings)
+                    }.formStyle(.grouped))),
                     ("model", AnyView(Form {
                         Section(L10n.tr("Speech models")) {
                             ModelDownloadCard(entry: ModelEntry(model: ModelCatalog.models[0], phase: .installed),
@@ -188,6 +194,6 @@ import Testing
 @MainActor private struct LayoutCredentials: CredentialStoring {
     func credential(for provider: PolishProvider) throws -> String? { nil }
     func setCredential(_ value: String, for provider: PolishProvider) throws {}
-    func speechCredential() throws -> String? { nil }
-    func setSpeechCredential(_ value: String) throws {}
+    func doubaoCredential() throws -> String? { nil }
+    func setDoubaoCredential(_ value: String) throws {}
 }

@@ -71,7 +71,7 @@ final class SetupGuideController: ObservableObject {
             "polishProviderSettings.v1", "translationLanguages.v1", "translationShortcut.v1",
             "hudAppearance.v1", "recordingGestureMode", "triggerKey", "alternateFinishKey",
             "audioInputDeviceUID", "asrEngine", "qwenModelDirectory", "useCustomQwenDirectory",
-            "managedModelID", "speechLocale", "asrBaseURL", "asrModel", "polishEnabled",
+            "doubaoResource", "managedModelID", "speechLocale", "asrBaseURL", "asrModel", "polishEnabled",
             "outputLanguage", "voiceEditEnabled", "appToneEnabled", "translateTarget",
             "dictionary", "dictionaryReviewEnabled", "customInstructions", "llmBaseURL", "llmModel",
             "interfaceLanguage",

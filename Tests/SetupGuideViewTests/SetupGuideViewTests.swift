@@ -52,7 +52,7 @@ enum SettingsAppearance {
 }
 
 @MainActor final class AppSettings: ObservableObject {
-    enum Engine { case qwen, apple, openAICompatible }
+    enum Engine { case qwen, doubao }
     struct Key { var title = "Right ⌘"; var keyCode: Int? = 1 }
     enum Gesture { case hold, toggle }
     static let shared = AppSettings()
@@ -247,9 +247,7 @@ struct SetupGuideViewTests {
         settings.useCustomQwenDirectory = true
         check(!live.speechStatus.ready, "Custom folders are not falsely validated")
         settings.useCustomQwenDirectory = false
-        settings.asrEngine = .apple
-        check(!live.speechStatus.ready, "Apple assets are not silently probed")
-        settings.asrEngine = .openAICompatible
+        settings.asrEngine = .doubao
         check(!live.speechStatus.ready, "Cloud configuration is not silently tested")
         settings.asrEngine = .qwen
         manager.directory = controller.preparationDirectory

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- Doubao streaming ASR 2.0 provides live online recognition using your own Speech API key, stored separately in Keychain. Duration billing is selected by default.
+
+### Changed
+- Speech recognition now offers only local offline Qwen and online Doubao. Apple and generic Whisper-compatible options are removed; existing retired selections fall back to local recognition without reusing their credentials. AI polishing providers remain separate and unchanged.
+
+## 2026.1101.23885
+
 ### Improved
 - Microphone controls now align with recording controls. Translation's shortcut is at the top of its settings page, and AI connection tests and update checks use trailing action placement.
 - Model actions and dictionary review actions have dedicated rows so longer status and app names do not crowd buttons. History search and filters stack when the window is narrow.

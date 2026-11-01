@@ -42,11 +42,11 @@ final class MemoryCredentials: CredentialStoring {
         values[provider] = value.isEmpty ? nil : value
     }
     var speech: String?
-    func speechCredential() throws -> String? {
+    func doubaoCredential() throws -> String? {
         if failReads { throw Failure.unavailable }
         return speech
     }
-    func setSpeechCredential(_ value: String) throws {
+    func setDoubaoCredential(_ value: String) throws {
         if failWrites { throw Failure.unavailable }
         speech = value.isEmpty ? nil : value
     }
@@ -392,28 +392,24 @@ struct ProviderSettingsTests {
         check(features.voiceEditEnabled && features.translateTarget == "German",
               "incomplete configuration does not clear feature preferences")
 
-        // Cloud speech key: Keychain only, speechMigrated once from old plaintext defaults.
         let speechDefaults = MemoryDefaults()
-        speechDefaults.set("legacy-speech-key", forKey: "asrAPIKey")
+        speechDefaults.set("legacy-other-provider-key", forKey: "asrAPIKey")
+        speechDefaults.set("openAICompatible", forKey: "asrEngine")
         let speechStore = MemoryCredentials()
-        let speechMigrated = settings(speechDefaults, speechStore)
-        check(speechMigrated.asrAPIKey == "legacy-speech-key" && speechStore.speech == "legacy-speech-key",
-              "plaintext speech key moves into Keychain")
-        check(speechDefaults.string(forKey: "asrAPIKey") == nil, "plaintext copy is deleted after migration")
-        check(settings(speechDefaults, speechStore).asrAPIKey == "legacy-speech-key", "speech key reloads from Keychain")
-        speechMigrated.asrAPIKey = "new-speech-key"
-        check(speechStore.speech == "new-speech-key" && speechDefaults.string(forKey: "asrAPIKey") == nil,
-              "edits save to Keychain, never to defaults")
-        let lockedDefaults = MemoryDefaults()
-        lockedDefaults.set("legacy-speech-key", forKey: "asrAPIKey")
-        let lockedStore = MemoryCredentials()
-        lockedStore.failWrites = true
-        let locked = settings(lockedDefaults, lockedStore)
-        check(locked.asrAPIKey == "legacy-speech-key" && locked.asrCredentialError != nil,
-              "a failed migration keeps the key usable and reports why")
-        check(lockedDefaults.string(forKey: "asrAPIKey") == "legacy-speech-key", "plaintext is kept until Keychain succeeds")
-        locked.asrAPIKey = "session-only"
-        check(locked.asrAPIKey == "session-only" && locked.asrCredentialError != nil, "failed saves keep the key for the session")
+        let online = settings(speechDefaults, speechStore)
+        check(online.asrEngine == .qwen && online.doubaoAPIKey.isEmpty,
+              "Retired engines default locally and never send a legacy key to Doubao")
+        check(speechStore.speech == nil, "No old provider credential is migrated to Doubao")
+        online.doubaoAPIKey = "synthetic-doubao-key"
+        online.asrEngine = .doubao
+        check(speechStore.speech == "synthetic-doubao-key" && online.doubaoConfigured, "Doubao key uses Keychain")
+        check(speechDefaults.string(forKey: "doubaoAPIKey") == nil, "Doubao key never enters preferences")
+        check(settings(speechDefaults, speechStore).doubaoAPIKey == "synthetic-doubao-key", "Doubao key reloads")
+        speechStore.failWrites = true
+        online.doubaoAPIKey = "session-only"
+        check(online.doubaoAPIKey == "session-only" && online.doubaoCredentialError != nil, "Save failure keeps session key and explains failure")
+        check(speechStore.speech == "synthetic-doubao-key", "Save failure preserves the previous key")
+        check(ASREngine.allCases == [.qwen, .doubao], "Exactly two recognition choices")
 
         print("Provider settings tests passed (\(assertions) assertions; in-memory defaults and credentials only).")
     }
