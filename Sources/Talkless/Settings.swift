@@ -48,10 +48,17 @@ enum ASREngine: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .qwen: L10n.tr("Local · Qwen (offline)")
-        case .doubao: L10n.tr("Online · Doubao")
+        case .qwen: L10n.tr("On this Mac")
+        case .doubao: L10n.tr("Doubao cloud")
         }
     }
+    var detail: String {
+        switch self {
+        case .qwen: L10n.tr("Free and works offline. Audio never leaves your Mac.")
+        case .doubao: L10n.tr("Text appears as you speak. Needs a Doubao account.")
+        }
+    }
+    var symbol: String { self == .qwen ? "laptopcomputer" : "cloud" }
 }
 
 /// Output language after dictation. `.original` preserves the spoken language.

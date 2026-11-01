@@ -101,6 +101,11 @@ import Testing
         settings.audioInputDeviceUID = "test-mic"
         settings.dictionary = "Talkless\nSwiftUI"
         let review = DictionaryReviewStore(settings: settings, defaults: defaults)
+        let customSuite = "\(suite)-custom"
+        let customDefaults = UserDefaults(suiteName: customSuite)!
+        defer { customDefaults.removePersistentDomain(forName: customSuite) }
+        let customSettings = AppSettings(defaults: customDefaults, credentialStore: LayoutCredentials())
+        customSettings.selectPolishProvider(.custom)
         let output = ProcessInfo.processInfo.environment["TALKLESS_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0) }
         for language in [InterfaceLanguage.english, .simplifiedChinese] {
             localization.interfaceLanguage = language
@@ -115,10 +120,9 @@ import Testing
                         DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
                     }.formStyle(.grouped))),
                     ("ai-service", AnyView(AIServiceSettingsView(settings: settings))),
+                    ("ai-service-custom", AnyView(AIServiceSettingsView(settings: customSettings))),
                     ("doubao", AnyView(Form {
-                        Picker(L10n.tr("Recognition engine"), selection: .constant(ASREngine.doubao)) {
-                            ForEach(ASREngine.allCases) { Text($0.title).tag($0) }
-                        }
+                        Section { RecognitionEngineChooser(engine: .constant(.doubao)) }
                         DoubaoSettingsSection(settings: settings)
                     }.formStyle(.grouped))),
                     ("model", AnyView(Form {

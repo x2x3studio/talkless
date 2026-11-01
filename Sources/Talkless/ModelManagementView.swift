@@ -29,25 +29,6 @@ struct ModelManagementView: View {
 
     var body: some View {
         Group {
-            Section {
-                HStack(spacing: 13) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(SettingsAppearance.accent)
-                        .frame(width: 48, height: 48)
-                        .background(SettingsAppearance.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.tr("Your voice. On your Mac."))
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        Text(L10n.tr("Download once. Transcribe locally with Qwen3 ASR."))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
             Section(L10n.tr("Speech models")) {
                 ForEach(manager.entries) { entry in
                     modelRow(entry)

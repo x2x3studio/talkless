@@ -3,7 +3,13 @@
 ## Unreleased
 
 ### Fixed
+- Update checks no longer install an intermediate release. Automatic checks now only look for a new version and show "Update to …" in the menu and About; clicking it fetches the feed again and offers the newest build.
+- The AI service page no longer shows the Provider row three times when a custom provider is selected.
 - Request app activation before creating Settings and explicitly wake deferred window presentation after menu tracking. Settings follows the active desktop; closing a window cancels pending presentation requests.
+
+### Changed
+- Speech recognition is now a choice between two cards, "On this Mac" and "Doubao cloud". The Doubao key field has an inline Test button and a "Get a key" link; billing plan and privacy notes live under More options. The Ark-key hint now appears only when Doubao rejects a key.
+- The AI service page drops the status block, adds a "Get a key" link for each provider, and moves protocol and authentication under Advanced.
 
 ## 2026.1101.31817
 

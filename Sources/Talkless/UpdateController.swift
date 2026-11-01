@@ -21,6 +21,9 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private let version: String?
     private let build: String?
     @Published private(set) var lastUpdateError: Error?
+    /// Latest version found by a silent check. Installing always starts a fresh check, so a
+    /// prompt found hours earlier can never install an intermediate release.
+    @Published private(set) var availableUpdateVersion: String?
     private var cancellables: Set<AnyCancellable> = []
     private var automaticCheckTimer: AnyCancellable?
     typealias AutomaticCheckScheduler = @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> AnyCancellable
@@ -83,7 +86,8 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     }
 
     func makeMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: L10n.tr("Check for Updates…"), action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        let title = availableUpdateVersion.map { L10n.format("Update to %@…", $0) } ?? L10n.tr("Check for Updates…")
+        let item = NSMenuItem(title: title, action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         item.target = self
         item.isEnabled = canCheckForUpdates
         item.toolTip = status
@@ -102,7 +106,9 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     var lastUpdateCheckDate: Date? { standardController?.updater.lastUpdateCheckDate }
 
     var checkForUpdatesTitle: String {
-        guard isUpdateSessionInProgress else { return L10n.tr("Check for updates…") }
+        guard isUpdateSessionInProgress else {
+            return availableUpdateVersion.map { L10n.format("Update to %@…", $0) } ?? L10n.tr("Check for updates…")
+        }
         // Sparkle permits a manual check to bring its existing update window back into focus.
         return canCheckForUpdates ? L10n.tr("Show update…") : L10n.tr("Update in progress…")
     }
@@ -129,6 +135,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         guard channel != newChannel, canChangeChannel else { return }
         channel = newChannel
         lastUpdateError = nil
+        availableUpdateVersion = nil
         defaults.set(newChannel.rawValue, forKey: Self.channelPreferenceKey)
         // The next check uses the new feed. Do not reset Sparkle's cycle here:
         // a changed feed can force a background check even with automatic checks off.
@@ -163,7 +170,9 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
     private func checkForUpdatesAutomatically() {
         guard automaticallyChecksForUpdates, canCheckForUpdates,
               let updater = standardController?.updater, !updater.sessionInProgress else { return }
-        updater.checkForUpdatesInBackground()
+        // Probe only: Sparkle's background prompt keeps the item it found, so a window left
+        // open while newer Betas ship would install a stale version. Clicking update re-fetches.
+        updater.checkForUpdateInformation()
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -194,10 +203,18 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         }
     }
 
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        availableUpdateVersion = item.displayVersionString
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        availableUpdateVersion = nil
+    }
+
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         lastUpdateError = nil
         try requireIdleDictation()
-        if updateCheck == .updatesInBackground, !automaticallyChecksForUpdates {
+        if updateCheck != .updates, !automaticallyChecksForUpdates {
             throw NSError(
                 domain: "Talkless.Update",
                 code: 3,

@@ -16,7 +16,11 @@ public enum SPUUpdateCheck {
 
 @MainActor public final class SUAppcastItem {
     public let channel: String?
-    public init(channel: String?) { self.channel = channel }
+    public let displayVersionString: String
+    public init(channel: String?, displayVersionString: String = "1.0") {
+        self.channel = channel
+        self.displayVersionString = displayVersionString
+    }
 }
 
 @MainActor public final class SPUUpdater: NSObject {
@@ -38,7 +42,7 @@ public enum SPUUpdateCheck {
         started = true
     }
 
-    public func checkForUpdatesInBackground() {
+    public func checkForUpdateInformation() {
         precondition(started)
         backgroundChecks += 1
     }

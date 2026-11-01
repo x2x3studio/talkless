@@ -39,7 +39,7 @@ enum DoubaoError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .configuration: L10n.tr("Enter a Doubao Speech API key in Speech recognition settings.")
-        case .authentication: L10n.tr("Doubao rejected the connection. Check your Speech API key and enabled ASR resource.")
+        case .authentication: L10n.tr("Doubao rejected this key. Make sure it is a Doubao Speech key, not an Ark (LLM) key, and that the plan under More options matches your console.")
         case .connection: L10n.tr("Could not connect to Doubao. Check your network and try again.")
         case .timeout: L10n.tr("Doubao recognition timed out. Check your network and try again.")
         case .invalidResponse: L10n.tr("Doubao returned an invalid recognition response. No partial text was inserted.")

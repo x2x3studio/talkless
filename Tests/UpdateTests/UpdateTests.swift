@@ -95,6 +95,13 @@ import Sparkle
         precondition(controller.allowedChannels(for: sparkle) == ["beta"])
         clock.fire()
         precondition(sparkle.backgroundChecks == 1)
+        controller.updater(sparkle, didFindValidUpdate: SUAppcastItem(channel: nil, displayVersionString: "2.0"))
+        precondition(controller.checkForUpdatesTitle == "Update to 2.0…" && controller.makeMenuItem().title == "Update to 2.0…")
+        controller.checkForUpdates(nil)
+        precondition(sparkle.manualChecks == 1, "Installing a probed update starts a fresh, user-initiated check")
+        sparkle.manualChecks = 0
+        controller.updaterDidNotFindUpdate(sparkle)
+        precondition(controller.availableUpdateVersion == nil && controller.checkForUpdatesTitle == "Check for updates…")
 
         busy = true
         clock.fire()

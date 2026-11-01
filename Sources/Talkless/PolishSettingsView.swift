@@ -68,11 +68,7 @@ struct AIServiceSettingsView: View {
 
     var body: some View {
         Form {
-            Section(L10n.tr("Shared AI service")) {
-                AIServiceStatusView(settings: settings)
-            }
-
-            Section(L10n.tr("API provider")) {
+            Section {
                 Picker(L10n.tr("Provider"), selection: Binding(
                     get: { provider },
                     set: { newProvider in
@@ -84,35 +80,32 @@ struct AIServiceSettingsView: View {
                         Text(provider.title).tag(provider)
                     }
                 }
-                .id(localization.locale.identifier)
+                // Distinct ids: sibling pickers sharing one id render as copies of the first.
+                .id("provider-\(localization.locale.identifier)")
                 .pickerStyle(.menu)
-                .accessibilityLabel(L10n.tr("API provider"))
-
-                protocolControl
 
                 if provider == .custom {
                     TextField(L10n.tr("Base URL"), text: $settings.llmBaseURL,
                               prompt: Text("https://api.example.com/v1"))
-                    Picker(L10n.tr("Authentication"), selection: $settings.llmAuthMode) {
-                        ForEach(LLMAuthMode.allCases, id: \.self) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .id(localization.locale.identifier)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.tr("API key"))
+                    HStack {
+                        Text(L10n.tr("API key"))
+                        Spacer()
+                        if let keyURL = provider.keyURL {
+                            Link(L10n.tr("Get a key"), destination: keyURL).font(.callout)
+                        }
+                    }
                     SecureField(L10n.tr("API key"), text: $settings.llmAPIKey,
                                 prompt: Text(L10n.tr("Paste your API key here")))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .accessibilityLabel(L10n.tr("API key"))
                     Text(provider == .custom
-                         ? L10n.tr("Get the key from your provider. Stored in your Mac's Keychain; localhost services may leave it empty.")
-                         : L10n.tr("Get the API key from the selected provider's console. It is stored in your Mac's Keychain."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                         ? L10n.tr("Saved in your Keychain. Local services can leave it empty.")
+                         : L10n.tr("Saved in your Keychain."))
+                        .settingsNote()
                 }
 
                 if let error = settings.llmCredentialSaveError {
@@ -125,51 +118,51 @@ struct AIServiceSettingsView: View {
                 modelControls
 
                 if provider == .openRouter {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(L10n.tr("Free router limits and availability vary. Other models may be paid."))
+                    HStack(spacing: 6) {
+                        Text(L10n.tr("openrouter/free is free but its models change and limits vary."))
+                            .settingsNote()
+                        Link(L10n.tr("Learn more"), destination: URL(string: "https://openrouter.ai/openrouter/free")!)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        DisclosureGroup(L10n.tr("About OpenRouter free")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(L10n.tr("openrouter/free uses changing free models with no paid fallback. Requires your own OpenRouter key."))
-                                    .foregroundStyle(.secondary)
-                                HStack(spacing: 12) {
-                                    Link(L10n.tr("Get an API key"), destination: URL(string: "https://openrouter.ai/settings/keys")!)
-                                    Link(L10n.tr("About the free router"), destination: URL(string: "https://openrouter.ai/openrouter/free")!)
-                                }
-                            }
-                            .font(.caption)
-                        }
                     }
-                    .fixedSize(horizontal: false, vertical: true)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
-                        Spacer(minLength: 0)
-                        Button(fetching ? L10n.tr("Fetching…") : L10n.tr("Fetch Models")) { fetchModels() }
-                            .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .help(L10n.tr("Fetch available models from this provider."))
-                        if fetching { ProgressView().controlSize(.small) }
-                        Button(testing ? L10n.tr("Testing…") : L10n.tr("Test Connection")) { testConnection() }
-                            .disabled(testing || fetching || !settings.llmConfigured)
-                            .help(L10n.tr("Send a short test prompt using the current provider and model."))
-                            .buttonStyle(.borderedProminent)
-                        if testing { ProgressView().controlSize(.small) }
+                if provider == .openAI || provider == .custom {
+                    DisclosureGroup(L10n.tr("Advanced")) {
+                        Picker(L10n.tr("Protocol"), selection: $settings.llmProtocol) {
+                            ForEach(provider.protocolOptions, id: \.self) { apiProtocol in
+                                Text(apiProtocol.label).tag(apiProtocol)
+                            }
+                        }
+                        .id("protocol-\(localization.locale.identifier)")
+                        if provider == .custom {
+                            Picker(L10n.tr("Authentication"), selection: $settings.llmAuthMode) {
+                                ForEach(LLMAuthMode.allCases, id: \.self) { mode in
+                                    Text(mode.label).tag(mode)
+                                }
+                            }
+                            .id("auth-\(localization.locale.identifier)")
+                        }
                     }
-                    Text(L10n.tr("Runs only when clicked. Your provider may charge for tests."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                HStack(spacing: 10) {
+                    Text(settings.llmConfigured ? L10n.tr("Ready to test.") : L10n.tr("Fill in the key and model first."))
+                        .settingsNote()
+                    Spacer(minLength: 0)
+                    if fetching || testing { ProgressView().controlSize(.small) }
+                    Button(fetching ? L10n.tr("Fetching…") : L10n.tr("Fetch Models")) { fetchModels() }
+                        .disabled(fetching || testing || settings.llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help(L10n.tr("Fetch available models from this provider."))
+                    Button(testing ? L10n.tr("Testing…") : L10n.tr("Test Connection")) { testConnection() }
+                        .disabled(testing || fetching || !settings.llmConfigured)
+                        .help(L10n.tr("Sends a short test prompt. Your provider may charge for it."))
+                        .buttonStyle(.borderedProminent)
                 }
 
                 if let modelStatus { statusView(modelStatus) }
-                if let connectionResult {
-                    connectionReceipt(connectionResult)
-                } else {
-                    DisclosureGroup(L10n.tr("Test input")) {
-                        testInputs
-                    }
-                }
+                if let connectionResult { connectionReceipt(connectionResult) }
             }
         }
         .formStyle(.grouped)
@@ -184,20 +177,6 @@ struct AIServiceSettingsView: View {
         }
         .onDisappear {
             invalidateEndpointRequests()
-        }
-    }
-
-    @ViewBuilder
-    private var protocolControl: some View {
-        if provider == .openAI || provider == .custom {
-            Picker(L10n.tr("Protocol"), selection: $settings.llmProtocol) {
-                ForEach(provider.protocolOptions, id: \.self) { apiProtocol in
-                    Text(apiProtocol.label).tag(apiProtocol)
-                }
-            }
-            .id(localization.locale.identifier)
-        } else {
-            LabeledContent(L10n.tr("Protocol"), value: settings.llmProtocol.label)
         }
     }
 
@@ -227,17 +206,12 @@ struct AIServiceSettingsView: View {
                 Divider()
                 Text(L10n.tr("Enter model ID…")).tag(ModelSelection.manual)
             }
-            .id(localization.locale.identifier)
+            .id("model-\(localization.locale.identifier)")
         }
 
         if remoteModels.isEmpty || manualModelEntry || !remoteModels.contains(where: { $0.id == settings.llmModel }) {
             VStack(alignment: .leading, spacing: 6) {
-                TextField(L10n.tr("Model ID"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
-                if remoteModels.isEmpty && modelStatus == nil {
-                    Text(L10n.tr("Enter a model ID or fetch available models."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                TextField(L10n.tr("Model"), text: $settings.llmModel, prompt: Text(provider.modelPlaceholder))
             }
         }
     }
@@ -418,23 +392,17 @@ struct AIServiceStatusView: View {
     var body: some View {
         let configured = settings.llmConfigured
         HStack(spacing: 10) {
-            Image(systemName: configured ? "slider.horizontal.3" : "exclamationmark.circle")
-                .foregroundStyle(configured ? Color.secondary : Color.orange)
+            Image(systemName: configured ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .foregroundStyle(configured ? Color.green : Color.orange)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(configured ? L10n.tr("Configuration complete") : L10n.tr("Setup needed"))
-                    .font(.body.weight(.medium))
-                Text(configured
-                     ? L10n.tr("Connection is not checked automatically.")
-                     : L10n.tr("Check your provider, API key, and model."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            Text(configured
+                 ? "\(settings.selectedPolishProvider.title) · \(settings.llmModel)"
+                 : L10n.tr("No AI service yet"))
+                .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: 8)
             if let onConfigureAI {
-                Button(L10n.tr("AI service…"), action: onConfigureAI)
-                    .help(L10n.tr("Configure the shared provider and model, or test the connection."))
+                Button(configured ? L10n.tr("Change…") : L10n.tr("Set up…"), action: onConfigureAI)
             }
         }
         .padding(.vertical, 4)

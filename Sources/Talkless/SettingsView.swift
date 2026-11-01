@@ -374,11 +374,8 @@ private struct SpeechTab: View {
     var body: some View {
         Form {
             Section {
-                Picker(L10n.tr("Recognition engine"), selection: $settings.asrEngine) {
-                    ForEach(ASREngine.allCases) { Text($0.title).tag($0) }
-                }
-                .id(localization.locale.identifier)
-                .disabled(controlsDisabled)
+                RecognitionEngineChooser(engine: $settings.asrEngine)
+                    .disabled(controlsDisabled)
             }
 
             if settings.asrEngine == .qwen {
@@ -422,6 +419,61 @@ private struct SpeechTab: View {
         }
     }
 
+}
+
+/// One option of a small, mutually exclusive choice, shown as a selectable card.
+struct SettingsChoiceCard: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(selected ? SettingsAppearance.accent : Color.secondary)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    Text(detail).settingsNote()
+                }
+                Spacer(minLength: 0)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? SettingsAppearance.accent : Color.secondary.opacity(0.5))
+                    .accessibilityHidden(true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 10)
+                .fill(selected ? SettingsAppearance.accent.opacity(0.08) : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(selected ? SettingsAppearance.accent : Color.secondary.opacity(0.25),
+                              lineWidth: selected ? 1.5 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+struct RecognitionEngineChooser: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
+    @Binding var engine: ASREngine
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(ASREngine.allCases) { option in
+                SettingsChoiceCard(symbol: option.symbol, title: option.title, detail: option.detail,
+                                   selected: engine == option) { engine = option }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 2)
+    }
 }
 
 // MARK: - Dictionary

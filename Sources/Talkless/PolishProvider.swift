@@ -52,6 +52,18 @@ enum PolishProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
+    /// Where to create an API key. Custom endpoints have no single console.
+    var keyURL: URL? {
+        switch self {
+        case .deepSeek: URL(string: "https://platform.deepseek.com/api_keys")
+        case .openAI: URL(string: "https://platform.openai.com/api-keys")
+        case .openRouter: URL(string: "https://openrouter.ai/settings/keys")
+        case .gemini: URL(string: "https://aistudio.google.com/apikey")
+        case .anthropic: URL(string: "https://console.anthropic.com/settings/keys")
+        case .custom: nil
+        }
+    }
+
     var modelPlaceholder: String {
         self == .deepSeek ? "deepseek-chat" : L10n.tr("Fetch models or enter a model ID")
     }
