@@ -40,6 +40,7 @@ final class Diagnostics: @unchecked Sendable {
         "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
         "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
         "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused",
+        "ui_stall", "settings_renders",
         "diagnostics.export_started", "diagnostics.export_completed", "diagnostics.export_failed",
     ]
     private static let numericKeys: Set<String> = [
@@ -47,7 +48,7 @@ final class Diagnostics: @unchecked Sendable {
         "generation", "report_count", "elapsed_ms", "operation_ms", "startup_ms", "first_buffer_ms",
         "attempt", "channel_count", "common_format", "before_sample_rate", "before_channel_count",
         "before_common_format", "buffer_count", "frame_count", "input_frame_count", "notification_count",
-        "hardware_sample_rate", "hardware_channel_count", "before_hardware_sample_rate", "before_hardware_channel_count", "current_device_status", "replacement_count",
+        "count", "hardware_sample_rate", "hardware_channel_count", "before_hardware_sample_rate", "before_hardware_channel_count", "current_device_status", "replacement_count",
     ]
     private static let booleanKeys: Set<String> = [
         "include_crash_reports", "streaming", "cold_start", "hands_free", "polish_enabled", "opposite_finish",
@@ -70,6 +71,7 @@ final class Diagnostics: @unchecked Sendable {
         ],
         "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
         "recording_mode": ["hold", "toggle"],
+        "page": Set(["none"] + SettingsSection.allCases.map(\.rawValue)),
         "globe_action": ["none", "input_source", "emoji", "dictation", "default", "unknown"],
         "route_kind": ["direct", "aggregate", "unknown"],
         "state": ["idle", "recording", "processing"],

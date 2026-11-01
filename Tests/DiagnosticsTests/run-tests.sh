@@ -6,6 +6,7 @@ trap 'rm -rf "$WORK"' EXIT
 xcrun swiftc -swift-version 6 \
   "$ROOT/Sources/Talkless/L10n.swift" \
   "$ROOT/Sources/Talkless/Diagnostics.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$ROOT/Tests/DiagnosticsTests/main.swift" \
   -o "$WORK/diagnostics-tests"
 "$WORK/diagnostics-tests" "$WORK/fixtures"

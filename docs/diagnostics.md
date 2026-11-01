@@ -14,6 +14,7 @@ Approved events and metadata describe:
 - Recording mode, physical hotkey timing, stage durations, sample/frame/buffer counts and first-buffer latency.
 - Audio configuration notifications, engine state, numeric formats and route-change flags, not device names or stable device identifiers.
 - Startup recovery, interruption, no-audio timeout and explicit cancellation reasons such as Escape, shortcut combinations or recognition failure.
+- While Settings is open: interface stalls longer than 150 ms (`ui_stall`, duration only), bursts of Settings redraws (`settings_renders`, a count per 10 seconds), and which Settings page was showing.
 - Empty recognition, polishing fallback and insertion attempts. `paste_returned` means the insertion call returned, not that another app confirmed accepting text.
 
 Only allowlisted event names and metadata are retained. Logs omit audio, transcripts, selected text, prompts, API keys, request URLs, response bodies and arbitrary error descriptions. Interface labels follow the selected UI language; event identifiers do not.

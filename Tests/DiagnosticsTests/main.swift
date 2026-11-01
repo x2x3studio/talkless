@@ -121,6 +121,11 @@ let lifecycleEvents = ["audio_start", "audio_engine_configuration_change", "audi
     "polish_start", "polish_complete", "polish_error", "edit_start", "edit_complete", "edit_error", "paste_returned"]
 for event in lifecycleEvents { schema.recordAsync(event: event) }
 schema.record(event: "permission_blocked", metadata: ["permission": "microphone", "reason": "denied"])
+schema.record(event: "ui_stall", metadata: ["duration_ms": "240", "page": "history", "title": "PRIVATE_TITLE"])
+schema.record(event: "ui_stall", metadata: ["duration_ms": "180", "page": "PRIVATE_PAGE"])
+let stalls = try events(schemaLogs).filter { $0["event"] as? String == "ui_stall" }.map { $0["metadata"] as? [String: String] ?? [:] }
+require(stalls.count == 2 && stalls[0] == ["duration_ms": "240", "page": "history"] && stalls[1] == ["duration_ms": "180"],
+        "UI stalls keep only duration and a known page")
 schema.record(event: "recording_error", metadata: [
     "operation_id": "PRIVATE_ID", "sample_rate": "nan", "channel_count": "1e9", "num_samples": "--1",
     "duration_ms": "infinity", "generation": "1/2", "engine_running": "TRUE", "stage": "PRIVATE_STAGE",

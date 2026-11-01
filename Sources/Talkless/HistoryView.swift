@@ -9,7 +9,7 @@ struct HistoryView: View {
     @State private var search = ""
     @State private var filter = Filter.all
     /// Rendering every saved entry (up to 500) at once made Settings stall; show a page at a time.
-    @State private var limit = Self.pageSize
+    @State private var page = 0
     static let pageSize = 50
 
     enum Filter: Hashable, CaseIterable {
@@ -61,11 +61,13 @@ struct HistoryView: View {
     }
 
     var body: some View {
+        ScrollViewReader { scroller in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 DictationActivityView(store: activity)
-                Divider()
+                    Divider()
                 header
+                    .id("history-list")
                 if history.entries.isEmpty {
                     emptyState(symbol: "clock", title: L10n.tr("No history yet"),
                                detail: L10n.tr("Your dictations, voice edits, and translations will appear here."))
@@ -77,24 +79,26 @@ struct HistoryView: View {
                         emptyState(symbol: "magnifyingglass", title: L10n.tr("No matching history"),
                                    detail: L10n.tr("Try another search or filter."))
                     } else {
+                        let pageCount = SettingsPager.pageCount(items: entries.count, pageSize: Self.pageSize)
+                        let current = min(page, pageCount - 1)
+                        let start = current * Self.pageSize
                         LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
-                            ForEach(days(entries.prefix(limit)), id: \.day) { group in
+                            ForEach(days(entries[start..<min(entries.count, start + Self.pageSize)]), id: \.day) { group in
                                 daySection(group.day, entries: group.entries)
                             }
                         }
-                        if entries.count > limit {
-                            Button(L10n.format("Show %lld more (%lld left)", min(Self.pageSize, entries.count - limit), entries.count - limit)) {
-                                limit += Self.pageSize
-                            }
-                            .frame(maxWidth: .infinity)
+                        if pageCount > 1 {
+                            SettingsPager(page: Binding(get: { current }, set: { page = $0 }), pageCount: pageCount)
                         }
                     }
                 }
             }
             .padding(28)
         }
-        .onChange(of: search) { _, _ in limit = Self.pageSize }
-        .onChange(of: filter) { _, _ in limit = Self.pageSize }
+        .onChange(of: page) { _, _ in scroller.scrollTo("history-list", anchor: .top) }
+        }
+        .onChange(of: search) { _, _ in page = 0 }
+        .onChange(of: filter) { _, _ in page = 0 }
         .alert(L10n.tr("Clear saved history?"), isPresented: $confirmClear) {
             Button(L10n.tr("Cancel"), role: .cancel) {}
             Button(L10n.tr("Clear history"), role: .destructive) { history.clear() }

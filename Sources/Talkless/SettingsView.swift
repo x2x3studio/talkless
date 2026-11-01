@@ -65,6 +65,7 @@ struct SettingsView: View {
     private var currentSection: SettingsSection { selection ?? .dictation }
 
     var body: some View {
+        let _ = UIResponsiveness.shared.noteRender()
         HStack(spacing: 0) {
             SettingsSidebar(selection: $selection)
 
@@ -122,6 +123,9 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsSection)) { notification in
             if let section = notification.object as? SettingsSection { selection = section }
         }
+        .onAppear { UIResponsiveness.shared.page = currentSection.rawValue; UIResponsiveness.shared.start() }
+        .onDisappear { UIResponsiveness.shared.stop() }
+        .onChange(of: selection) { _, _ in UIResponsiveness.shared.page = currentSection.rawValue }
     }
 }
 

@@ -13,6 +13,7 @@ xcrun --sdk macosx swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/AudioRecorder.swift" \
   "$ROOT/Sources/Talkless/AudioOperationQueue.swift" \
   "$ROOT/Sources/Talkless/Diagnostics.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$ROOT/Sources/Talkless/Transcription.swift" \
   "$ROOT/Tests/APITests/APITests.swift" \
   -o "$WORK/api-tests"

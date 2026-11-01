@@ -841,4 +841,6 @@
 "Doubao is not set up. Using offline recognition for this recording." = "Doubao is not set up. Using offline recognition for this recording.";
 "Doubao failed. Offline recognition will finish this recording." = "Doubao failed. Offline recognition will finish this recording.";
 "Doubao failed. Using offline recognition for this recording." = "Doubao failed. Using offline recognition for this recording.";
-"Show %lld more (%lld left)" = "Show %lld more (%lld left)";
+"Page %lld of %lld" = "Page %lld of %lld";
+"Previous page" = "Previous page";
+"Next page" = "Next page";

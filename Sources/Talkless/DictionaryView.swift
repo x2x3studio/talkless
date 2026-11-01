@@ -14,6 +14,18 @@ struct DictionaryView: View {
     @State private var editor: TermEditor?
     @State private var termToDelete: String?
     @State private var message = ""
+    @State private var page = 0
+    private static let pageSize = 50
+
+    private enum Row: Identifiable {
+        case learned(LearnedFix), manual(String)
+        var id: String {
+            switch self {
+            case .learned(let fix): "learned-" + fix.id
+            case .manual(let term): "manual-" + term
+            }
+        }
+    }
 
     private struct TermEditor: Identifiable {
         let id = UUID()
@@ -61,6 +73,7 @@ struct DictionaryView: View {
             HStack {
                 TextField(L10n.tr("Search"), text: $search)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: search) { _, _ in page = 0 }
                 Button(L10n.tr("Add…")) { editor = TermEditor(original: nil) }
                 Menu {
                     Button(L10n.tr("Import…"), action: importTerms)
@@ -72,15 +85,24 @@ struct DictionaryView: View {
                 .accessibilityLabel(L10n.tr("More dictionary actions"))
             }
 
+            // One page of rows at a time; section headers keep their full counts.
+            let learnedRows = settings.dictionaryLearningEnabled ? learned : []
+            let terms = manualTerms
+            let rows = learnedRows.map(Row.learned) + terms.map(Row.manual)
+            let pageCount = SettingsPager.pageCount(items: rows.count, pageSize: Self.pageSize)
+            let current = min(page, pageCount - 1)
+            let visible = rows.dropFirst(current * Self.pageSize).prefix(Self.pageSize)
+            let visibleLearned = visible.compactMap { if case .learned(let fix) = $0 { fix } else { nil } }
+            let visibleManual = visible.compactMap { if case .manual(let term) = $0 { term } else { nil } }
             List {
-                if settings.dictionaryLearningEnabled, !learned.isEmpty {
-                    Section(L10n.format("Learned automatically (%lld)", learned.count)) {
-                        ForEach(learned) { fix in learnedRow(fix) }
+                if !visibleLearned.isEmpty {
+                    Section(L10n.format("Learned automatically (%lld)", learnedRows.count)) {
+                        ForEach(visibleLearned) { fix in learnedRow(fix) }
                     }
                 }
-                if !manualTerms.isEmpty {
-                    Section(L10n.format("Added by you (%lld)", manualTerms.count)) {
-                        ForEach(manualTerms, id: \.self) { term in manualRow(term) }
+                if !visibleManual.isEmpty {
+                    Section(L10n.format("Added by you (%lld)", terms.count)) {
+                        ForEach(visibleManual, id: \.self) { term in manualRow(term) }
                     }
                 }
             }
@@ -91,6 +113,10 @@ struct DictionaryView: View {
                                detail: search.isEmpty ? L10n.tr("Keep dictating with AI polish on, and words it keeps fixing show up here. You can also add one yourself.") : L10n.tr("Try another search or add a new entry."),
                                symbol: "character.book.closed")
                 }
+            }
+
+            if pageCount > 1 {
+                SettingsPager(page: Binding(get: { current }, set: { page = $0 }), pageCount: pageCount)
             }
 
             HStack {

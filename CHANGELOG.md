@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- History and the dictionary now page through entries 50 at a time with previous and next buttons and a "Page x of n" indicator, instead of a Show more button or one long list.
+- Diagnostics record how long the interface stopped responding while Settings is open (over 150 ms), how often Settings redraws, and which page was showing. No text is recorded. Export diagnostics after Settings feels slow so the cause can be found.
+
+## 2026.1101.49916
+
+### Changed
 - Settings › History shows 50 entries at a time with a Show more button, instead of drawing all 500 at once. Opening History, and Settings updates after each dictation or translation, are several times faster. Hovering the activity calendar redraws only the affected days, and the microphone list redraws only when devices change.
 - Speech recognition choices are now named Offline (the local model) and Doubao online, and the fallback switch reads "Allow falling back to offline recognition", with a note on when it applies.
 
