@@ -16,12 +16,23 @@ if [[ -z "${TALKLESS_RELEASE_TOOL:-}" ]]; then
     TOOL_BIN="$(swift build --package-path "$ROOT/Tools/ReleaseTool" --build-system native -c release --show-bin-path)"
     export TALKLESS_RELEASE_TOOL="$TOOL_BIN/ReleaseTool"
 fi
-# A unique compiler identity also invalidates old unadapted SwiftPM objects.
-# No personal paths in the compiler's location or generated replacement sources.
-COMPILER_STAGE="$(mktemp -d /tmp/talkless-compiler.XXXXXX)"
-trap 'rm -rf "$COMPILER_STAGE"' EXIT
+# The compiler's location is part of SwiftPM's build identity. Key it to the adapter's
+# contents: a changed adapter still invalidates old objects, while an unchanged one keeps
+# incremental builds (a fresh path every run recompiled all of MLX). No personal paths in
+# the compiler's location or generated replacement sources.
+ADAPTER_HASH="$(shasum -a 256 "$TALKLESS_RELEASE_TOOL" | cut -c1-16)"
+COMPILER_STAGE="/tmp/talkless-compiler-$(id -u)-$ADAPTER_HASH"
+if [[ -e "$COMPILER_STAGE" || -L "$COMPILER_STAGE" ]]; then
+    # /tmp is shared: reuse only a real directory this user created, never a planted one.
+    if [[ -L "$COMPILER_STAGE" || ! -d "$COMPILER_STAGE" || ! -O "$COMPILER_STAGE" ]]; then
+        printf 'Refusing an unsafe compiler staging path: %s\n' "$COMPILER_STAGE" >&2
+        exit 1
+    fi
+else
+    mkdir -m 700 "$COMPILER_STAGE"
+fi
 mkdir -p "$COMPILER_STAGE/bin" "$COMPILER_STAGE/inputs"
-cp "$TALKLESS_RELEASE_TOOL" "$COMPILER_STAGE/bin/swiftc"
+cmp -s "$TALKLESS_RELEASE_TOOL" "$COMPILER_STAGE/bin/swiftc" || cp "$TALKLESS_RELEASE_TOOL" "$COMPILER_STAGE/bin/swiftc"
 REAL_SWIFTC="$(xcrun --find swiftc)"
 BUILD_FLAGS=()
 for prefix in "$ROOT" "$HOME" "$COMPILER_STAGE" "$(cd "$COMPILER_STAGE" && pwd -P)"; do

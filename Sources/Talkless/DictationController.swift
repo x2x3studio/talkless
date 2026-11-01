@@ -458,7 +458,7 @@ final class DictationController: ObservableObject {
                     guard let self, self.isCurrentRecognition(generation) else { return }
                     if fallbackEnabled {
                         // Keep recording the whole utterance for local replay when the key is released.
-                        self.hud.model.notice = L10n.tr("Online recognition failed. Local recognition will finish this recording.")
+                        self.hud.model.notice = L10n.tr("Doubao failed. Offline recognition will finish this recording.")
                     } else {
                         self.cancel(reason: "recognition_error")
                         self.hud.show(.error(message))
@@ -471,7 +471,7 @@ final class DictationController: ObservableObject {
                         guard let self, self.isCurrentRecognition(generation) else { return }
                         self.diagnosticOperation?.record("recognition_fallback", ["fallback": "true"])
                         self.hud.model.preview = ""
-                        self.hud.model.notice = L10n.tr("Online recognition failed. Using local Qwen for this recording.")
+                        self.hud.model.notice = L10n.tr("Doubao failed. Using offline recognition for this recording.")
                         self.hud.show(.recognizing)
                     })
                 } else { session = online }
@@ -484,7 +484,7 @@ final class DictationController: ObservableObject {
                 }
                 // Online cannot start (for example, no key yet): record locally instead.
                 operation.record("recognition_fallback", ["fallback": "true", "stage": "startup"])
-                hud.model.notice = L10n.tr("Doubao is not set up. Using this Mac for this recording.")
+                hud.model.notice = L10n.tr("Doubao is not set up. Using offline recognition for this recording.")
                 session = localSession(qwenDirectory)
                 usesLocalSession = true
             }

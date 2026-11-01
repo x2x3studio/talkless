@@ -52,14 +52,14 @@ enum ASREngine: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .qwen: L10n.tr("On this Mac")
-        case .doubao: L10n.tr("Doubao cloud")
+        case .qwen: L10n.tr("Offline")
+        case .doubao: L10n.tr("Doubao online")
         }
     }
     var detail: String {
         switch self {
-        case .qwen: L10n.tr("Free and works offline. Audio never leaves your Mac.")
-        case .doubao: L10n.tr("Text appears as you speak. Needs a Doubao account.")
+        case .qwen: L10n.tr("Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac.")
+        case .doubao: L10n.tr("Text appears as you speak. Needs internet and a Doubao account.")
         }
     }
     var symbol: String { self == .qwen ? "laptopcomputer" : "cloud" }

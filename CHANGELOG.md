@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- Speech recognition choices are now named Offline (the local model) and Doubao online, and the fallback switch reads "Allow falling back to offline recognition", with a note on when it applies.
+
+## 2026.1101.46792
+
 ### Fixed
 - Dictating into a field that selects its contents on focus, such as Chrome's address bar, no longer turns your words into an edit of that text. With voice editing on, a selection made the next dictation an AI edit instruction, so words could vanish or old text reappear.
 

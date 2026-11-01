@@ -4,7 +4,7 @@ Talkless offers two recognition paths: local Qwen3 ASR and online Doubao. AI pol
 
 ## Setup
 
-Select **Settings > Speech recognition > Doubao cloud**. Enter the **Speech API key** from the new Doubao Speech console. This is not an Ark chat-model key. The key is stored under a dedicated Keychain account, never in UserDefaults, the repository or diagnostic logs. Former Whisper-compatible provider keys are not reused. Retired recognition choices fall back to local Qwen, so upgrading does not silently upload audio to a different provider.
+Select **Settings > Speech recognition > Doubao online**. Enter the **Speech API key** from the new Doubao Speech console. This is not an Ark chat-model key. The key is stored under a dedicated Keychain account, never in UserDefaults, the repository or diagnostic logs. Former Whisper-compatible provider keys are not reused. Retired recognition choices fall back to local Qwen, so upgrading does not silently upload audio to a different provider.
 
 The default is ASR 2.0 hourly billing, `volc.seedasr.sauc.duration`. **More options** also offers its concurrent-billing resource. The selected resource must be enabled for the key. Use **Test** after pasting the key: it sends only the configuration frame and waits up to ten seconds for the service acknowledgment, then closes the connection. It never opens the microphone or sends audio. Success verifies that the configuration was accepted, not speech accuracy or future quota. Provider billing policies still apply. Editing the key/resource or leaving the page cancels the check and clears its receipt; viewing Settings never starts a request.
 
@@ -26,8 +26,8 @@ Qwen receives dictionary recognition hints. This Doubao integration does not sen
 
 There are two modes, and you choose one:
 
-- **On this Mac**: every recording uses local Qwen. Doubao is never contacted, whatever the fallback switch says.
-- **Doubao cloud**: every recording tries Doubao first. **Use this Mac if Doubao fails** (off by default) decides what happens when Doubao is unavailable.
+- **Offline**: every recording uses the local Qwen model on your Mac. Doubao is never contacted, whatever the fallback switch says.
+- **Doubao online**: every recording tries Doubao first. **Allow falling back to offline recognition** (off by default) decides whether a recording may fall back to the offline model when Doubao is unavailable.
 
 With the switch on and a local model installed, Talkless preloads the model and keeps it in memory while Doubao is selected. A preparation error is shown rather than claiming the standby is ready.
 

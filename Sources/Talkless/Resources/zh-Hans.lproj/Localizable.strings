@@ -765,8 +765,6 @@
 "Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first." = "开启后，已下载的千问模型会预先加载并常驻内存。在线失败时用完整录音进行本地识别，下一次录音仍优先豆包。";
 "Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available." = "请先下载本地千问模型。启用本地回退后，模型未就绪时无法开始录音。";
 "A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation." = "连接或上传停滞超过 10 秒，或录音结束后超过 15 秒未收到最终结果，会判定失败。关闭本地回退时，本次听写直接停止。";
-"Online recognition failed. Local recognition will finish this recording." = "在线识别失败，本次录音结束后将用本地模型识别。";
-"Online recognition failed. Using local Qwen for this recording." = "在线识别失败，正在用本地千问识别本次录音。";
 "Smart text cleanup" = "智能文字整理";
 "Automatically fix spelling and punctuation after you speak." = "说完后自动纠错、补标点、整理文字。";
 "Cleanup preferences" = "整理偏好";
@@ -777,14 +775,9 @@
 "Speaking mode" = "说话方式";
 "Dictation shortcut" = "听写快捷键";
 "Update to %@…" = "更新到 %@…";
-"On this Mac" = "本机识别";
-"Doubao cloud" = "豆包云端";
-"Free and works offline. Audio never leaves your Mac." = "免费，断网也能用，录音不离开这台 Mac。";
-"Text appears as you speak. Needs a Doubao account." = "边说边出字，需要豆包账号。";
 "Test" = "测试";
 "The key works." = "密钥可用。";
 "Create one in the Doubao Speech console. Saved in your Keychain." = "在火山引擎「豆包语音」控制台创建，保存在本机钥匙串。";
-"Needs the local model downloaded." = "需要先下载本机模型。";
 "More options" = "更多选项";
 "Match the plan enabled in your Doubao Speech console." = "与豆包语音控制台里开通的套餐保持一致。";
 "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly." = "录音直接发给豆包，Talkless 不中转、不保存，费用由豆包向你收取。";
@@ -800,9 +793,6 @@
 "Sends a short test prompt. Your provider may charge for it." = "发送一条简短的测试消息，服务商可能会计费。";
 "No AI service yet" = "还没有设置 AI 服务";
 "Change…" = "更改…";
-"Use this Mac if Doubao fails" = "豆包不可用时改用本机识别";
-"No local model yet, so there is no fallback. Switch to On this Mac once to download it." = "还没有本机模型，暂时无法兜底。先切到“本机识别”下载一次。";
-"Doubao is not set up. Using this Mac for this recording." = "豆包还没设置好，这次改用本机识别。";
 "Add" = "添加";
 "Add an entry" = "添加词条";
 "Added by you (%lld)" = "我添加的（%lld）";
@@ -841,3 +831,13 @@
 "No text is selected, so this will be typed as dictation." = "没有选中文字，这次会按普通听写输入。";
 "Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”." = "选中文字，按住 %@ + %@，说出要怎么改，比如“改短一点”。";
 "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "只有 %@ + %@ 才会修改选中的文字；只按听写键永远是输入文字，像打字一样替换选中内容。编辑时浮窗显示铅笔图标。也可以先开始说话，再按下 %@。没有选中文字时，照常输入你说的话。AI 润色开关不影响这个功能。";
+"Offline" = "离线识别";
+"Doubao online" = "豆包在线识别";
+"Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac." = "使用本机模型，免费，断网也能用，录音不离开这台 Mac。";
+"Text appears as you speak. Needs internet and a Doubao account." = "边说边出字，需要联网和豆包账号。";
+"Allow falling back to offline recognition" = "豆包不可用时，允许降级为离线识别";
+"When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded." = "豆包连不上、出错或还没设置时，这次录音改用离线模型识别。需要先下载离线模型。";
+"No offline model yet, so there is nothing to fall back to. Switch to Offline once to download it." = "还没有离线模型，暂时无法降级。先切到“离线识别”下载一次。";
+"Doubao is not set up. Using offline recognition for this recording." = "豆包还没设置好，这次改用离线识别。";
+"Doubao failed. Offline recognition will finish this recording." = "豆包识别失败，录音结束后改用离线识别。";
+"Doubao failed. Using offline recognition for this recording." = "豆包识别失败，这次改用离线识别。";

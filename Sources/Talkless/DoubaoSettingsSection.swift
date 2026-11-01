@@ -40,14 +40,14 @@ struct DoubaoSettingsSection: View {
             }
 
             Toggle(isOn: $settings.onlineLocalFallback) {
-                Text(L10n.tr("Use this Mac if Doubao fails"))
-                Text(L10n.tr("Needs the local model downloaded."))
+                Text(L10n.tr("Allow falling back to offline recognition"))
+                Text(L10n.tr("When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded."))
                     .settingsNote()
             }
             .help(L10n.tr("A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation."))
             if settings.onlineLocalFallback {
                 if (try? settings.resolvedQwenModelDirectory()) == nil {
-                    Text(L10n.tr("No local model yet, so there is no fallback. Switch to On this Mac once to download it."))
+                    Text(L10n.tr("No offline model yet, so there is nothing to fall back to. Switch to Offline once to download it."))
                         .font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if let localModelStatus {

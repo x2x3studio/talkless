@@ -765,8 +765,6 @@
 "Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first." = "Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first.";
 "Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available." = "Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available.";
 "A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation." = "A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation.";
-"Online recognition failed. Local recognition will finish this recording." = "Online recognition failed. Local recognition will finish this recording.";
-"Online recognition failed. Using local Qwen for this recording." = "Online recognition failed. Using local Qwen for this recording.";
 "Smart text cleanup" = "Smart text cleanup";
 "Automatically fix spelling and punctuation after you speak." = "Automatically fix spelling and punctuation after you speak.";
 "Cleanup preferences" = "Cleanup preferences";
@@ -777,14 +775,9 @@
 "Speaking mode" = "Speaking mode";
 "Dictation shortcut" = "Dictation shortcut";
 "Update to %@…" = "Update to %@…";
-"On this Mac" = "On this Mac";
-"Doubao cloud" = "Doubao cloud";
-"Free and works offline. Audio never leaves your Mac." = "Free and works offline. Audio never leaves your Mac.";
-"Text appears as you speak. Needs a Doubao account." = "Text appears as you speak. Needs a Doubao account.";
 "Test" = "Test";
 "The key works." = "The key works.";
 "Create one in the Doubao Speech console. Saved in your Keychain." = "Create one in the Doubao Speech console. Saved in your Keychain.";
-"Needs the local model downloaded." = "Needs the local model downloaded.";
 "More options" = "More options";
 "Match the plan enabled in your Doubao Speech console." = "Match the plan enabled in your Doubao Speech console.";
 "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly." = "Audio goes straight to Doubao. Talkless doesn't relay or save it. Doubao bills you directly.";
@@ -800,9 +793,6 @@
 "Sends a short test prompt. Your provider may charge for it." = "Sends a short test prompt. Your provider may charge for it.";
 "No AI service yet" = "No AI service yet";
 "Change…" = "Change…";
-"Use this Mac if Doubao fails" = "Use this Mac if Doubao fails";
-"No local model yet, so there is no fallback. Switch to On this Mac once to download it." = "No local model yet, so there is no fallback. Switch to On this Mac once to download it.";
-"Doubao is not set up. Using this Mac for this recording." = "Doubao is not set up. Using this Mac for this recording.";
 "Add" = "Add";
 "Add an entry" = "Add an entry";
 "Added by you (%lld)" = "Added by you (%lld)";
@@ -841,3 +831,13 @@
 "No text is selected, so this will be typed as dictation." = "No text is selected, so this will be typed as dictation.";
 "Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”." = "Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”.";
 "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off.";
+"Offline" = "Offline";
+"Doubao online" = "Doubao online";
+"Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac." = "Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac.";
+"Text appears as you speak. Needs internet and a Doubao account." = "Text appears as you speak. Needs internet and a Doubao account.";
+"Allow falling back to offline recognition" = "Allow falling back to offline recognition";
+"When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded." = "When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded.";
+"No offline model yet, so there is nothing to fall back to. Switch to Offline once to download it." = "No offline model yet, so there is nothing to fall back to. Switch to Offline once to download it.";
+"Doubao is not set up. Using offline recognition for this recording." = "Doubao is not set up. Using offline recognition for this recording.";
+"Doubao failed. Offline recognition will finish this recording." = "Doubao failed. Offline recognition will finish this recording.";
+"Doubao failed. Using offline recognition for this recording." = "Doubao failed. Using offline recognition for this recording.";
