@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- Diagnostics now record, at each paste, which system action the Globe key has and whether an input method is active, without any text. This helps find why some dictations do not appear in Chrome.
+
+## 2026.1101.43798
+
 ### Added
 - The dictionary now learns on its own. When AI polish keeps making the same spelling fix (twice, or three times for two-character Chinese words), the fix takes effect automatically and its word becomes a recognition and polish hint. Fixes unused for 30 days retire on their own, and a fix that polish undoes retires at once. Existing local history is read once to get started. Learning is local, on by default and can be turned off.
 
