@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# One release at a time, in push order: a newer push waits for the running release instead of
+# racing it, and if several pushes queue up meanwhile only the newest is built (each release
+# already contains everything before it).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: macos-15

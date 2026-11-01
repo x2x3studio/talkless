@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2026.1101.63169
+
 ### Changed
 - The overlay's text is one point larger (14 pt) and its status icon now has the same size, sitting level with the first line of text instead of above it.
 - The dictionary shows learning as it happens: corrections still being watched appear with how many more times they need to be seen, a learning log lists what was learned or retired and when, and a note explains when learning is paused because smart text cleanup is off.
