@@ -62,12 +62,14 @@ struct DictationProcessingSettingsView: View {
         Section {
             Toggle(isOn: $settings.voiceEditEnabled) {
                 Text(L10n.tr("Edit text by voice"))
-                Text(L10n.tr("Select text, then say how to change it. For example, “make it shorter”."))
+                Text(L10n.format("Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”.",
+                                 settings.triggerKey.title, settings.triggerKey.editModifierTitle))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             DisclosureGroup(L10n.tr("How it works")) {
-                Text(L10n.tr("When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off."))
+                Text(L10n.format("Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off.",
+                                 settings.triggerKey.title, settings.triggerKey.editModifierTitle, settings.triggerKey.editModifierTitle))
                     .settingsNote()
                 Text(L10n.tr("Voice editing sends the selection, spoken instruction, and dictionary to the same provider."))
                     .settingsNote()

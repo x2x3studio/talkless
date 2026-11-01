@@ -673,8 +673,9 @@ typealias AudioRecorder = FakeRecorder
     func show(_ phase: HUDModel.Phase) { model.phase = phase }
     func hide() { model.phase = .hidden; model.preview = ""; model.isEditMode = false }
 }
-@MainActor final class FakeHotkeys {}
+@MainActor final class FakeHotkeys { var editModifierHeld = false }
 @MainActor final class StartupHarness {
+    var editIntent = false
     enum State { case idle, recording, processing }
     enum Gesture: String { case hold, toggle }
     enum Authorization { case authorized, notDetermined, denied, restricted }
@@ -820,6 +821,7 @@ STARTUP_TESTS = r'''
             TextIO.copyReads = 0
             let copied = StartupHarness()
             copied.settings.voiceEditEnabled = voiceEdit
+            copied.editIntent = true
             copied.startRecording()
             await copied.selectionTask?.value
             precondition(TextIO.copyReads == (voiceEdit ? 1 : 0), "The ⌘C fallback runs only when voice editing is on")
@@ -830,12 +832,27 @@ STARTUP_TESTS = r'''
         TextIO.copiedSelection = nil
         let nothingSelected = StartupHarness()
         nothingSelected.settings.voiceEditEnabled = true
+        nothingSelected.editIntent = true
         nothingSelected.startRecording()
         await nothingSelected.selectionTask?.value
-        precondition(!nothingSelected.hud.model.isEditMode, "No copied text keeps ordinary dictation")
+        precondition(!nothingSelected.hud.model.isEditMode && nothingSelected.hud.model.notice != nil,
+                     "No copied text keeps ordinary dictation and says so")
         nothingSelected.cancel()
+        // An address bar selects its URL on focus: the dictation key alone must never read or edit it.
+        TextIO.axSelection = "https://example.com/selected-on-focus"
+        TextIO.axReads = 0
+        TextIO.copyReads = 0
+        let plain = StartupHarness()
+        plain.settings.voiceEditEnabled = true
+        plain.startRecording()
+        precondition(TextIO.axReads == 0 && TextIO.copyReads == 0 && !plain.hud.model.isEditMode && plain.editSelection == nil,
+                     "Plain dictation never reads the selection")
+        plain.editModifierPressed()
+        precondition(TextIO.axReads == 1 && plain.hud.model.isEditMode && plain.editSelection == "https://example.com/selected-on-focus",
+                     "Pressing the edit modifier during recording switches to voice editing")
+        plain.cancel()
         TextIO.axSelection = "Selected sentence"
-        print("PASS voice editing falls back to ⌘C like translation and switches only when text was copied")
+        print("PASS voice editing needs the edit gesture, falls back to the app's Copy, and switches only when text was copied")
         for engine in FakeSettings.Engine.allCases {
             let test = StartupHarness()
             test.settings.asrEngine = engine
@@ -910,6 +927,7 @@ STARTUP_TESTS = r'''
                          "Failed startup callbacks cannot revive HUD highlights")
             test.recorder.fail = false
             test.settings.voiceEditEnabled = true
+            test.editIntent = true
             test.startRecording()
             FakeSession.latest?.onPartial?("NextSession")
             precondition(test.hud.model.isEditMode && test.hud.model.dictionaryTerms.isEmpty)
@@ -1184,8 +1202,10 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     typealias Settings = FakeSettings
     typealias Context = AppContext
     extension TextIO {
+        enum SelectionReading: Equatable { case text(String), empty, unavailable }
         static var axSelection: String? = "Selected sentence"
-        static func selectedTextViaAX() -> String? { axSelection }
+        static var axReads = 0
+        static func selectionViaAX() -> SelectionReading { axReads += 1; return axSelection.map { .text($0) } ?? .unavailable }
     }
     @MainActor final class FakeTranslationPanel {
         var isVisible = false
@@ -1194,7 +1214,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     '''
     startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
-                         ("prepareSelectedModel", "startRecording", "isCurrentRecognition", "adoptEditSelection", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
+                         ("prepareSelectedModel", "startRecording", "isCurrentRecognition", "adoptEditSelection", "captureEditSelection", "editModifierPressed", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
                           "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),

@@ -38,7 +38,7 @@ def method(name):
 
 
 fields = []
-for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled",
+for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled", "editIntent",
              "shortcutCaptureActive", "resumeHotkeyAfterCapture"):
     match = re.search(r"^    private (?:var|let) " + name + r"\b[^\n]*", controller, re.M)
     assert match, f"Missing production field: {name}"
@@ -156,7 +156,9 @@ final class Diagnostics: @unchecked Sendable {
         monitor.onRelease = { [weak self] in self?.triggerReleased(at: $0) }
         monitor.onComboKey = { [weak self] in self?.comboKeyPressed(at: $0) }
         monitor.onEscape = { [weak self] in self?.escapePressed() ?? false }
+        monitor.onEditModifier = { [weak self] in self?.editModifierPresses += 1 }
     }
+    var editModifierPresses = 0
     func startRecording() {
         generation += 1
         acceptsRecognitionHUDUpdates = true
@@ -435,6 +437,25 @@ TESTS = r'''
         idle.flags(base + 10, key: 61, raw: 0)
         precondition(idle.state == .idle && idle.starts == 0, "Other modifiers never start dictation")
         print("PASS other modifiers are inert for every dictation key and mode")
+
+        // Dictation key + Control (Option for Right Control) is the voice-edit gesture.
+        let withControl = GestureHarness()
+        withControl.flags(base, key: 59, raw: control)
+        withControl.flags(base + 10, key: 63, raw: control | fn)
+        precondition(withControl.state == .recording && withControl.editIntent && withControl.editModifierPresses == 0,
+                     "Control held before the dictation key starts an edit recording")
+        let plainPress = GestureHarness()
+        plainPress.flags(base, key: 63, raw: fn)
+        precondition(plainPress.state == .recording && !plainPress.editIntent, "The dictation key alone dictates")
+        plainPress.flags(base + 100, key: 59, raw: fn | control)
+        precondition(plainPress.editModifierPresses == 1, "Control pressed while holding the key asks to edit")
+        plainPress.flags(base + 200, key: 59, raw: fn)
+        plainPress.flags(base + 300, key: 59, raw: fn | control)
+        precondition(plainPress.editModifierPresses == 2, "Each new Control press is reported")
+        let idleControl = GestureHarness()
+        idleControl.flags(base, key: 59, raw: control)
+        precondition(idleControl.editModifierPresses == 0 && idleControl.state == .idle, "Control alone does nothing")
+        print("PASS dictation key + Control requests voice editing")
 
         for enabled in [true, false] {
             let normal = GestureHarness()

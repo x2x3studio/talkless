@@ -2,7 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+- Dictating into a field that selects its contents on focus, such as Chrome's address bar, no longer turns your words into an edit of that text. With voice editing on, a selection made the next dictation an AI edit instruction, so words could vanish or old text reappear.
+
 ### Changed
+- Voice editing now has its own gesture, like the command mode in other voice-input tools: hold the dictation key with Control (Option when Right Control is the dictation key), or press Control after you start speaking. The dictation key alone always types. Without a selection, the words are typed as dictation and the overlay says so.
+- Pasting sends a complete Command-V key sequence after a short settle, and pastes run one at a time. Reading a selection for voice editing or translation trusts an explicit empty selection, and otherwise uses the app's own Copy menu item (or Command-C sent only to that app) before restoring your clipboard.
 - Diagnostics now record, at each paste, which system action the Globe key has and whether an input method is active, without any text. This helps find why some dictations do not appear in Chrome.
 
 ## 2026.1101.43798

@@ -8,48 +8,107 @@ enum TextIO {
     private static let vKeyV: CGKeyCode = 9
     private static let vKeyC: CGKeyCode = 8
 
-    /// Read selected text from the focused control through Accessibility. Return nil if unavailable (many Electron apps do not support this).
-    static func selectedTextViaAX() -> String? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.25)
+    /// What Accessibility says about the focused control's selection.
+    enum SelectionReading: Equatable {
+        case text(String)
+        /// An explicit zero-length selection: nothing is selected, so do not try ⌘C.
+        case empty
+        /// The app does not report it (many web views and Electron apps): ⌘C may still work.
+        case unavailable
+    }
+
+    /// Read the selection without touching the clipboard. Some apps return an empty string
+    /// even when text is selected, so only an explicit zero-length range counts as `.empty`.
+    static func selectionViaAX() -> SelectionReading {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return .unavailable }
+        let target = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(target, 0.25)
         var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        guard AXUIElementCopyAttributeValue(target, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return .unavailable }
         let element = focused as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, 0.25)
         var selected: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected) == .success,
-              let text = selected as? String else { return nil }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected) == .success,
+           let text = selected as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .text(text)
+        }
+        var rangeValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+           let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID() {
+            var range = CFRange()
+            if AXValueGetValue(rangeValue as! AXValue, .cfRange, &range), range.location >= 0, range.length == 0 {
+                return .empty
+            }
+        }
+        return .unavailable
     }
 
-    /// Try Accessibility first, then simulate ⌘C if needed and restore the clipboard afterward.
+    /// Accessibility first; ⌘C only when the app cannot report its selection.
     static func selectedText() async -> String? {
-        if let text = selectedTextViaAX() { return text }
-        return await selectedTextViaCopy()
+        switch selectionViaAX() {
+        case .text(let text): return text
+        case .empty: return nil
+        case .unavailable: return await selectedTextViaCopy()
+        }
     }
 
-    /// For apps that do not expose their selection through Accessibility: simulate ⌘C, read the
-    /// copy, and give the user's clipboard back. Returns nil when nothing was copied.
+    /// For apps that do not expose their selection through Accessibility: ask the app to copy
+    /// (its own Edit › Copy menu item when available, otherwise ⌘C sent to that app only), read
+    /// the copy, and give the user's clipboard back. Returns nil when nothing was copied.
     static func selectedTextViaCopy() async -> String? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+        let pid = app.processIdentifier
         let pasteboard = NSPasteboard.general
         let lease = BorrowedClipboard.borrow()
         let before = pasteboard.changeCount
-        postKey(vKeyC, flags: .maskCommand)
+        if !pressCopyMenuItem(of: pid) { postShortcut(vKeyC, to: pid) }
 
         var result: String?
         var wholeLine = false
         for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(25))
-            if pasteboard.changeCount != before {
-                result = pasteboard.string(forType: .string)
-                wholeLine = copiedLineWithoutSelection(pasteboard)
-                break
-            }
+            if pasteboard.changeCount != before { break }
+        }
+        let after = pasteboard.changeCount
+        // Exactly one change is the app's copy; more may include a copy by the user.
+        if after == before + 1, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+            result = pasteboard.string(forType: .string)
+            wholeLine = copiedLineWithoutSelection(pasteboard)
         }
         // The app's copy is ours to undo; anything newer belongs to the user.
-        if pasteboard.changeCount != before { BorrowedClipboard.giveBack(lease, ifUnchangedSince: pasteboard.changeCount) }
+        if after == before + 1 { BorrowedClipboard.giveBack(lease, ifUnchangedSince: after) }
         guard !wholeLine, let result, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return result
+    }
+
+    /// Press the app's own Copy menu item, found by its ⌘C key equivalent so it works in any
+    /// interface language. Avoids depending on the keyboard layout or a focused event tap.
+    private static func pressCopyMenuItem(of pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.1)
+        func value(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+            var result: CFTypeRef?
+            return AXUIElementCopyAttributeValue(element, name as CFString, &result) == .success ? result : nil
+        }
+        func children(_ element: AXUIElement) -> [AXUIElement] {
+            Array(((value(element, kAXChildrenAttribute) as? [AXUIElement]) ?? []).prefix(64))
+        }
+        guard let bar = value(app, kAXMenuBarAttribute), CFGetTypeID(bar) == AXUIElementGetTypeID() else { return false }
+        // Edit is conventionally the third or fourth top-level menu; look at a few, not the whole tree.
+        for top in children(bar as! AXUIElement).dropFirst().prefix(4) {
+            for menu in children(top) {
+                for item in children(menu) {
+                    guard (value(item, kAXMenuItemCmdCharAttribute) as? String)?.lowercased() == "c",
+                          (value(item, kAXMenuItemCmdModifiersAttribute) as? Int) == 0,
+                          (value(item, kAXEnabledAttribute) as? Bool) == true else { continue }
+                    let status = AXUIElementPerformAction(item, kAXPressAction as CFString)
+                    return status == .success || status == .cannotComplete
+                }
+            }
+        }
+        return false
     }
 
     /// VS Code and its forks copy the whole current line when nothing is selected, and mark it.
@@ -78,13 +137,24 @@ enum TextIO {
         return ["globe_action": globe, "input_method": String(inputMethod)]
     }
 
+    /// Pastes run one at a time; the next waits until this one's keys are posted.
+    private static var pasteQueue: Task<Void, Never>?
+
     /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the
     /// user's clipboard comes back 400 ms later, so the next dictation never waits for it.
     static func insert(_ text: String) async {
-        let lease = BorrowedClipboard.borrow()
-        let change = BorrowedClipboard.writeTransient(text)
-        postKey(vKeyV, flags: .maskCommand)
-        BorrowedClipboard.giveBack(lease, ifUnchangedSince: change, after: .milliseconds(400))
+        let previous = pasteQueue
+        let task = Task { @MainActor in
+            await previous?.value
+            let lease = BorrowedClipboard.borrow()
+            let change = BorrowedClipboard.writeTransient(text)
+            // Let the clipboard write and any just-released dictation key settle first.
+            try? await Task.sleep(for: .milliseconds(50))
+            await postShortcut(vKeyV)
+            BorrowedClipboard.giveBack(lease, ifUnchangedSince: change, after: .milliseconds(400))
+        }
+        pasteQueue = task
+        await task.value
     }
 
     /// Text the user asked to keep (copy buttons, results saved for ⌘V). Ends any borrow.
@@ -93,11 +163,28 @@ enum TextIO {
         BorrowedClipboard.keep(text)
     }
 
-    private static func postKey(_ key: CGKeyCode, flags: CGEventFlags) {
-        let down = SyntheticKeyboardEvents.make(key: key, down: true, flags: flags)
-        let up = SyntheticKeyboardEvents.make(key: key, down: false, flags: flags)
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+    /// A complete, human-like shortcut: Command down, key down, key up, Command up, a few
+    /// milliseconds apart. Some apps ignore a lone key event that only carries a Command flag.
+    private static func postShortcut(_ key: CGKeyCode) async {
+        for event in shortcutEvents(key) {
+            event.post(tap: .cghidEventTap)
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// Copy goes to the app that owns the selection only, never through the global event stream.
+    private static func postShortcut(_ key: CGKeyCode, to pid: pid_t) {
+        for event in shortcutEvents(key) { event.postToPid(pid) }
+    }
+
+    private static func shortcutEvents(_ key: CGKeyCode) -> [CGEvent] {
+        let command: CGKeyCode = 0x37
+        return [
+            SyntheticKeyboardEvents.make(key: command, down: true, flags: .maskCommand),
+            SyntheticKeyboardEvents.make(key: key, down: true, flags: .maskCommand),
+            SyntheticKeyboardEvents.make(key: key, down: false, flags: .maskCommand),
+            SyntheticKeyboardEvents.make(key: command, down: false, flags: []),
+        ].compactMap { $0 }
     }
 }
 

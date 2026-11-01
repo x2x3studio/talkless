@@ -102,10 +102,12 @@ If polishing fails, the raw transcript is inserted instead, with a brief error m
 
 1. Enable **Dictation > Edit text by voice**. It is off by default and is independent of the AI polishing switch.
 2. Select text in the foreground app.
-3. Use your dictation key and say how to change it, such as “Make this shorter” or “Translate into English.” The overlay shows a blue pencil instead of the waveform from the start, so you can tell voice editing has taken over; press Esc if you only meant to dictate. Finish normally.
+3. Hold your dictation key **together with Control** (Option when Right Control is your dictation key) and say how to change it, such as “Make this shorter” or “Translate into English.” You can also press Control after you start speaking. The overlay shows a blue pencil while editing. Finish normally.
 4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
 
-Voice editing requires a configured AI service. Talkless reads the selection through Accessibility; in apps that do not expose it, it briefly copies the selection with Command-C in the background, like translation, and then restores your clipboard. If that finds text, the recording switches to voice editing and the overlay shows the pencil. When nothing is selected, the recording stays ordinary dictation; editors that copy the whole line when nothing is selected (such as VS Code) are recognized and not treated as a selection. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
+Only this gesture edits. The dictation key alone always types your words, replacing a selection the way typing does, so fields that select their contents when focused (such as a browser address bar) are never mistaken for an edit. This follows the separate "command mode" shortcut that other voice-input tools use.
+
+Voice editing requires a configured AI service. Talkless reads the selection through Accessibility. When an app does not report its selection, Talkless asks that app to copy (its own Edit › Copy menu item, or Command-C sent only to that app) and then restores your clipboard. Editors that copy the whole line when nothing is selected (such as VS Code) are recognized. If nothing is selected, the overlay says so and your words are typed as ordinary dictation. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
 
 ## Selected-text translation
 

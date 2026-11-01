@@ -741,7 +741,6 @@
 "Talkless — AI processing" = "Talkless — AI processing";
 "Change selected text by voice" = "Change selected text by voice";
 "Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result." = "Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result.";
-"When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off." = "When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off.";
 "Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "Set up an AI service first; until then, dictation with a selection is ordinary dictation.";
 "ASR 2.0 · Duration billing" = "ASR 2.0 · Duration billing";
 "ASR 2.0 · Concurrent billing" = "ASR 2.0 · Concurrent billing";
@@ -774,7 +773,6 @@
 "Set up an AI service to use text cleanup." = "Set up an AI service to use text cleanup.";
 "Set up…" = "Set up…";
 "Edit text by voice" = "Edit text by voice";
-"Select text, then say how to change it. For example, “make it shorter”." = "Select text, then say how to change it. For example, “make it shorter”.";
 "How it works" = "How it works";
 "Speaking mode" = "Speaking mode";
 "Dictation shortcut" = "Dictation shortcut";
@@ -838,3 +836,8 @@
 "“%@” and its fixes will be removed. History is unchanged." = "“%@” and its fixes will be removed. History is unchanged.";
 "“%@” is already a correct spelling in your dictionary, so it cannot be replaced." = "“%@” is already a correct spelling in your dictionary, so it cannot be replaced.";
 "“%@” moved to Added by you and will not retire." = "“%@” moved to Added by you and will not retire.";
+"Option" = "Option";
+"Control" = "Control";
+"No text is selected, so this will be typed as dictation." = "No text is selected, so this will be typed as dictation.";
+"Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”." = "Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”.";
+"Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off.";

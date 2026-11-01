@@ -11,6 +11,10 @@ final class HotkeyMonitor {
     var onRelease: (CGEventTimestamp) -> Void = { _ in }
     /// Another key was pressed while holding the trigger (a keyboard shortcut, not dictation).
     var onComboKey: (CGEventTimestamp) -> Void = { _ in }
+    /// The edit modifier went down while the trigger is held: this recording edits the selection.
+    var onEditModifier: () -> Void = {}
+    /// Whether the edit modifier (`TriggerKey.editModifier`) is held right now.
+    private(set) var editModifierHeld = false
     /// Return true to consume this Escape key event.
     var onEscape: () -> Bool = { false }
 
@@ -56,7 +60,9 @@ final class HotkeyMonitor {
 
     /// Startup/recovery may miss presses as well as releases. Rebuild without firing actions.
     private func reconcilePhysicalState() {
-        triggerDown = isDown(triggerKey, flags: CGEventSource.flagsState(.combinedSessionState))
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        triggerDown = isDown(triggerKey, flags: flags)
+        editModifierHeld = flags.contains(triggerKey.editModifier)
     }
 
     /// Return false to consume the event.
@@ -70,6 +76,11 @@ final class HotkeyMonitor {
             return true
 
         case .flagsChanged:
+            let editDown = event.flags.contains(triggerKey.editModifier)
+            if editDown != editModifierHeld {
+                editModifierHeld = editDown
+                if editDown && triggerDown { onEditModifier() }
+            }
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             guard keyCode == triggerKey.keyCode else { return true }
             let down = isDown(triggerKey, flags: event.flags)
@@ -105,6 +116,11 @@ final class HotkeyMonitor {
         case .rightControl: return raw & 0x2000 != 0   // NX_DEVICERCTLKEYMASK
         }
     }
+}
+
+extension TriggerKey {
+    /// See `editModifierTitle`.
+    var editModifier: CGEventFlags { self == .rightControl ? .maskAlternate : .maskControl }
 }
 
 /// A standard keyboard shortcut (no permission required) for translating selected text.

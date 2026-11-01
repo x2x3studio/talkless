@@ -66,6 +66,8 @@ final class DictationController: ObservableObject {
     private var recordingPreparationGeneration = 0
     private var pressedAt: CGEventTimestamp?
     private var handsFree = false
+    /// The edit modifier was held with the dictation key: edit the selection instead of typing.
+    private var editIntent = false
     /// Snapshotted before setup so a settings change only affects the next recording.
     private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
@@ -193,6 +195,7 @@ final class DictationController: ObservableObject {
         hotkeys.onRelease = { [weak self] timestamp in self?.triggerReleased(at: timestamp) }
         hotkeys.onComboKey = { [weak self] timestamp in self?.comboKeyPressed(at: timestamp) }
         hotkeys.onEscape = { [weak self] in self?.escapePressed() ?? false }
+        hotkeys.onEditModifier = { [weak self] in self?.editModifierPressed() }
         translateHotKey = GlobalHotKey { [weak self] in
             Task { await self?.translateSelection() }
         }
@@ -283,6 +286,7 @@ final class DictationController: ObservableObject {
             pressedAt = timestamp
             recordingGestureMode = settings.recordingGestureMode
             handsFree = recordingGestureMode == .toggle
+            editIntent = hotkeys.editModifierHeld
             startRecording()
             if state != .recording { pressedAt = nil }
         case .recording where handsFree:
@@ -305,6 +309,13 @@ final class DictationController: ObservableObject {
         } else {
             stopAndProcess()
         }
+    }
+
+    /// Pressing the edit modifier while recording turns this recording into voice editing.
+    private func editModifierPressed() {
+        guard state == .recording, !editIntent else { return }
+        editIntent = true
+        captureEditSelection()
     }
 
     private func comboKeyPressed(at timestamp: CGEventTimestamp) {
@@ -336,6 +347,7 @@ final class DictationController: ObservableObject {
             pressedAt = nil
             recordingGestureMode = settings.recordingGestureMode
             handsFree = true
+            editIntent = false
             startRecording()
         case .recording:
             stopAndProcess()
@@ -412,9 +424,6 @@ final class DictationController: ObservableObject {
             AppContext(name: $0.localizedName ?? "", bundleID: $0.bundleIdentifier ?? "")
         }
         editSelection = nil
-        if settings.voiceEditEnabled, settings.llmConfigured {
-            editSelection = TextIO.selectedTextViaAX()
-        }
 
         operation.mode = editSelection == nil ? "dictation" : "edit"
         diagnosticOperation = operation
@@ -517,19 +526,9 @@ final class DictationController: ObservableObject {
         hud.model.preview = ""
         hud.model.setDictionaryTerms(editSelection == nil ? dictionaryTerms : [])
         hud.show(.listening(handsFree: handsFree))
-        // Apps that do not expose their selection through Accessibility get the same ⌘C
-        // fallback as translation, in the background; a selection turns this into voice editing.
-        if editSelection == nil, settings.voiceEditEnabled, settings.llmConfigured, !acquiringTranslationSelection {
-            acquiringTranslationSelection = true // One clipboard user at a time.
-            selectionTask = Task { [weak self] in
-                let selection = await TextIO.selectedTextViaCopy()
-                guard let self else { return }
-                self.acquiringTranslationSelection = false
-                guard let selection, self.generation == generation,
-                      self.state == .recording || self.state == .processing else { return }
-                self.adoptEditSelection(selection)
-            }
-        }
+        // Only an explicit edit gesture reads the selection. Plain dictation never does, so a
+        // field that selects its contents on focus (an address bar) is simply typed over.
+        if editIntent { captureEditSelection() }
         startupTask = Task { [weak self] in
             guard let self, self.generation == generation, !Task.isCancelled else { return }
             do {
@@ -548,7 +547,31 @@ final class DictationController: ObservableObject {
         }
     }
 
-    /// A selection found after recording started (via ⌘C) switches this recording to voice editing.
+    /// Read the selection for voice editing: Accessibility first, then the app's Copy in the
+    /// background when the app cannot report it. Without a selection, the words are dictated.
+    private func captureEditSelection() {
+        guard settings.voiceEditEnabled, settings.llmConfigured, editSelection == nil, selectionTask == nil else { return }
+        let generation = self.generation
+        switch TextIO.selectionViaAX() {
+        case .text(let text):
+            adoptEditSelection(text)
+        case .empty:
+            hud.model.notice = L10n.tr("No text is selected, so this will be typed as dictation.")
+        case .unavailable:
+            guard !acquiringTranslationSelection else { return }
+            acquiringTranslationSelection = true // One clipboard user at a time.
+            selectionTask = Task { [weak self] in
+                let selection = await TextIO.selectedTextViaCopy()
+                guard let self else { return }
+                self.acquiringTranslationSelection = false
+                guard self.generation == generation, self.state == .recording || self.state == .processing else { return }
+                if let selection { self.adoptEditSelection(selection) }
+                else { self.hud.model.notice = L10n.tr("No text is selected, so this will be typed as dictation.") }
+            }
+        }
+    }
+
+    /// A selection found for an edit gesture switches this recording to voice editing.
     private func adoptEditSelection(_ selection: String) {
         editSelection = selection
         diagnosticOperation?.mode = "edit"

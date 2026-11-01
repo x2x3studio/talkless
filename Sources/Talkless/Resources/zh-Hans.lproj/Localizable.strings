@@ -741,7 +741,6 @@
 "Talkless — AI processing" = "Talkless — AI 正在处理";
 "Change selected text by voice" = "用语音修改选中的文字";
 "Select text in any app, press the dictation key, and say how to change it, such as “make it shorter” or “translate into English”. AI replaces the selection with the result." = "在任意应用里选中一段文字，按听写键，说出要怎么改，比如“改短一点”“翻译成英文”。AI 会用改好的内容直接替换选中的文字。";
-"When text is selected, the overlay shows a pencil instead of a waveform. Press Esc if you only meant to dictate. This works whether AI polishing is on or off." = "选中文字时，浮窗会显示铅笔图标而不是波浪。如果你只是想听写，按 Esc 取消即可。这个功能和“AI 润色”开关互不影响。";
 "Set up an AI service first; until then, dictation with a selection is ordinary dictation." = "需要先配置 AI 服务；配置之前，选中文字时按听写键仍是普通听写。";
 "ASR 2.0 · Duration billing" = "实时识别 2.0 · 按时长计费";
 "ASR 2.0 · Concurrent billing" = "实时识别 2.0 · 按并发计费";
@@ -774,7 +773,6 @@
 "Set up an AI service to use text cleanup." = "需先配置 AI 服务。";
 "Set up…" = "去设置";
 "Edit text by voice" = "用语音改文字";
-"Select text, then say how to change it. For example, “make it shorter”." = "先选中文字，再说“改短一点”等修改要求。";
 "How it works" = "使用说明";
 "Speaking mode" = "说话方式";
 "Dictation shortcut" = "听写快捷键";
@@ -838,3 +836,8 @@
 "“%@” and its fixes will be removed. History is unchanged." = "“%@”及其纠正规则将被删除，历史记录不受影响。";
 "“%@” is already a correct spelling in your dictionary, so it cannot be replaced." = "“%@”已经是词典里的正确写法，不能再被替换。";
 "“%@” moved to Added by you and will not retire." = "“%@”已移到“我添加的”，不会自动撤掉。";
+"Option" = "Option";
+"Control" = "Control";
+"No text is selected, so this will be typed as dictation." = "没有选中文字，这次会按普通听写输入。";
+"Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”." = "选中文字，按住 %@ + %@，说出要怎么改，比如“改短一点”。";
+"Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "只有 %@ + %@ 才会修改选中的文字；只按听写键永远是输入文字，像打字一样替换选中内容。编辑时浮窗显示铅笔图标。也可以先开始说话，再按下 %@。没有选中文字时，照常输入你说的话。AI 润色开关不影响这个功能。";

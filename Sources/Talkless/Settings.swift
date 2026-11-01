@@ -19,6 +19,10 @@ enum TriggerKey: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Held together with the dictation key, it edits the selected text instead of dictating:
+    /// Control, or Option when Right Control already is the dictation key.
+    var editModifierTitle: String { self == .rightControl ? L10n.tr("Option") : L10n.tr("Control") }
+
     /// The corresponding virtual key code (kVK_*).
     var keyCode: Int64 {
         switch self {
