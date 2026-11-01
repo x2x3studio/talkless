@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let controller: DictationController
     private let settings: AppSettings
     private var statusItem: NSStatusItem!
+    private var iconState = MenuBarIcon.State.idle
+    private var iconTimer: Timer?
+    private var iconLevel = 0.0
     private var settingsWindow: NSWindow?
     private var setupWindow: NSWindow?
     private var testWindow: NSWindow?
@@ -278,14 +281,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func updateIcon() {
-        let state: MenuBarIcon.State
         switch controller.state {
-        case .idle: state = .idle
-        case .recording: state = .recording
-        case .processing: state = controller.aiInProgress ? .aiProcessing : .processing
+        case .idle: iconState = .idle
+        case .recording: iconState = .recording
+        case .processing: iconState = controller.aiInProgress ? .aiProcessing : .processing
         }
-        statusItem.button?.image = MenuBarIcon.image(for: state)
-        statusItem.button?.toolTip = state.accessibilityDescription
+        statusItem.button?.toolTip = iconState.accessibilityDescription
+        // Animate only while busy, and not at all when the user asked for reduced motion.
+        let animate = iconState.animates && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if animate, iconTimer == nil {
+            let timer = Timer(timeInterval: 1 / MenuBarIcon.framesPerSecond, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.drawIcon() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            iconTimer = timer
+        } else if !animate {
+            iconTimer?.invalidate()
+            iconTimer = nil
+            iconLevel = 0
+        }
+        drawIcon()
+    }
+
+    private func drawIcon() {
+        // Rise quickly with the voice, fall back gently, so the bars read as speech, not noise.
+        let target = controller.inputLevel
+        iconLevel = target > iconLevel ? iconLevel + (target - iconLevel) * 0.6 : iconLevel * 0.82
+        let time = iconTimer == nil ? 0 : ProcessInfo.processInfo.systemUptime
+        statusItem.button?.image = MenuBarIcon.image(for: iconState, time: time, level: iconLevel)
     }
 
     // MARK: - Menu
