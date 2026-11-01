@@ -3,6 +3,7 @@ import SwiftUI
 /// Speech recognition credentials are independent of the AI polishing provider.
 struct DoubaoSettingsSection: View {
     @ObservedObject var settings: AppSettings
+    var localModelStatus: String? = nil
     @StateObject private var connection = DoubaoConnectionCheck()
 
     var body: some View {
@@ -51,6 +52,19 @@ struct DoubaoSettingsSection: View {
             Text(L10n.tr("Audio is sent directly to Doubao while you speak, with live text previews. Internet access and your own paid speech service are required. Talkless does not relay or save the recording."))
                 .settingsNote()
             Text(L10n.tr("This configures speech recognition only. AI polishing uses the separate AI service settings."))
+                .settingsNote()
+            Toggle(L10n.tr("Use local Qwen if online recognition fails"), isOn: $settings.onlineLocalFallback)
+            if settings.onlineLocalFallback {
+                Text(L10n.tr("Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first."))
+                    .settingsNote()
+                if let localModelStatus { Text(localModelStatus).settingsNote() }
+                if (try? settings.resolvedQwenModelDirectory()) == nil {
+                    Text(L10n.tr("Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available."))
+                        .font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Text(L10n.tr("A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation."))
                 .settingsNote()
             DisclosureGroup(L10n.tr("Advanced")) {
                 Picker(L10n.tr("Doubao ASR resource"), selection: $settings.doubaoResource) {

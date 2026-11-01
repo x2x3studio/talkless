@@ -103,9 +103,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         ModelManager.shared.onModelOperationChange = { [weak self] in
             self?.controller.prepareSelectedModel()
         }
-        settings.$asrEngine.combineLatest(settings.$qwenModelDirectory, settings.$useCustomQwenDirectory)
+        settings.$asrEngine.combineLatest(settings.$qwenModelDirectory, settings.$useCustomQwenDirectory, settings.$onlineLocalFallback)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.controller.prepareSelectedModel() }
+            .store(in: &cancellables)
+        controller.$state
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                if state == .idle { self?.controller.prepareSelectedModel() }
+            }
             .store(in: &cancellables)
         controller.prepareSelectedModel()
         updateController = UpdateController { [weak self] in

@@ -403,7 +403,7 @@ private struct SpeechTab: View {
                     .disabled(controlsDisabled)
                 }
             } else {
-                DoubaoSettingsSection(settings: settings)
+                DoubaoSettingsSection(settings: settings, localModelStatus: controller.modelPreparationStatus)
                     .disabled(controller.state != .idle)
             }
         }

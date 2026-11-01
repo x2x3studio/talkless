@@ -49,6 +49,7 @@ final class HUDModel: ObservableObject {
     }
     @Published var isEditMode = false
     @Published var preview = ""
+    @Published var notice: String?
     /// Only a finalized ASR transcript, never successive provisional partials.
     @Published var revisionOriginal: String?
     @Published var appearance: HUDAppearance
@@ -82,7 +83,7 @@ final class HUDModel: ObservableObject {
     func attributedDisplayText(increasedContrast: Bool = false) -> AttributedString {
         let text = displayText
         var attributed = AttributedString(text)
-        guard !isEditMode, !preview.isEmpty else { return attributed }
+        guard notice == nil, !isEditMode, !preview.isEmpty else { return attributed }
         switch phase {
         case .hidden, .error, .editing: return attributed
         default: break
@@ -127,7 +128,7 @@ final class HUDModel: ObservableObject {
         switch phase {
         case .hidden: ""
         case .error(let message): message
-        default: preview.isEmpty ? (phase.statusText ?? "") : preview
+        default: notice ?? (preview.isEmpty ? (phase.statusText ?? "") : preview)
         }
     }
 
@@ -218,8 +219,8 @@ final class HUDController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
         // Layout uses the cached anchor; only opt-in tracking queries the caret.
-        layoutSubscription = Publishers.CombineLatest(
-            model.$phase.removeDuplicates(), model.$preview.removeDuplicates()
+        layoutSubscription = Publishers.CombineLatest3(
+            model.$phase.removeDuplicates(), model.$preview.removeDuplicates(), model.$notice.removeDuplicates()
         )
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLayout() }
@@ -306,6 +307,7 @@ final class HUDController {
         panel.orderOut(nil)
         model.phase = .hidden
         model.preview = ""
+        model.notice = nil
         model.isEditMode = false
     }
 

@@ -848,3 +848,9 @@
 "Connection verified. Doubao accepted the recognition configuration." = "Connection verified. Doubao accepted the recognition configuration.";
 "Not verified. Paste your key, then verify the connection." = "Not verified. Paste your key, then verify the connection.";
 "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply." = "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply.";
+"Use local Qwen if online recognition fails" = "Use local Qwen if online recognition fails";
+"Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first." = "Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first.";
+"Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available." = "Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available.";
+"A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation." = "A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation.";
+"Online recognition failed. Local recognition will finish this recording." = "Online recognition failed. Local recognition will finish this recording.";
+"Online recognition failed. Using local Qwen for this recording." = "Online recognition failed. Using local Qwen for this recording.";

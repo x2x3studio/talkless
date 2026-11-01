@@ -117,9 +117,28 @@ final class DictationController: ObservableObject {
     }
 
     func prepareSelectedModel() {
-        guard settings.asrEngine == .qwen, state == .idle, !changingModel,
-              !ModelManager.shared.isBusy,
-              let directory = try? settings.resolvedQwenModelDirectory() else { return }
+        guard state == .idle, !changingModel, !ModelManager.shared.isBusy else { return }
+        guard settings.needsLocalModel else {
+            // Cancel prewarming before queuing unload on the sole model runtime. Keeping the
+            // change guard until unload finishes prevents a newer session from racing teardown.
+            guard preparedModelDirectory != nil || preparingModelDirectory != nil || failedModelDirectory != nil else { return }
+            preparationGeneration += 1
+            modelPreparationTask?.cancel()
+            preparedModelDirectory = nil
+            preparingModelDirectory = nil
+            failedModelDirectory = nil
+            modelPreparationStatusKey = nil
+            changingModel = true
+            modelPreparationTask = Task { [weak self] in
+                await QwenTranscriptionSession.unloadModel()
+                guard let self else { return }
+                self.changingModel = false
+                self.modelPreparationTask = nil
+                self.prepareSelectedModel() // Settings may have changed again during unload.
+            }
+            return
+        }
+        guard let directory = try? settings.resolvedQwenModelDirectory() else { return }
         let normalized = directory.standardizedFileURL
         guard preparedModelDirectory != normalized, preparingModelDirectory != normalized else { return }
         modelPreparationTask?.cancel()
@@ -133,6 +152,11 @@ final class DictationController: ObservableObject {
             do {
                 try await QwenTranscriptionSession.prepareAssets(modelDirectory: normalized)
                 guard let self, !Task.isCancelled, self.preparationGeneration == token else { return }
+                guard self.settings.needsLocalModel else {
+                    self.modelPreparationTask = nil
+                    self.prepareSelectedModel()
+                    return
+                }
                 self.preparedModelDirectory = normalized
                 self.preparingModelDirectory = nil
                 self.modelPreparationStatusKey = "Ready · kept in memory"
@@ -332,6 +356,7 @@ final class DictationController: ObservableObject {
         recordingReplacements = replacements
         hud.model.setDictionaryTerms([])
         hud.model.revisionOriginal = nil
+        hud.model.notice = nil
         generation += 1
         var operation = DictationOperation(generation: generation, engine: settings.asrEngine.rawValue,
                                            recordingMode: recordingGestureMode.rawValue, handsFree: handsFree)
@@ -343,13 +368,14 @@ final class DictationController: ObservableObject {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             return
         }
-        if settings.asrEngine == .qwen, ModelManager.shared.operationModelID != nil {
+        if settings.needsLocalModel, ModelManager.shared.operationModelID != nil {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             hud.show(.error(L10n.tr("Wait for the model operation to finish before starting dictation.")))
             return
         }
+        let fallbackEnabled = settings.asrEngine == .doubao && settings.onlineLocalFallback
         var qwenDirectory: URL?
-        if settings.asrEngine == .qwen {
+        if settings.needsLocalModel {
             do { qwenDirectory = try settings.resolvedQwenModelDirectory() }
             catch {
                 operation.record("recording_blocked", ["reason": "model_unavailable", "stage": "startup"])
@@ -409,11 +435,27 @@ final class DictationController: ObservableObject {
             )
         case .doubao:
             do {
-                session = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
+                let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
                     guard let self, self.isCurrentRecognition(generation) else { return }
-                    self.cancel(reason: "recognition_error")
-                    self.hud.show(.error(message))
+                    if fallbackEnabled {
+                        // Keep recording the whole utterance for local replay when the key is released.
+                        self.hud.model.notice = L10n.tr("Online recognition failed. Local recognition will finish this recording.")
+                    } else {
+                        self.cancel(reason: "recognition_error")
+                        self.hud.show(.error(message))
+                    }
                 })
+                if fallbackEnabled, let directory = qwenDirectory {
+                    session = FallbackTranscriptionSession(online: online, makeLocal: {
+                        QwenTranscriptionSession(modelDirectory: directory, language: nil, contextualStrings: dictionaryTerms)
+                    }, onFallback: { [weak self] in
+                        guard let self, self.isCurrentRecognition(generation) else { return }
+                        self.diagnosticOperation?.record("recognition_fallback", ["fallback": "true"])
+                        self.hud.model.preview = ""
+                        self.hud.model.notice = L10n.tr("Online recognition failed. Using local Qwen for this recording.")
+                        self.hud.show(.recognizing)
+                    })
+                } else { session = online }
             } catch {
                 operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
                 hud.show(.error(error.localizedDescription))
@@ -436,7 +478,7 @@ final class DictationController: ObservableObject {
             }
         }
         self.session = session
-        recordingModelDirectory = qwenDirectory?.standardizedFileURL
+        recordingModelDirectory = settings.asrEngine == .qwen ? qwenDirectory?.standardizedFileURL : nil
         recordingPreparationGeneration = preparationGeneration
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
@@ -554,6 +596,7 @@ final class DictationController: ObservableObject {
                     "empty": String(raw.isEmpty), "replacement_count": String(fixed.count)])
                 guard generation == self.generation, !Task.isCancelled else { return }
                 self.acceptsRecognitionHUDUpdates = false
+                self.hud.model.notice = nil
                 self.hud.model.preview = raw
                 self.markModelReadyAfterRecognition(directory: modelDirectory, generation: generation, preparation: modelPreparation)
                 guard !raw.isEmpty else {
@@ -670,6 +713,7 @@ final class DictationController: ObservableObject {
     }
 
     private func finish(_ phase: HUDModel.Phase) {
+        hud.model.notice = nil
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false
         selectionTask = nil
@@ -686,6 +730,7 @@ final class DictationController: ObservableObject {
     }
 
     func cancel(reason: String = "user") {
+        hud.model.notice = nil
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false
         selectionTask = nil

@@ -848,3 +848,9 @@
 "Connection verified. Doubao accepted the recognition configuration." = "连接验证成功，豆包已接受识别配置。";
 "Not verified. Paste your key, then verify the connection." = "尚未验证，请粘贴密钥后点击“验证连接”。";
 "Sends credentials and recognition settings only; no microphone or audio. This does not test recognition accuracy. Provider billing rules still apply." = "仅发送凭据和识别配置，不打开麦克风、不发送音频；不代表已验证识别准确率。服务商计费规则仍适用。";
+"Use local Qwen if online recognition fails" = "在线识别失败时使用本地千问";
+"Keeps the downloaded Qwen model loaded in memory. Online failures use the whole recording locally; the next recording still tries Doubao first." = "开启后，已下载的千问模型会预先加载并常驻内存。在线失败时用完整录音进行本地识别，下一次录音仍优先豆包。";
+"Download a local Qwen model first. Recording cannot start with local fallback enabled until the model is available." = "请先下载本地千问模型。启用本地回退后，模型未就绪时无法开始录音。";
+"A stalled connection or upload fails after 10 seconds. After recording ends, the final result has a 15-second deadline. Without local fallback, failure stops this dictation." = "连接或上传停滞超过 10 秒，或录音结束后超过 15 秒未收到最终结果，会判定失败。关闭本地回退时，本次听写直接停止。";
+"Online recognition failed. Local recognition will finish this recording." = "在线识别失败，本次录音结束后将用本地模型识别。";
+"Online recognition failed. Using local Qwen for this recording." = "在线识别失败，正在用本地千问识别本次录音。";

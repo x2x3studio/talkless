@@ -172,6 +172,9 @@ final class AppSettings: ObservableObject {
     }
     var doubaoConfig: DoubaoConfig { .init(apiKey: doubaoAPIKey, resource: doubaoResource) }
     var doubaoConfigured: Bool { doubaoConfig.isConfigured }
+    @Published var onlineLocalFallback: Bool { didSet { save(onlineLocalFallback, "onlineLocalFallback") } }
+    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
+
 
     @Published var polishEnabled: Bool { didSet { save(polishEnabled, "polishEnabled") } }
     @Published private(set) var selectedPolishProvider: PolishProvider
@@ -263,6 +266,7 @@ final class AppSettings: ObservableObject {
         useCustomQwenDirectory = d.object(forKey: "useCustomQwenDirectory") as? Bool ?? false
         doubaoAPIKey = ""
         doubaoCredentialError = nil
+        onlineLocalFallback = d.bool(forKey: "onlineLocalFallback")
         doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original

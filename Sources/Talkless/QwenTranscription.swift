@@ -313,7 +313,9 @@ private final class QwenCaptureState: @unchecked Sendable {
             // Recover only missing tail samples, never re-recognize committed windows.
             if samples.count > receivedSamples {
                 let missing = samples.count - receivedSamples
-                guard pendingSamples + missing <= maxPendingSamples else {
+                // A recorder-owned offline replay has no live producer or expanding inbox.
+                // Accept its complete snapshot; the worker still decodes bounded windows.
+                guard receivedSamples == 0 || pendingSamples + missing <= maxPendingSamples else {
                     failLocked(TalklessError.message("Qwen stopped after the audio backlog exceeded 120 seconds; try a shorter dictation"))
                     return
                 }

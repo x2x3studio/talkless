@@ -119,6 +119,16 @@ let tests = #"""
         print("PASS full-window commit, backlog, and missing-tail recovery")
 
         await runtime.reset()
+        let replay = QwenCaptureState()
+        let longRecording = (0..<(125 * 16000)).map { Float($0 + 1) }
+        replay.close(samples: longRecording)
+        _ = try await replay.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in })
+        let replayWindows = await runtime.calls
+        precondition(replayWindows.flatMap { $0 } == longRecording, "Offline fallback must not reject or truncate a recording longer than the live backlog limit")
+        precondition(replayWindows.allSatisfy { $0.count <= 30 * 16000 }, "Replay still uses bounded decode windows")
+        print("PASS long offline fallback replay covers the full recording in bounded windows")
+
+        await runtime.reset()
         let preview = QwenCaptureState()
         let task = Task { try await preview.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in }) }
         preview.enqueue(Array(all.prefix(32000)))

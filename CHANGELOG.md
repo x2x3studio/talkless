@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- Optional local Qwen fallback for failed online recognition. Enabling it preloads and keeps the local model in memory; failed online sessions replay the complete recording locally once, without mixing partial transcripts.
+
+### Improved
+- Online recognition without fallback releases local model memory when idle. Connection/upload stalls fail after 10 seconds, and the final response has a 15-second deadline after recording ends. AI polishing is unchanged.
+
+## 2026.1101.28606
+
 ### Fixed
 - Clipboard automation no longer cancels a recording started by a modifier key. Physical keyboard combinations still retain their normal cancellation behavior.
 

@@ -559,6 +559,8 @@ final class Diagnostics: @unchecked Sendable {
     var llmConfigured = true
     var activeDictionaryReplacements: [DictionaryReplacement] = []
     var doubaoConfig = "synthetic-config"
+    var onlineLocalFallback = false
+    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
     func resolvedQwenModelDirectory() throws -> URL { URL(fileURLWithPath: "/synthetic/model") }
 }
 struct AppContext { let name: String; let bundleID: String }
@@ -570,6 +572,7 @@ struct FakeApp { let localizedName: String?; let bundleIdentifier: String? }
 @MainActor final class ModelManager {
     static let shared = ModelManager()
     var operationModelID: String?
+    var isBusy: Bool { operationModelID != nil }
 }
 enum AVCaptureDevice {
     enum Media { case audio }
@@ -597,9 +600,18 @@ enum AVCaptureDevice {
     func finish(samples: [Float]) async throws -> String { finishes += 1; return "raw transcript" }
 }
 @MainActor final class QwenTranscriptionSession: FakeSession {
+    static var preparationCalls = 0
+    static var unloadCalls = 0
+    static func prepareAssets(modelDirectory: URL) async throws { preparationCalls += 1 }
+    static func unloadModel() async { unloadCalls += 1; await Task.yield() }
     init(modelDirectory: URL, language: String?, contextualStrings: [String],
-         onStatus: @escaping (String) -> Void, onError: @escaping (String) -> Void) {
+         onStatus: @escaping (String) -> Void = { _ in }, onError: @escaping (String) -> Void = { _ in }) {
         super.init(); terms = contextualStrings; self.onStatus = onStatus; self.onError = onError
+    }
+}
+@MainActor final class FallbackTranscriptionSession: FakeSession {
+    init(online: any TranscriptionSession, makeLocal: () -> any TranscriptionSession, onFallback: () -> Void) {
+        super.init()
     }
 }
 @MainActor final class DoubaoTranscriptionSession: FakeSession {
@@ -654,6 +666,11 @@ typealias AudioRecorder = FakeRecorder
     var handsFree = false
     private var diagnosticOperation: DictationOperation?
     var changingModel = false
+    var preparedModelDirectory: URL?
+    var preparingModelDirectory: URL?
+    var failedModelDirectory: URL?
+    var modelPreparationStatusKey: String?
+    var modelPreparationTask: Task<Void, Never>?
     let settings = FakeSettings()
     let hud = FakeHUD()
     let recorder = FakeRecorder()
@@ -718,6 +735,36 @@ STARTUP_TESTS = r'''
             fixing.cancel()
         }
         print("PASS live preview applies the recording's dictionary fixes")
+        do {
+            QwenTranscriptionSession.preparationCalls = 0
+            QwenTranscriptionSession.unloadCalls = 0
+            let residency = StartupHarness()
+            residency.settings.asrEngine = .doubao
+            residency.prepareSelectedModel()
+            precondition(residency.modelPreparationTask == nil, "Online alone never loads Qwen")
+            residency.settings.onlineLocalFallback = true
+            residency.prepareSelectedModel()
+            await residency.modelPreparationTask?.value
+            precondition(QwenTranscriptionSession.preparationCalls == 1 && residency.preparedModelDirectory != nil,
+                         "Enabling fallback preloads the local model")
+            residency.prepareSelectedModel()
+            precondition(QwenTranscriptionSession.preparationCalls == 1, "A warmed standby is reused")
+            residency.state = .recording
+            residency.settings.onlineLocalFallback = false
+            residency.prepareSelectedModel()
+            precondition(QwenTranscriptionSession.unloadCalls == 0, "Never unload during recording")
+            residency.state = .idle
+            residency.prepareSelectedModel()
+            precondition(residency.changingModel, "Unload is fenced against new recordings")
+            await residency.modelPreparationTask?.value
+            precondition(QwenTranscriptionSession.unloadCalls == 1 && residency.preparedModelDirectory == nil && !residency.changingModel)
+            residency.settings.asrEngine = .qwen
+            residency.prepareSelectedModel()
+            await residency.modelPreparationTask?.value
+            precondition(QwenTranscriptionSession.preparationCalls == 2, "Returning to local reloads the model")
+        }
+        print("PASS local model residency follows the selected engine and fallback switch, deferred until idle")
+
         TextIO.axSelection = nil // An app that does not expose its selection through Accessibility.
         for voiceEdit in [false, true] {
             TextIO.copiedSelection = "Copied paragraph"
@@ -1098,7 +1145,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
     '''
     startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
-                         ("startRecording", "isCurrentRecognition", "adoptEditSelection", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
+                         ("prepareSelectedModel", "startRecording", "isCurrentRecognition", "adoptEditSelection", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
                           "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS
     swift.write_text(startup)
     subprocess.run(["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", str(swift),

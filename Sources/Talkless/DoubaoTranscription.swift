@@ -66,7 +66,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
     }
 
     init(config: DoubaoConfig, socket: (any DoubaoSocket)? = nil,
-         timeout: TimeInterval = 30,
+         timeout: TimeInterval = 15,
          onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }) throws {
         let request = try config.request()
         self.socket = socket ?? DoubaoWebSocket(request: request)
@@ -154,7 +154,6 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
             defer { group.cancelAll(); socket.close(); state.closeMailbox() }
             group.addTask {
                 try await socket.send(DoubaoProtocol.configuration())
-                state.markConnected()
                 var pending = Data()
                 for try await chunk in state.audio {
                     try Task.checkCancellation()
@@ -175,6 +174,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
                 while true {
                     try Task.checkCancellation()
                     let response = try DoubaoProtocol.response(await socket.receive())
+                    state.markConnected() // A successful send alone does not prove service acceptance.
                     if let text = response.text {
                         await MainActor.run {
                             let callback = state.lock.withLock { state.isCancelledLocked ? nil : state.onPartial }

@@ -410,6 +410,14 @@ struct ProviderSettingsTests {
         check(online.doubaoAPIKey == "session-only" && online.doubaoCredentialError != nil, "Save failure keeps session key and explains failure")
         check(speechStore.speech == "synthetic-doubao-key", "Save failure preserves the previous key")
         check(ASREngine.allCases == [.qwen, .doubao], "Exactly two recognition choices")
+        check(!online.onlineLocalFallback && !online.needsLocalModel, "Online defaults to no local standby")
+        online.onlineLocalFallback = true
+        check(online.needsLocalModel, "Online fallback keeps the local model resident")
+        check(settings(speechDefaults, speechStore).onlineLocalFallback, "Fallback preference survives relaunch")
+        online.onlineLocalFallback = false
+        online.asrEngine = .qwen
+        check(online.needsLocalModel, "Local mode always keeps its model resident")
+
 
         print("Provider settings tests passed (\(assertions) assertions; in-memory defaults and credentials only).")
     }

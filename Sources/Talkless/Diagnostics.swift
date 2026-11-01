@@ -35,7 +35,7 @@ final class Diagnostics: @unchecked Sendable {
         "paste_attempt", "paste_skipped", "paste_returned", "dictation_cancel",
         "recording_blocked", "recording_stopped", "recording_empty", "permission_blocked",
         "processing_start", "processing_complete", "processing_error", "processing_cancelled",
-        "recognition_error", "recognition_empty", "polish_start", "polish_complete", "polish_error",
+        "recognition_error", "recognition_empty", "recognition_fallback", "polish_start", "polish_complete", "polish_error",
         "edit_start", "edit_complete", "edit_error",
         "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
         "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
