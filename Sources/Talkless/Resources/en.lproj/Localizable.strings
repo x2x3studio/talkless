@@ -818,7 +818,6 @@
 "The correct spelling, e.g. Talkless" = "The correct spelling, e.g. Talkless";
 "This entry already exists." = "This entry already exists.";
 "Try another search or add a new entry." = "Try another search or add a new entry.";
-"Watching %lld more spellings until they repeat." = "Watching %lld more spellings until they repeat.";
 "What recognition writes by mistake, one per line" = "What recognition writes by mistake, one per line";
 "When polish keeps fixing the same word, Talkless learns it. Fixes unused for 30 days retire on their own. Everything stays on this Mac." = "When polish keeps fixing the same word, Talkless learns it. Fixes unused for 30 days retire on their own. Everything stays on this Mac.";
 "Write as" = "Write as";
@@ -862,3 +861,11 @@
 "You can turn it on later in Settings › Dictation." = "You can turn it on later in Settings › Dictation.";
 "Doubao online recognition is set up. Use Test above to check the key." = "Doubao online recognition is set up. Use Test above to check the key.";
 "Paste your Doubao Speech API key above." = "Paste your Doubao Speech API key above.";
+"Learning needs smart text cleanup: Talkless learns from the words it corrects." = "Learning needs smart text cleanup: Talkless learns from the words it corrects.";
+"Turn on…" = "Turn on…";
+"Learning log (%lld)" = "Learning log (%lld)";
+"Watching (%lld)" = "Watching (%lld)";
+"Seen %lld of %lld times · Last seen %@" = "Seen %lld of %lld times · Last seen %@";
+"Learned" = "Learned";
+"Retired, not needed for 30 days" = "Retired, not needed for 30 days";
+"Retired, cleanup changed it back" = "Retired, cleanup changed it back";

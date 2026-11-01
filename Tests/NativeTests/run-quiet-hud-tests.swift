@@ -388,7 +388,7 @@ struct HUDTests {
                                      recognized.representation(using: .png, properties: [:]),
                                      "Capture and final recognition must render the same waveform, text, and empty pill")
                         if text.isEmpty {
-                            precondition(size == CGSize(width: 44, height: 40), "No placeholder or reserved footer for empty dictation")
+                            precondition(size == CGSize(width: HUDModel.horizontalPadding * 2 + HUDModel.indicatorWidth, height: HUDModel.lineHeight + HUDModel.verticalPadding * 2), "No placeholder or reserved footer for empty dictation")
                         }
                     }
                 }
@@ -472,7 +472,7 @@ struct HUDTests {
             }
             let empty = HUDModel(appearance: HUDAppearance(animationsEnabled: false))
             empty.phase = .listening(handsFree: true)
-            precondition(empty.displayText.isEmpty && empty.contentSize == CGSize(width: 44, height: 40))
+            precondition(empty.displayText.isEmpty && empty.contentSize == CGSize(width: HUDModel.horizontalPadding * 2 + HUDModel.indicatorWidth, height: HUDModel.lineHeight + HUDModel.verticalPadding * 2))
             models.append(empty)
             try snapshot(empty, name: "transcript-\(languageName)-empty")
             labels.append(chinese ? "\u{542C}\u{5199}\u{4E2D} · \u{5C1A}\u{65E0}\u{6587}\u{5B57}" : "Dictating · no words yet")
@@ -582,7 +582,11 @@ struct HUDTests {
             precondition(hud.model.phase.accessibilityLabel == label, "Icon phase remains verbal for accessibility")
             precondition(hud.model.preview == "Recognized words")
             precondition(hud.model.displayText == "Recognized words" && hud.model.contentSize == shortSize)
-            precondition(hud.model.textAlignment == .bottomLeading)
+            precondition(hud.model.textAlignment == .topLeading, "Short text starts level with the icon")
+            let longText = String(repeating: "Recognized words keep flowing ", count: 40)
+            hud.model.preview = longText
+            precondition(hud.model.textAlignment == .bottomLeading, "Overflowing dictation keeps its latest lines in view")
+            hud.model.preview = "Recognized words"
             hud.model.preview = "Late recognition preview"
             precondition(hud.model.displayText == "Late recognition preview")
             hud.model.preview = ""

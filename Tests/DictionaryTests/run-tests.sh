@@ -24,6 +24,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/DictationActivity.swift" \
   "$ROOT/Sources/Talkless/DictionaryView.swift" \
   "$ROOT/Sources/Talkless/SettingsStyle.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$ROOT/Tests/DictionaryTests/DictionaryTests.swift" \
   -o "$WORK/dictionary-tests"
 "$WORK/dictionary-tests" "$@"

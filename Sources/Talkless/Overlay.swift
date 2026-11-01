@@ -136,8 +136,15 @@ final class HUDModel: ObservableObject {
     static let maximumHeight: CGFloat = 174
     static let horizontalPadding: CGFloat = 14
     static let verticalPadding: CGFloat = 11
-    static let indicatorWidth: CGFloat = 16
+    static let indicatorWidth: CGFloat = 18
     static let spacing: CGFloat = 10
+    /// Text and its status icon share one size, so the icon sits on the first line like a glyph.
+    static let fontSize: CGFloat = 14
+    /// Height of one text line; the icon is centered in it.
+    static let lineHeight: CGFloat = {
+        let font = NSFont.systemFont(ofSize: fontSize)
+        return ceil(font.ascender - font.descender + font.leading)
+    }()
 
     var textSize: CGSize {
         guard !displayText.isEmpty else { return .zero }
@@ -145,7 +152,7 @@ final class HUDModel: ObservableObject {
         paragraph.lineSpacing = 3
         paragraph.lineBreakMode = .byWordWrapping
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .regular),
+            .font: NSFont.systemFont(ofSize: Self.fontSize, weight: .regular),
             .paragraphStyle: paragraph,
         ]
         let text = displayText as NSString
@@ -155,7 +162,7 @@ final class HUDModel: ObservableObject {
             with: CGSize(width: width, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes
         )
-        return CGSize(width: width, height: max(18, ceil(bounds.height) + 3))
+        return CGSize(width: width, height: max(Self.lineHeight, ceil(bounds.height) + 3))
     }
 
     // Shortcut state is retained for the controller, but never adds visible HUD chrome.
@@ -164,14 +171,16 @@ final class HUDModel: ObservableObject {
         return CGSize(
             width: min(Self.maximumWidth,
                 Self.horizontalPadding * 2 + Self.indicatorWidth + (text.width > 0 ? Self.spacing + text.width : 0)),
-            height: min(Self.maximumHeight, max(18, text.height) + Self.verticalPadding * 2)
+            height: min(Self.maximumHeight, max(Self.lineHeight, text.height) + Self.verticalPadding * 2)
         )
     }
 
-    /// Keep the same latest lines in view throughout recognition and cleanup.
+    /// Text that fits starts at the top, so its first line sits level with the status icon.
+    /// Only overflowing dictation scrolls to keep the latest lines in view.
     var textAlignment: Alignment {
         if case .error = phase { return .topLeading }
-        return .bottomLeading
+        let fits = textSize.height <= Self.maximumHeight - Self.verticalPadding * 2
+        return fits ? .topLeading : .bottomLeading
     }
 }
 
@@ -358,7 +367,7 @@ struct HUDView: View {
             if model.phase != .hidden {
                 HStack(alignment: .top, spacing: HUDModel.spacing) {
                     indicator
-                        .frame(width: HUDModel.indicatorWidth, height: 18)
+                        .frame(width: HUDModel.indicatorWidth, height: HUDModel.lineHeight)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(model.phase.accessibilityLabel)
                         .help(model.phase.accessibilityLabel)
@@ -372,7 +381,7 @@ struct HUDView: View {
                             .accessibilityHint(model.isEditMode ? "" : L10n.tr("Underlined: dictionary match. Highlighted: changed by AI."))
                     }
                 }
-                .font(.system(size: 13))
+                .font(.system(size: HUDModel.fontSize))
                 .foregroundStyle(.white.opacity(0.95))
                 .padding(.horizontal, HUDModel.horizontalPadding)
                 .padding(.vertical, HUDModel.verticalPadding)
@@ -404,25 +413,26 @@ struct HUDView: View {
             // Voice editing shows its pencil from the first moment, so a stray selection
             // is noticed (and can be cancelled with Esc) before anything is replaced.
             Image(systemName: model.isEditMode ? "pencil.line" : "waveform")
-                .font(.system(size: model.isEditMode ? 14 : 13, weight: .medium))
+                .font(.system(size: HUDModel.fontSize, weight: .medium))
                 .foregroundStyle(model.isEditMode ? AnyShapeStyle(Color(red: 0.35, green: 0.77, blue: 1)) : AnyShapeStyle(.primary))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
         case .polishing:
             Image(systemName: "sparkles")
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: HUDModel.fontSize, weight: .medium))
                 .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
         case .editing:
             Image(systemName: "pencil.line")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: HUDModel.fontSize, weight: .medium))
                 .foregroundStyle(Color(red: 0.35, green: 0.77, blue: 1))
                 .symbolEffect(.pulse, options: .repeating, isActive: animates)
         case .inserting, .completed:
             // Insertion is near-instant; a separate arrow glyph only flashed and read as "download".
             Image(systemName: "checkmark")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: HUDModel.fontSize, weight: .medium))
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: HUDModel.fontSize - 1, weight: .medium))
                 .foregroundStyle(.orange)
         case .hidden:
             EmptyView()

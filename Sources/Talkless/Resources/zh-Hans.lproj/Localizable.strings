@@ -818,7 +818,6 @@
 "The correct spelling, e.g. Talkless" = "正确写法，例如 Talkless";
 "This entry already exists." = "这个词条已经存在。";
 "Try another search or add a new entry." = "换个关键词，或添加新词条。";
-"Watching %lld more spellings until they repeat." = "还有 %lld 个说法在观察中，再出现就会学会。";
 "What recognition writes by mistake, one per line" = "识别常写错成什么，每行一个";
 "When polish keeps fixing the same word, Talkless learns it. Fixes unused for 30 days retire on their own. Everything stays on this Mac." = "AI 润色反复改正同一个词时，Talkless 会自动学会；30 天没用上的会自动撤掉。全部在本机完成。";
 "Write as" = "改成";
@@ -862,3 +861,11 @@
 "You can turn it on later in Settings › Dictation." = "之后也可以在 设置 › 听写 中开启。";
 "Doubao online recognition is set up. Use Test above to check the key." = "豆包在线识别已设置好，可以点上面的“测试”检查密钥。";
 "Paste your Doubao Speech API key above." = "请在上面粘贴豆包语音的 API Key。";
+"Learning needs smart text cleanup: Talkless learns from the words it corrects." = "自我学习需要开启智能文字整理：Talkless 从它改正的词里学习。";
+"Turn on…" = "去开启…";
+"Learning log (%lld)" = "学习记录（%lld）";
+"Watching (%lld)" = "正在观察（%lld）";
+"Seen %lld of %lld times · Last seen %@" = "已出现 %lld / %lld 次 · 最近一次：%@";
+"Learned" = "学会了";
+"Retired, not needed for 30 days" = "已撤掉，30 天没用上";
+"Retired, cleanup changed it back" = "已撤掉，整理时被改回";

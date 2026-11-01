@@ -149,6 +149,8 @@ struct DictionaryTests {
         check(learner.learnedDictionary.fixes.first?.active == true, "a repeated correction takes effect automatically")
         check(learner.recognitionReplacements == [DictionaryReplacement(heard: "Talkles", term: "Talkless")], "learned fix applies before polish")
         check(learner.recognitionTerms == ["Talkless"], "learned term becomes a recognition and polish hint")
+        check(learner.learnedDictionary.events.map(\.kind) == [.learned] && learner.learnedDictionary.events[0].term == "Talkless",
+              "taking effect is recorded in the learning log")
         check(settings(learnDefaults).learnedDictionary == learner.learnedDictionary, "learned fixes persist across launches")
         check(learner.dictionaryTerms.isEmpty, "learning never edits the user's own terms")
 
@@ -161,6 +163,9 @@ struct DictionaryTests {
         check(learner.learnedDictionary.fixes.count == 1, "a fix used within 30 days stays")
         learner.expireLearnedFixes(now: start + 51 * day)
         check(learner.learnedDictionary.fixes.isEmpty, "a fix unused for 30 days retires on its own")
+        check(learner.learnedDictionary.events.first?.kind == .retired, "retiring is recorded in the learning log")
+        let legacyState = try JSONDecoder().decode(LearnedDictionary.self, from: Data(#"{"fixes":[],"blocked":[],"seeded":true}"#.utf8))
+        check(legacyState.seeded && legacyState.events.isEmpty, "dictionaries saved before the log still load")
 
         let han2 = "\u{75DB}\u{4E8B}", hanFixed = "\u{540C}\u{4E8B}"
         check(DictionaryLearning.threshold(for: han2) == 3 && DictionaryLearning.threshold(for: "Talkles") == 2,
@@ -191,6 +196,7 @@ struct DictionaryTests {
         undo.learnFromDictation(raw: "Talkles works.", output: "Talkless works.", fired: [], at: start + 1)
         undo.learnFromDictation(raw: "Talkless works.", output: "Talkles works.", fired: [], at: start + 2)
         check(!undo.learnedDictionary.fixes.contains { $0.active }, "polish reverting a learned fix retires it")
+        check(undo.learnedDictionary.events.first?.kind == .undone, "an undone fix is recorded in the learning log")
 
         let removeDefaults = DictionaryMemoryDefaults()
         let remover = settings(removeDefaults)

@@ -18,10 +18,11 @@ struct DictionaryView: View {
     private static let pageSize = 50
 
     private enum Row: Identifiable {
-        case learned(LearnedFix), manual(String)
+        case learned(LearnedFix), watching(LearnedFix), manual(String)
         var id: String {
             switch self {
             case .learned(let fix): "learned-" + fix.id
+            case .watching(let fix): "watching-" + fix.id
             case .manual(let term): "manual-" + term
             }
         }
@@ -42,7 +43,15 @@ struct DictionaryView: View {
             .sorted { $0.lastSeen > $1.lastSeen }
     }
 
-    private var pendingCount: Int { settings.learnedDictionary.fixes.filter { !$0.active }.count }
+    /// Corrections seen but not yet repeated often enough to take effect.
+    private var watching: [LearnedFix] {
+        settings.learnedDictionary.fixes.filter { !$0.active }
+            .filter { matches([$0.heard, $0.term]) }
+            .sorted { $0.lastSeen > $1.lastSeen }
+    }
+
+    /// Learning reads what smart cleanup changed; without it there is nothing to learn from.
+    private var learningBlocked: Bool { !settings.polishEnabled || !settings.llmConfigured }
 
     private var manualTerms: [String] {
         let rules = settings.activeDictionaryReplacements
@@ -69,6 +78,27 @@ struct DictionaryView: View {
             }
             .padding(12)
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
+            if settings.dictionaryLearningEnabled, learningBlocked {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle").foregroundStyle(.orange)
+                    Text(L10n.tr("Learning needs smart text cleanup: Talkless learns from the words it corrects."))
+                        .font(.caption).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button(L10n.tr("Turn on…")) {
+                        NotificationCenter.default.post(name: .showSettingsSection, object: SettingsSection.dictation)
+                    }
+                    .controlSize(.small)
+                }
+            }
+            if settings.dictionaryLearningEnabled, !settings.learnedDictionary.events.isEmpty {
+                DisclosureGroup(L10n.format("Learning log (%lld)", settings.learnedDictionary.events.count)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(settings.learnedDictionary.events.prefix(20)) { event in eventRow(event) }
+                    }
+                    .padding(.top, 4)
+                }
+                .font(.callout)
+            }
 
             HStack {
                 TextField(L10n.tr("Search"), text: $search)
@@ -87,17 +117,24 @@ struct DictionaryView: View {
 
             // One page of rows at a time; section headers keep their full counts.
             let learnedRows = settings.dictionaryLearningEnabled ? learned : []
+            let watchingRows = settings.dictionaryLearningEnabled ? watching : []
             let terms = manualTerms
-            let rows = learnedRows.map(Row.learned) + terms.map(Row.manual)
+            let rows = learnedRows.map(Row.learned) + watchingRows.map(Row.watching) + terms.map(Row.manual)
             let pageCount = SettingsPager.pageCount(items: rows.count, pageSize: Self.pageSize)
             let current = min(page, pageCount - 1)
             let visible = rows.dropFirst(current * Self.pageSize).prefix(Self.pageSize)
             let visibleLearned = visible.compactMap { if case .learned(let fix) = $0 { fix } else { nil } }
+            let visibleWatching = visible.compactMap { if case .watching(let fix) = $0 { fix } else { nil } }
             let visibleManual = visible.compactMap { if case .manual(let term) = $0 { term } else { nil } }
             List {
                 if !visibleLearned.isEmpty {
                     Section(L10n.format("Learned automatically (%lld)", learnedRows.count)) {
                         ForEach(visibleLearned) { fix in learnedRow(fix) }
+                    }
+                }
+                if !visibleWatching.isEmpty {
+                    Section(L10n.format("Watching (%lld)", watchingRows.count)) {
+                        ForEach(visibleWatching) { fix in watchingRow(fix) }
                     }
                 }
                 if !visibleManual.isEmpty {
@@ -108,7 +145,7 @@ struct DictionaryView: View {
             }
             .listStyle(.inset)
             .overlay {
-                if learned.isEmpty && manualTerms.isEmpty {
+                if rows.isEmpty {
                     emptyState(title: search.isEmpty ? L10n.tr("Nothing learned yet") : L10n.tr("No matches"),
                                detail: search.isEmpty ? L10n.tr("Keep dictating with AI polish on, and words it keeps fixing show up here. You can also add one yourself.") : L10n.tr("Try another search or add a new entry."),
                                symbol: "character.book.closed")
@@ -120,10 +157,6 @@ struct DictionaryView: View {
             }
 
             HStack {
-                if settings.dictionaryLearningEnabled, pendingCount > 0 {
-                    Text(L10n.format("Watching %lld more spellings until they repeat.", pendingCount))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
                 Spacer()
                 if !message.isEmpty {
                     Text(message).font(.caption).foregroundStyle(.secondary)
@@ -193,6 +226,47 @@ struct DictionaryView: View {
                 .help(L10n.tr("Delete and never learn this fix again"))
         }
         .padding(.vertical, 4)
+    }
+
+    /// A correction seen in some dictations, with how many more it needs to take effect.
+    private func watchingRow(_ fix: LearnedFix) -> some View {
+        let needed = DictionaryLearning.threshold(for: fix.heard)
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                mapping(heard: [fix.heard], term: fix.term)
+                    .opacity(0.75)
+                HStack(spacing: 6) {
+                    ProgressView(value: Double(min(fix.observations, needed)), total: Double(needed))
+                        .frame(width: 60)
+                    Text(L10n.format("Seen %lld of %lld times · Last seen %@", fix.observations, needed,
+                                     fix.lastSeen.formatted(.relative(presentation: .named).locale(L10n.locale))))
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button { settings.removeLearnedFix(fix)
+                message = L10n.format("Removed. “%@” will not be learned again.", fix.heard)
+            } label: { Image(systemName: "trash") }
+                .accessibilityLabel(L10n.format("Delete %@", fix.heard))
+                .help(L10n.tr("Delete and never learn this fix again"))
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func eventRow(_ event: LearningEvent) -> some View {
+        let (symbol, color, title): (String, Color, String) = switch event.kind {
+        case .learned: ("sparkles", .accentColor, L10n.tr("Learned"))
+        case .retired: ("moon.zzz", .secondary, L10n.tr("Retired, not needed for 30 days"))
+        case .undone: ("arrow.uturn.backward", .orange, L10n.tr("Retired, cleanup changed it back"))
+        }
+        return HStack(spacing: 8) {
+            Image(systemName: symbol).foregroundStyle(color).frame(width: 16)
+            Text(title).foregroundStyle(.secondary)
+            Text("\(event.heard) → \(event.term)").font(.system(.callout, design: .monospaced)).lineLimit(1)
+            Spacer(minLength: 8)
+            Text(event.date.formatted(.relative(presentation: .named).locale(L10n.locale)))
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private func manualRow(_ term: String) -> some View {
