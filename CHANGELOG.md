@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- Unconfirmed or pending clipboard pastes now close quietly without an error notice. Clipboard protection, saved results and diagnostic records remain unchanged.
+
+## 2026.1102.44438
+
 ### Fixed
 - Clipboard insertion now serializes the whole paste transaction, including observing a lazy data request before restoring the original clipboard. The old unconditional 400 ms restore is removed.
 - If no request is observed, the text stays on the clipboard and later automatic pastes are blocked rather than overwriting it. Results remain in History with an actionable message; user clipboard changes are respected. A data request is a heuristic, not verified insertion into the destination.

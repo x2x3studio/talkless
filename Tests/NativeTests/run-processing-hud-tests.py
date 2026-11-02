@@ -469,7 +469,11 @@ TESTS = r'''
             await failedPaste.processingTask?.value
             precondition(failedPaste.state == .idle && failedPaste.history.entries.count == 1)
             precondition(TextIO.copied.isEmpty, "Failed paste must preserve unresolved clipboard contents")
-            precondition(failedPaste.hud.model.phase == .error(outcome.message))
+            if outcome == .unconfirmed || outcome == .blocked {
+                precondition(failedPaste.hud.model.phase == .hidden, "Uncertain paste outcomes close quietly")
+            } else {
+                precondition(failedPaste.hud.model.phase == .error(outcome.message))
+            }
             precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == outcome.diagnosticReason })
             precondition(!Diagnostics.shared.events.contains { $0.0 == "paste_returned" })
         }

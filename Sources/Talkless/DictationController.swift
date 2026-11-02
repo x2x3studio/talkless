@@ -739,7 +739,7 @@ final class DictationController: ObservableObject {
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                     ))
                     operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted), "empty": "false"])
-                    self.finish(.error(pasted.message))
+                    self.finish(pasted.isSilent ? .hidden : .error(pasted.message))
                     return
                 }
                 operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
@@ -852,7 +852,7 @@ final class DictationController: ObservableObject {
         if pasted != .submitted {
             Diagnostics.shared.record(event: "paste_skipped", metadata: ["reason": pasted.diagnosticReason])
             lastTranscript = text
-            if state == .idle { hud.show(.error(pasted.message)) }
+            if state == .idle, !pasted.isSilent { hud.show(.error(pasted.message)) }
         }
     }
 

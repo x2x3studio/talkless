@@ -4,6 +4,8 @@ import Foundation
 enum PasteOutcome: String, Sendable {
     case submitted, cancelled, clipboardChanged, unconfirmed, blocked, targetChanged, writeFailed
 
+    var isSilent: Bool { self == .unconfirmed || self == .blocked }
+
     var diagnosticReason: String {
         switch self {
         case .submitted: "read_observed"
