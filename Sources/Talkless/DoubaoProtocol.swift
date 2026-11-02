@@ -113,13 +113,15 @@ enum DoubaoProtocol {
             throw DoubaoError.service(code.uint32Value)
         }
         // v3 documents an object; some deployments return a one-element result array.
-        var text: String?
-        if let result = object["result"] as? [String: Any] { text = result["text"] as? String }
-        else if let results = object["result"] as? [[String: Any]], results.count == 1 { text = results[0]["text"] as? String }
-        else if object["result"] != nil { throw DoubaoError.invalidResponse }
-        let final = flags & 2 != 0
-        guard !final || text != nil else { throw DoubaoError.invalidResponse }
-        return Response(text: text, isFinal: final)
+        let result: [String: Any]?
+        if let value = object["result"] as? [String: Any] { result = value }
+        else if let values = object["result"] as? [[String: Any]], values.count <= 1 { result = values.first }
+        else if object["result"] == nil { result = nil }
+        else { throw DoubaoError.invalidResponse }
+        let text = result?["text"] as? String
+        guard result?["text"] == nil || text != nil else { throw DoubaoError.invalidResponse }
+        // Silence can end successfully without a result or text field.
+        return Response(text: text, isFinal: flags & 2 != 0)
     }
 
     static func pcm16(_ samples: UnsafeBufferPointer<Float>) -> Data {

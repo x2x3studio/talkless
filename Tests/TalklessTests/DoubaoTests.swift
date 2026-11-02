@@ -4,7 +4,12 @@ import Testing
 @testable import Talkless
 
 private func responseFrame(_ text: String?, final: Bool = false, compressed: Bool = true, sequence: Bool = true) throws -> Data {
-    let body = try JSONSerialization.data(withJSONObject: text.map { ["result": ["text": $0]] } ?? [:])
+    try responseFrame(body: text.map { ["result": ["text": $0]] } ?? [:],
+                      final: final, compressed: compressed, sequence: sequence)
+}
+
+private func responseFrame(body: [String: Any], final: Bool = false, compressed: Bool = true, sequence: Bool = true) throws -> Data {
+    let body = try JSONSerialization.data(withJSONObject: body)
     let payload = compressed ? try DoubaoProtocol.gzip(body, decompress: false) : body
     var data = Data([0x11, 0x90 | (final ? 2 : 0) | (sequence ? 1 : 0), compressed ? 0x11 : 0x10, 0])
     if sequence { var value = (final ? Int32(-4) : Int32(2)).bigEndian; withUnsafeBytes(of: &value) { data.append(contentsOf: $0) } }
@@ -24,6 +29,7 @@ private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     var respond = true
     var failAudio = false
+    var finalText: String? = "Final words"
     init() { (events, continuation) = AsyncThrowingStream.makeStream() }
     var sent: [Data] { lock.withLock { packets } }
     func send(_ data: Data) async throws {
@@ -36,7 +42,7 @@ private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
         if failAudio, data[1] >> 4 == 2 { throw URLError(.networkConnectionLost) }
         guard respond else { return }
         if data[1] >> 4 == 1 { continuation.yield(try responseFrame(nil)) }
-        else if data[1] & 2 != 0 { continuation.yield(try responseFrame("Final words", final: true)) }
+        else if data[1] & 2 != 0 { continuation.yield(try responseFrame(finalText, final: true)) }
         else { continuation.yield(try responseFrame("Live words")) }
     }
     func receive() async throws -> Data {
@@ -127,7 +133,7 @@ private actor ValidationGate {
                         == .init(text: "final", isFinal: true))
             }
         }
-        #expect(throws: DoubaoError.self) { try DoubaoProtocol.response(responseFrame(nil, final: true)) }
+        #expect(try DoubaoProtocol.response(responseFrame(nil, final: true)) == .init(text: nil, isFinal: true))
         #expect(throws: DoubaoError.self) { try DoubaoProtocol.response(Data([0x11, 0x93, 0x11, 0])) }
         var valid = try responseFrame("safe")
         valid.removeLast()
@@ -135,6 +141,49 @@ private actor ValidationGate {
         let error = Data([0x11, 0xf0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 6]) + Data("secret".utf8)
         do { _ = try DoubaoProtocol.response(error); Issue.record("Expected server error") }
         catch { #expect(!error.localizedDescription.contains("secret")) }
+    }
+
+    @Test func emptyResultsAreValidButMalformedResultsStillFail() throws {
+        let emptyBodies: [[String: Any]] = [
+            [:], ["result": [:]], ["result": []], ["result": [[:]]],
+            ["code": 20_000_000, "result": ["utterances": []]],
+        ]
+        for body in emptyBodies {
+            for compressed in [false, true] {
+                for sequence in [false, true] {
+                    #expect(try DoubaoProtocol.response(responseFrame(body: body, final: true,
+                        compressed: compressed, sequence: sequence)) == .init(text: nil, isFinal: true))
+                }
+            }
+        }
+        let malformedBodies: [[String: Any]] = [
+            ["result": "invalid"], ["result": NSNull()], ["result": ["text": 42]],
+            ["result": [["text": false]]], ["result": [[:], [:]]],
+            ["code": 50_000_000],
+        ]
+        for body in malformedBodies {
+            #expect(throws: DoubaoError.self) { try DoubaoProtocol.response(responseFrame(body: body, final: true)) }
+        }
+    }
+
+    @MainActor @Test func emptyFinalFinishesWithoutErrorOrReusingPreview() async throws {
+        for finalText: String? in [nil, "", " \n "] {
+            let socket = ScriptedDoubaoSocket()
+            socket.finalText = finalText
+            var errors: [String] = []
+            let session = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: socket,
+                                                        onError: { errors.append($0) })
+            var previews: [String] = []
+            session.onPartial = { previews.append($0) }
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+            let audio = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 3_200)!
+            audio.frameLength = 3_200
+            audio.floatChannelData![0].initialize(repeating: 0, count: 3_200)
+            session.feed(audio)
+            #expect(try await session.finish(samples: []) == "")
+            #expect(previews.contains("Live words"))
+            #expect(errors.isEmpty)
+        }
     }
 
     @Test func gzipAndPCM() throws {
