@@ -102,13 +102,6 @@ jobs:
         run: bash scripts/test.sh
       - name: Build, sign, and notarize
         run: bash scripts/release-macos.sh "$VERSION" "$BUILD_NUMBER"
-      - name: Retain signed artifacts
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: Talkless-${{ env.VERSION }}-${{ env.RELEASE_CHANNEL }}-macOS-arm64
-          path: dist/releases/
-          if-no-files-found: error
-          retention-days: 14
       - name: Publish release and update feeds
         env:
           GH_TOKEN: ${{ github.token }}
