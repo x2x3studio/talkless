@@ -23,7 +23,7 @@ import AppKit
         app.setActivationPolicy(.accessory)
         let target = Target()
         let menu = NSMenu()
-        let item = NSMenuItem(title: "Settings", action: #selector(Target.settings), keyEquivalent: ",")
+        let item = NSMenuItem(title: "Settings", action: #selector(Target.settings), keyEquivalent: "")
         item.target = target
         menu.addItem(item)
         DispatchQueue.main.async {

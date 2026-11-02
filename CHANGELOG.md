@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- Removed the Command-comma shortcut for Talkless Settings. Settings remains accessible from the menu bar without handling that key combination.
+
+## 2026.1102.26313
+
+### Fixed
 - When macOS cannot find Talkless's login item, the Launch at login switch now stays usable so you can retry registration instead of being told to reinstall. Settings and Setup Guide share the recovery behavior; failed registration and pending approval never claim startup is enabled.
 
 ## 2026.1102.25459

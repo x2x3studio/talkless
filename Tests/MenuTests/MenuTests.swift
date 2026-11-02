@@ -135,7 +135,16 @@ struct MenuTests {
             idle.performActionForItem(at: idle.index(of: entry))
             check(target.calls.last == expected, "Native menu dispatch reaches \(expected)")
         }
-        for (title, key) in [("Settings…", ","), ("Quit Talkless", "q")] {
+        let settingsItem = idle.items.first { $0.title == "Settings…" }!
+        check(settingsItem.keyEquivalent.isEmpty && settingsItem.keyEquivalentModifierMask.isEmpty,
+              "Settings has no keyboard shortcut")
+        let comma = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                    timestamp: 0, windowNumber: 0, context: nil, characters: ",",
+                                    charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43)!
+        let callsBeforeComma = target.calls
+        check(!idle.performKeyEquivalent(with: comma) && target.calls == callsBeforeComma,
+              "Command-comma must not open Talkless settings")
+        for (title, key) in [("Quit Talkless", "q")] {
             let entry = idle.items.first { $0.title == title }!
             check(entry.keyEquivalent == key && entry.keyEquivalentModifierMask == .command, "Native Command shortcut for \(title)")
         }

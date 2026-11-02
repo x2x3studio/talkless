@@ -151,7 +151,9 @@ enum MenuContent {
         }
 
         menu.addItem(.separator())
-        menu.addItem(symbol(action(L10n.tr("Settings…"), actions.openSettings, key: ","), "gearshape"))
+        let settingsItem = action(L10n.tr("Settings…"), actions.openSettings, key: "")
+        settingsItem.keyEquivalentModifierMask = []
+        menu.addItem(symbol(settingsItem, "gearshape"))
         // Preserve UpdateController's target, enabled state, and status explanation.
         menu.addItem(symbol(updateItem ?? label(L10n.tr("Check for Updates…"), toolTip: L10n.tr("Updates are not configured for this build.")),
                             "arrow.triangle.2.circlepath"))
