@@ -694,7 +694,7 @@
 "interface.language.simplifiedChinese" = "简体中文";
 "macOS Reduce Motion keeps indicators still. Your preference is saved." = "macOS Reduce Motion keeps indicators still. Your preference is saved.";
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved.";
-"macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS could not find this app’s login item. Reinstall Talkless in Applications and try again.";
+"macOS could not find Talkless’s login item. Turn on Launch at login to retry registration." = "macOS could not find Talkless’s login item. Turn on Launch at login to retry registration.";
 "the selected model" = "the selected model";
 "toggle" = "toggle";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions.";

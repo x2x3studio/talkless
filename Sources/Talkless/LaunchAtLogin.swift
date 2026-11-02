@@ -92,8 +92,7 @@ final class LaunchAtLoginController: ObservableObject {
     var canChange: Bool {
         guard unavailableReason == nil, !isUpdating else { return false }
         switch status {
-        case .enabled, .requiresApproval, .notRegistered: return true
-        case .notFound: return false
+        case .enabled, .requiresApproval, .notRegistered, .notFound: return true
         @unknown default: return false
         }
     }
@@ -108,7 +107,7 @@ final class LaunchAtLoginController: ObservableObject {
         case .requiresApproval:
             return L10n.tr("Waiting for approval in System Settings. Talkless will not open at login until you allow it.")
         case .notFound:
-            return L10n.tr("macOS could not find this app’s login item. Reinstall Talkless in Applications and try again.")
+            return L10n.tr("macOS could not find Talkless’s login item. Turn on Launch at login to retry registration.")
         @unknown default:
             return L10n.tr("Launch at login is unavailable. Check Login Items in System Settings.")
         }

@@ -694,7 +694,7 @@
 "interface.language.simplifiedChinese" = "简体中文";
 "macOS Reduce Motion keeps indicators still. Your preference is saved." = "macOS 的“减弱动态效果”设置使指示器保持静止。你的偏好已保存。";
 "macOS Reduce Transparency keeps the backdrop solid. Your preference is saved." = "macOS 的“降低透明度”设置使背景保持不透明。你的偏好已保存。";
-"macOS could not find this app’s login item. Reinstall Talkless in Applications and try again." = "macOS 找不到此 App 的登录项。请将 Talkless 重新安装到“应用程序”文件夹后重试。";
+"macOS could not find Talkless’s login item. Turn on Launch at login to retry registration." = "macOS 未找到 Talkless 的登录项。打开“登录时启动”开关即可重新尝试注册。";
 "the selected model" = "所选模型";
 "toggle" = "切换";
 "“%@” will no longer be a dictionary hint. This does not delete history or dismiss review suggestions." = "“%@”将不再用作词典提示。此操作不会删除历史记录或忽略待确认建议。";

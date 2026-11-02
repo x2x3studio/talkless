@@ -40,6 +40,7 @@ struct LaunchAtLoginTests {
         defer { withExtendedLifetime(localization) {} }
         await lifecycleAndApproval()
         await failuresAndAvailability()
+        await missingItemRecovery()
         await serialUpdates()
         installationValidation()
         print("All launch-at-login tests passed using fakes; no system login items were changed.")
@@ -128,10 +129,12 @@ struct LaunchAtLoginTests {
         precondition(!controller.isRequested)
         service.status = .notFound
         controller.refresh()
-        precondition(!controller.canChange && !controller.isRequested && controller.statusMessage != nil)
-        let priorRegisterCalls = service.registerCalls
+        precondition(controller.canChange && !controller.isRequested && controller.statusMessage?.contains("retry registration") == true)
+        let beforeRetry = service.registerCalls
+        service.registrationStatus = .enabled
         await controller.setEnabled(true)
-        precondition(service.registerCalls == priorRegisterCalls)
+        precondition(service.registerCalls == beforeRetry + 1 && controller.isRequested)
+        let priorRegisterCalls = service.registerCalls
 
         service.status = .notRegistered
         service.unavailableReason = "Development executable is not an installed app."
@@ -150,6 +153,35 @@ struct LaunchAtLoginTests {
         await controller.setEnabled(true)
         precondition(service.registerCalls == priorRegisterCalls + 2)
         print("PASS visible errors, status truth after failures, retry, unavailable builds and fresh status on click")
+    }
+
+    @MainActor private static func missingItemRecovery() async {
+        let service = FakeLoginService()
+        service.status = .notFound
+        let controller = LaunchAtLoginController(service: service)
+        controller.refresh()
+        precondition(controller.canChange && service.registerCalls == 0)
+        await controller.setEnabled(false)
+        precondition(service.unregisterCalls == 0, "Missing items are not unregistered before retry")
+        service.registerError = NSError(domain: "SyntheticLogin", code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "Registration still unavailable"])
+        await controller.setEnabled(true)
+        precondition(service.registerCalls == 1 && !controller.isRequested && controller.canChange)
+        precondition(controller.errorMessage?.contains("Registration still unavailable") == true)
+        service.registerError = nil
+        service.registrationStatus = .notFound
+        await controller.setEnabled(true)
+        precondition(!controller.isRequested && controller.status == .notFound && controller.canChange,
+                     "A successful API call alone does not mean login startup is enabled")
+        service.registrationStatus = .requiresApproval
+        await controller.setEnabled(true)
+        precondition(controller.needsApproval && controller.isRequested && controller.errorMessage == nil)
+        precondition(service.openCalls == 0, "Approval settings open only on explicit request")
+        service.status = .enabled
+        controller.refresh()
+        precondition(controller.statusMessage == nil && controller.isRequested)
+        precondition(service.registerCalls == 3 && service.unregisterCalls == 0)
+        print("PASS missing login item retry, visible failure, pending approval and truthful recovery status")
     }
 
     @MainActor private static func serialUpdates() async {

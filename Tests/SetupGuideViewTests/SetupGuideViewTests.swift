@@ -295,13 +295,17 @@ struct SetupGuideViewTests {
                   "Continue, complete and skip preserve login state \(status)")
             check(presentation().isEnabled == (status == .enabled), "Only system-enabled status counts as enabled")
             check(presentation().needsApproval == (status == .requiresApproval), "Approval is not enabled")
-            check(presentation().isUnavailable == (status == .notFound), "Missing login item is unavailable")
+            check(!presentation().isUnavailable && presentation().canChange, "Installed apps allow explicit registration retry")
+            if status == .notFound {
+                check(!presentation().isRequested && presentation().summary == "Not enabled", "Missing login item never claims enabled")
+                check(presentation().statusMessage?.contains("retry registration") == true, "Missing item explains how to retry")
+            }
         }
-        loginService.status = .notRegistered
+        loginService.status = .notFound
         login.refresh()
         _ = mount(.login)
         toggleLogin(true)
-        check(loginService.calls == ["register"] && presentation().isEnabled, "Explicit guide toggle uses shared registration controller")
+        check(loginService.calls == ["register"] && presentation().isEnabled, "Explicit guide toggle retries a missing login item using the shared controller")
         toggleLogin(false)
         check(loginService.calls == ["register", "unregister"] && !presentation().isRequested, "Explicit guide toggle can disable")
         loginService.registrationStatus = .requiresApproval

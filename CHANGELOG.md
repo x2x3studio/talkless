@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- When macOS cannot find Talkless's login item, the Launch at login switch now stays usable so you can retry registration instead of being told to reinstall. Settings and Setup Guide share the recovery behavior; failed registration and pending approval never claim startup is enabled.
+
+## 2026.1102.25459
+
 ### Added
 - Setup Guide now lets you record the dictation shortcut and choose hold-to-talk or tap-to-toggle directly in its controls step. It uses the same controls and saved preferences as Settings, including reset and safe shortcut capture.
 

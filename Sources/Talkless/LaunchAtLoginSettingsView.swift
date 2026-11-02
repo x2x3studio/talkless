@@ -21,7 +21,7 @@ struct LaunchAtLoginPresentation: Equatable {
         isUpdating = controller.isUpdating
         needsApproval = controller.needsApproval
         isUnavailable = controller.unavailableReason != nil
-            || ![.enabled, .notRegistered, .requiresApproval].contains(controller.status)
+            || ![.enabled, .notRegistered, .requiresApproval, .notFound].contains(controller.status)
         statusMessage = controller.statusMessage
         errorMessage = controller.errorMessage
     }
