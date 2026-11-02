@@ -766,6 +766,7 @@ try run("/usr/bin/xcrun", ["swiftc", "-swift-version", "6", "-parse-as-library",
     root.appendingPathComponent("Sources/Talkless/SettingsStyle.swift").path,
     root.appendingPathComponent("Sources/Talkless/CaretPosition.swift").path,
     root.appendingPathComponent("Sources/Talkless/TextIO.swift").path,
+    root.appendingPathComponent("Sources/Talkless/PasteOutcome.swift").path,
     root.appendingPathComponent("Sources/Talkless/SyntheticKeyboardEvents.swift").path, "-o", binary.path])
 // Overlay settings observe the production shared localization object. Override its read
 // through NSArgumentDomain only; never write the user's persisted language preference.
