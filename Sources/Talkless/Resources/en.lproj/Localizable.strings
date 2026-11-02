@@ -552,6 +552,12 @@
 "Tap to dictate" = "Tap to dictate";
 "Target app changed; result saved" = "Target app changed; result saved";
 "Clipboard changed; result saved" = "Clipboard changed; result saved";
+"Input cancelled; result saved" = "Input cancelled; result saved";
+"Talkless needs Accessibility permission to type into other apps. The result is saved in History." = "Talkless needs Accessibility permission to type into other apps. The result is saved in History.";
+"The app changed before the text was ready. The result is saved in History." = "The app changed before the text was ready. The result is saved in History.";
+"Paste could not be confirmed. Text remains on the clipboard; check the destination before pasting manually." = "Paste could not be confirmed. Text remains on the clipboard; check the destination before pasting manually.";
+"The previous paste is still unresolved. This result is saved in History; the clipboard was not replaced." = "The previous paste is still unresolved. This result is saved in History; the clipboard was not replaced.";
+"Could not write to the clipboard; result saved" = "Could not write to the clipboard; result saved";
 "The app changed before the text was ready. It was copied; press ⌘V to paste." = "The app changed before the text was ready. It was copied; press ⌘V to paste.";
 "Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste." = "Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste.";
 "Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility." = "Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility.";

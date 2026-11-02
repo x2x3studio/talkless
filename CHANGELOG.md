@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Fixed
+- Clipboard insertion now serializes the whole paste transaction, including observing a lazy data request before restoring the original clipboard. The old unconditional 400 ms restore is removed.
+- If no request is observed, the text stays on the clipboard and later automatic pastes are blocked rather than overwriting it. Results remain in History with an actionable message; user clipboard changes are respected. A data request is a heuristic, not verified insertion into the destination.
+- Paste key events are directed to the original app, with target checks around the operation. Switching apps no longer automatically replaces the clipboard with a new result.
+
+## 2026.1102.41068
+
+### Fixed
 - Offline recognition no longer waits for UI previews to finish; stale previews cannot overwrite a completed result.
 - Responsiveness monitoring keeps only one pending heartbeat and writes logs asynchronously, avoiding a flood of queued work after a UI stall.
 - Cancelling an insertion now prevents its queued paste. Selection-copy and dictation-paste operations share a clipboard queue so they cannot overwrite each other's pending text.

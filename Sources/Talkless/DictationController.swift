@@ -713,7 +713,6 @@ final class DictationController: ObservableObject {
                 // Never lose the words when they cannot be pasted where dictation started.
                 if let blocker = self.insertionBlocker(for: targetApp) {
                     operation?.record("paste_skipped", ["reason": blocker.reason])
-                    TextIO.copyToClipboard(output)
                     if blocker.reason == "permission" { self.openPermissionSettings(.accessibility) }
                     self.history.add(HistoryEntry(
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
@@ -732,17 +731,19 @@ final class DictationController: ObservableObject {
                 self.hud.model.revisionOriginal = editSelection == nil ? recognized : nil
                 self.hud.model.preview = output
                 self.hud.show(.inserting)
-                let pasted = await TextIO.insert(output)
+                let pasted = await TextIO.insert(output, targetPID: targetApp?.processIdentifier)
                 guard generation == self.generation, !Task.isCancelled else { return }
-                guard pasted else {
-                    operation?.record("paste_skipped", ["reason": "clipboard_changed"])
+                guard pasted == .submitted else {
+                    operation?.record("paste_skipped", ["reason": pasted.diagnosticReason])
                     self.history.add(HistoryEntry(
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                     ))
-                    self.finish(.error(L10n.tr("Clipboard changed; result saved")))
+                    operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted), "empty": "false"])
+                    self.finish(.error(pasted.message))
                     return
                 }
-                operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted)])
+                operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted),
+                                                   "reason": pasted.diagnosticReason])
                 self.history.add(HistoryEntry(
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
@@ -830,10 +831,10 @@ final class DictationController: ObservableObject {
     /// Pasting needs Accessibility (to post ⌘V) and the app dictation started in.
     private func insertionBlocker(for app: NSRunningApplication?) -> (reason: String, message: String)? {
         if !Self.accessibilityGranted {
-            return ("permission", L10n.tr("Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste."))
+            return ("permission", L10n.tr("Talkless needs Accessibility permission to type into other apps. The result is saved in History."))
         }
         if let app, NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
-            return ("target_changed", L10n.tr("The app changed before the text was ready. It was copied; press ⌘V to paste."))
+            return ("target_changed", L10n.tr("The app changed before the text was ready. The result is saved in History."))
         }
         return nil
     }
@@ -846,12 +847,12 @@ final class DictationController: ObservableObject {
             }
             return
         }
-        let pasted = await TextIO.insert(text)
+        let pasted = await TextIO.insert(text, targetPID: app.processIdentifier)
         guard !Task.isCancelled else { return }
-        if !pasted {
-            Diagnostics.shared.record(event: "paste_skipped", metadata: ["reason": "clipboard_changed"])
+        if pasted != .submitted {
+            Diagnostics.shared.record(event: "paste_skipped", metadata: ["reason": pasted.diagnosticReason])
             lastTranscript = text
-            if state == .idle { hud.show(.error(L10n.tr("Clipboard changed; result saved"))) }
+            if state == .idle { hud.show(.error(pasted.message)) }
         }
     }
 

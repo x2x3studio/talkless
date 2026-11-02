@@ -12,6 +12,7 @@ swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/PolishSettingsView.swift" \
   "$ROOT/Sources/Talkless/SettingsStyle.swift" \
   "$ROOT/Sources/Talkless/TextIO.swift" \
+  "$ROOT/Sources/Talkless/PasteOutcome.swift" \
   "$ROOT/Sources/Talkless/SyntheticKeyboardEvents.swift" \
   "$ROOT/Sources/Talkless/PolishProvider.swift" \
   "$ROOT/Sources/Talkless/CredentialStore.swift" \

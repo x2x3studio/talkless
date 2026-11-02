@@ -126,15 +126,17 @@ enum Prompts {
 enum PolishValidation {
     static func validate(source: String, output: String) throws -> String { output }
 }
+extension Int { var processIdentifier: Int32 { Int32(self) } }
 @MainActor enum TextIO {
     static func insertionContext() -> [String: String] { ["globe_action": "none", "input_method": "false"] }
     static var inserted: [String] = []
     static var onInsert: (String) -> Void = { _ in }
-    static func insert(_ text: String) async -> Bool {
+    static var outcome = PasteOutcome.submitted
+    static func insert(_ text: String, targetPID: Int32? = nil) async -> PasteOutcome {
         onInsert(text)
         await Task.yield()
         inserted.append(text)
-        return true
+        return outcome
     }
     static var copied: [String] = []
     static func copyToClipboard(_ text: String) { copied.append(text) }
@@ -196,8 +198,8 @@ struct HistoryEntry {
     func openPermissionSettings(_ pane: PermissionPane) { openedPanes.append(pane) }
     func insertionBlocker(for app: Int?) -> (reason: String, message: String)? {
         precondition(app == 1)
-        if accessibilityMissing { return ("permission", "Accessibility needed. Copied; press ⌘V to paste.") }
-        return appChanged ? ("target_changed", "The app changed. Copied; press ⌘V to paste.") : nil
+        if accessibilityMissing { return ("permission", "Accessibility needed. Result saved in History.") }
+        return appChanged ? ("target_changed", "The app changed. Result saved in History.") : nil
     }
     func cancel(reason: String = "user") {
         diagnosticOperation?.record("dictation_cancel", ["reason": reason])
@@ -448,9 +450,9 @@ TESTS = r'''
             switched.stopAndProcess()
             await switched.processingTask?.value
             precondition(TextIO.inserted.isEmpty, "A changed frontmost app must never receive the paste")
-            precondition(TextIO.copied == ["processed transcript"] && switched.history.entries.count == 1)
-            guard case .error(let message) = switched.hud.model.phase, message.contains("⌘V") else {
-                preconditionFailure("Switching apps must explain that the text was copied")
+            precondition(TextIO.copied.isEmpty && switched.history.entries.count == 1, "Automatic fallback must not overwrite an unresolved clipboard transaction")
+            guard case .error(let message) = switched.hud.model.phase, message.contains("History") else {
+                preconditionFailure("Switching apps must explain where the result was saved")
             }
             precondition(switched.state == .idle)
             let reason = missingAccessibility ? "permission" : "target_changed"
@@ -458,6 +460,20 @@ TESTS = r'''
                          "Missing Accessibility opens its System Settings pane; a changed app does not")
             precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == reason })
         }
+        for outcome in [PasteOutcome.unconfirmed, .blocked, .clipboardChanged, .targetChanged, .writeFailed] {
+            let failedPaste = ProcessingHarness()
+            TextIO.outcome = outcome
+            TextIO.copied = []
+            Diagnostics.shared.events = []
+            failedPaste.stopAndProcess()
+            await failedPaste.processingTask?.value
+            precondition(failedPaste.state == .idle && failedPaste.history.entries.count == 1)
+            precondition(TextIO.copied.isEmpty, "Failed paste must preserve unresolved clipboard contents")
+            precondition(failedPaste.hud.model.phase == .error(outcome.message))
+            precondition(Diagnostics.shared.events.contains { $0.0 == "paste_skipped" && $0.1["reason"] == outcome.diagnosticReason })
+            precondition(!Diagnostics.shared.events.contains { $0.0 == "paste_returned" })
+        }
+        TextIO.outcome = .submitted
         TextIO.copied = []
         for polish in [false, true] {
             Diagnostics.shared.events = []
@@ -497,7 +513,7 @@ TESTS = r'''
         precondition(late.history.entries.first?.kind == .edit && LLMClient.calls == 1,
                      "A selection copied after recording started still makes this a voice edit")
         print("PASS stop waits for a pending selection read before choosing edit or dictation")
-        print("PASS switching apps or missing Accessibility copies instead of pasting, keeps history, and explains ⌘V")
+        print("PASS failed or blocked pastes keep history without replacing the clipboard and explain their outcome")
         let modelA = URL(fileURLWithPath: "/synthetic/models/a")
         let modelB = URL(fileURLWithPath: "/synthetic/models/b")
         for outcome in ["success", "empty", "failure", "cancelled", "stale", "new_preparation", "non_qwen"] {
@@ -606,7 +622,7 @@ final class Diagnostics: @unchecked Sendable {
     }
 }
 struct AppContext { let name: String; let bundleID: String }
-struct FakeApp { let localizedName: String?; let bundleIdentifier: String? }
+struct FakeApp { let localizedName: String?; let bundleIdentifier: String?; var processIdentifier: Int32 { 1 } }
 @MainActor final class FakeWorkspace {
     static let shared = FakeWorkspace()
     let frontmostApplication: FakeApp? = nil
@@ -1250,7 +1266,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
                     str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryTerms.swift"),
-                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), str(ROOT / "Sources/Talkless/PasteOutcome.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
     # Real HUDModel, real startup/cancel methods, only external boundaries substituted.
@@ -1280,7 +1296,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
                     str(ROOT / "Sources/Talkless/DictionaryHighlight.swift"),
                     str(ROOT / "Sources/Talkless/TextRevisionHighlight.swift"),
                     str(ROOT / "Sources/Talkless/DictionaryTerms.swift"),
-                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), "-o", str(binary)], check=True)
+                    str(ROOT / "Sources/Talkless/TextFormatting.swift"), str(ROOT / "Sources/Talkless/PasteOutcome.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
     diagnostic = (ROOT / "Sources/Talkless/MicrophoneDiagnostic.swift").read_text().replace("import AVFoundation\n", "")
     swift.write_text(diagnostic + MICROPHONE_STUBS)

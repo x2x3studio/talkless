@@ -552,6 +552,12 @@
 "Tap to dictate" = "单击输入";
 "Target app changed; result saved" = "目标 App 已改变，结果已保存";
 "Clipboard changed; result saved" = "剪贴板已改变，结果已保存";
+"Input cancelled; result saved" = "输入已取消，结果已保存";
+"Talkless needs Accessibility permission to type into other apps. The result is saved in History." = "缺少辅助功能权限，无法输入到其他 App。结果已保存在历史记录中。";
+"The app changed before the text was ready. The result is saved in History." = "文字生成前已切换 App，结果已保存在历史记录中。";
+"Paste could not be confirmed. Text remains on the clipboard; check the destination before pasting manually." = "未确认粘贴，文字仍在剪贴板中。请先检查输入框，再决定是否手动粘贴。";
+"The previous paste is still unresolved. This result is saved in History; the clipboard was not replaced." = "上一段粘贴尚未确认，本段已保存在历史记录中，未覆盖剪贴板。";
+"Could not write to the clipboard; result saved" = "无法写入剪贴板，结果已保存";
 "The app changed before the text was ready. It was copied; press ⌘V to paste." = "文字生成前已切换了 App，结果已复制，按 ⌘V 粘贴。";
 "Talkless needs Accessibility permission to type into other apps. The text was copied; press ⌘V to paste." = "缺少辅助功能权限，无法输入到其他 App。结果已复制，按 ⌘V 粘贴。";
 "Talkless needs Accessibility permission to read selected text. Allow it in System Settings › Privacy & Security › Accessibility." = "缺少辅助功能权限，无法读取选中文字。请在“系统设置 › 隐私与安全性 › 辅助功能”中允许 Talkless。";

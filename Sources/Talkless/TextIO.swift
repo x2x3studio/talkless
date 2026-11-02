@@ -74,12 +74,11 @@ enum TextIO {
         wait: @escaping @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) async -> String? {
         await withClipboardOperation(cancelledValue: nil) { cancellation in
-            // Posting ⌘V is not an acknowledgement that the app has read the clipboard.
-            // Copy must also respect the preceding paste's short consumption grace period.
-            await BorrowedClipboard.waitForPendingGiveBack()
-            guard isTargetCurrent(), !cancellation.isCancelled else { return nil }
+            // A timed-out paste still owns the clipboard. Selection acquisition must not
+            // consume its lazy data or replace text that a slow recipient may still request.
+            guard BorrowedClipboard.canBorrow, isTargetCurrent(), !cancellation.isCancelled else { return nil }
             let pasteboard = BorrowedClipboard.pasteboard
-            let lease = BorrowedClipboard.borrow()
+            guard let lease = BorrowedClipboard.borrow() else { return nil }
             let before = pasteboard.changeCount
             requestCopy()
 
@@ -188,35 +187,62 @@ enum TextIO {
         }
     }
 
-    /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the
-    /// user's clipboard comes back 400 ms later, so the next dictation never waits for it.
+    /// `.submitted` means lazy clipboard data was requested after posting began, NOT that
+    /// the target inserted it. Clipboard managers can also request data: this is a heuristic.
     @discardableResult
-    static func insert(_ text: String) async -> Bool {
-        await insert(text, wait: { try? await Task.sleep(for: $0) },
-                     sendPaste: { await postShortcut(vKeyV) })
+    static func insert(_ text: String, targetPID: pid_t? = nil) async -> PasteOutcome {
+        guard let pid = targetPID ?? NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              pid != ProcessInfo.processInfo.processIdentifier else { return .targetChanged }
+        return await insert(text,
+                            isTargetCurrent: { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid },
+                            sendPaste: { await postPaste(to: pid) })
     }
 
-    /// Tests supply a suspended wait and fake event sender; never post keys to real apps.
-    /// False means cancelled or clipboard ownership was lost before posting keys.
+    /// The queue covers writing, posting, observing a request, and finishing the lease.
+    /// Tests inject all app interaction and may advance the bounded wait without real time.
     @discardableResult
     static func insert(_ text: String,
-                       wait: @escaping @MainActor (Duration) async -> Void,
-                       sendPaste: @escaping @MainActor () async -> Void) async -> Bool {
-        await withClipboardOperation(cancelledValue: false) { cancellation in
-            let lease = BorrowedClipboard.borrow()
-            let change = BorrowedClipboard.writeTransient(text)
+                       isTargetCurrent: @escaping @MainActor () -> Bool,
+                       wait: @escaping @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+                       sendPaste: @escaping @MainActor () async -> Void) async -> PasteOutcome {
+        await withClipboardOperation(cancelledValue: .cancelled) { cancellation in
+            guard BorrowedClipboard.canBorrow else { return .blocked }
+            guard isTargetCurrent() else { return .targetChanged }
+            guard let lease = BorrowedClipboard.borrow() else { return .clipboardChanged }
+            guard let paste = BorrowedClipboard.beginPaste(text, lease: lease) else { return .writeFailed }
             // Let the clipboard write and any just-released dictation key settle first.
             await wait(.milliseconds(50))
-            guard !cancellation.isCancelled else {
-                BorrowedClipboard.giveBack(lease, ifUnchangedSince: change)
-                return false
+            guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
+            if cancellation.isCancelled || !isTargetCurrent() {
+                BorrowedClipboard.finish(paste)
+                return cancellation.isCancelled ? .cancelled : .targetChanged
             }
-            guard BorrowedClipboard.pasteboard.changeCount == change else { return false }
-            // Once key posting starts, complete the shortcut (especially Command-up).
-            // Cancelling halfway through it could leave the modifier pressed.
+            paste.provider.arm()
+            // Once key posting starts, complete the shortcut, especially Command-up.
+            // Every exit after this point must preserve the text unless a request was observed.
             await sendPaste()
-            BorrowedClipboard.giveBack(lease, ifUnchangedSince: change, after: .milliseconds(400))
-            return true
+            for _ in 0..<120 {
+                guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
+                guard !cancellation.isCancelled else { return .cancelled }
+                guard isTargetCurrent() else { return .targetChanged }
+                if paste.provider.wasRequested {
+                    // A request is not insertion confirmation. A short grace lets the
+                    // requesting app finish copying data before returning the user's items.
+                    await wait(.milliseconds(100))
+                    guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
+                    guard !cancellation.isCancelled else { return .cancelled }
+                    guard isTargetCurrent() else { return .targetChanged }
+                    BorrowedClipboard.finish(paste)
+                    return .submitted
+                }
+                await wait(.milliseconds(25))
+            }
+            guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
+            guard !cancellation.isCancelled else { return .cancelled }
+            guard isTargetCurrent() else { return .targetChanged }
+            // No timer restores this lease, even if a callback arrives later. It remains
+            // blocked until ownership changes or the user explicitly keeps new clipboard text.
+            return .unconfirmed
         }
     }
 
@@ -228,9 +254,11 @@ enum TextIO {
 
     /// A complete, human-like shortcut: Command down, key down, key up, Command up, a few
     /// milliseconds apart. Some apps ignore a lone key event that only carries a Command flag.
-    private static func postShortcut(_ key: CGKeyCode) async {
-        for event in shortcutEvents(key) {
-            event.post(tap: .cghidEventTap)
+    private static func postPaste(to pid: pid_t) async {
+        for event in shortcutEvents(vKeyV) {
+            // PID-directed delivery cannot leak the remaining shortcut into another app if
+            // focus changes between events. The transaction also checks focus on both sides.
+            event.postToPid(pid)
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
@@ -251,78 +279,129 @@ enum TextIO {
     }
 }
 
-/// The one place Talkless touches the general pasteboard. A borrow captures the user's
-/// contents; giving back restores them only if the pasteboard still holds what Talkless (or the
-/// app it asked to copy) put there, so anything the user copied meanwhile always wins.
+/// The callback may arrive on any thread. It only supplies its own item, never reads or
+/// changes the pasteboard, and never schedules a restore. Invalidated providers cannot signal
+/// a newer transaction. Requests before key posting are deliberately not counted.
+final class PasteDataProvider: NSObject, NSPasteboardItemDataProvider, @unchecked Sendable {
+    private struct State {
+        var valid = true
+        var armed = false
+        var requested = false
+    }
+    private let state = Mutex(State())
+    private let text: String
+
+    init(_ text: String) { self.text = text }
+    var wasRequested: Bool { state.withLock { $0.valid && $0.requested } }
+    func arm() { state.withLock { $0.armed = true } }
+    func invalidate() { state.withLock { $0.valid = false } }
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem,
+                    provideDataForType type: NSPasteboard.PasteboardType) {
+        state.withLock { state in
+            guard state.valid, type == .string else { return }
+            if item.setString(text, forType: type), state.armed { state.requested = true }
+        }
+    }
+}
+
+/// The one place Talkless touches the general pasteboard. An unresolved paste keeps its
+/// original multi-item snapshot and blocks both new pastes and automatic selection copies.
 @MainActor
 enum BorrowedClipboard {
     typealias Snapshot = [[NSPasteboard.PasteboardType: Data]]
-    struct Lease { fileprivate let saved: Snapshot }
-
-    /// Always the general pasteboard in the app; tests swap in a private named one.
-    static var pasteboard: NSPasteboard = .general
-    private static var pending: (lease: Lease, change: Int, task: Task<Void, Never>)?
-
-    /// The user's own contents. If a previous borrow's give-back is still pending and the
-    /// pasteboard still holds our temporary text, that borrow's snapshot is the user's; this
-    /// borrow takes over giving it back.
-    static func borrow() -> Lease {
-        defer { cancelPending() }
-        if let pending, pasteboard.changeCount == pending.change { return pending.lease }
-        return Lease(saved: snapshot())
+    struct Lease {
+        fileprivate let saved: Snapshot
+        fileprivate let board: NSPasteboard
+        fileprivate let change: Int
+    }
+    struct Paste {
+        fileprivate let token = UUID()
+        fileprivate let lease: Lease
+        fileprivate let change: Int
+        let provider: PasteDataProvider
     }
 
-    /// Temporary text for a paste, marked so clipboard managers do not record it.
-    static func writeTransient(_ text: String) -> Int {
-        pasteboard.clearContents()
+    /// Tests swap in a private named board. A lease is also bound to that exact board.
+    static var pasteboard: NSPasteboard = .general {
+        didSet { invalidatePaste() }
+    }
+    private static var activePaste: Paste?
+
+    static var canBorrow: Bool {
+        if let activePaste, !owns(activePaste) { invalidatePaste() }
+        return activePaste == nil
+    }
+
+    static func borrow() -> Lease? {
+        // Never snapshot our own lazy text: doing so would manufacture a receipt.
+        guard canBorrow else { return nil }
+        let board = pasteboard
+        let change = board.changeCount
+        guard let saved = snapshot(board), board.changeCount == change else { return nil }
+        return Lease(saved: saved, board: board, change: change)
+    }
+
+    static func beginPaste(_ text: String, lease: Lease) -> Paste? {
+        guard canBorrow, lease.board === pasteboard, pasteboard.changeCount == lease.change else { return nil }
+        let provider = PasteDataProvider(text)
         let item = NSPasteboardItem()
-        item.setString(text, forType: .string)
+        item.setDataProvider(provider, forTypes: [.string])
         item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
-        pasteboard.writeObjects([item])
-        return pasteboard.changeCount
-    }
-
-    static func giveBack(_ lease: Lease, ifUnchangedSince change: Int, after delay: Duration? = nil) {
-        guard let delay else {
-            if pasteboard.changeCount == change { restore(lease.saved) }
-            return
+        let cleared = pasteboard.clearContents()
+        guard pasteboard.writeObjects([item]) else {
+            provider.invalidate()
+            giveBack(lease, ifUnchangedSince: cleared)
+            return nil
         }
-        cancelPending()
-        pending = (lease, change, Task { @MainActor in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let current = pending, current.change == change else { return }
-            pending = nil
-            if pasteboard.changeCount == change { restore(current.lease.saved) }
-        })
+        let paste = Paste(lease: lease, change: pasteboard.changeCount, provider: provider)
+        activePaste = paste
+        return paste
     }
 
-    /// Copy must not replace a just-posted paste before its recipient can consume it.
-    static func waitForPendingGiveBack() async {
-        await pending?.task.value
+    static func owns(_ paste: Paste) -> Bool {
+        activePaste?.token == paste.token && paste.lease.board === pasteboard
+            && pasteboard.changeCount == paste.change
     }
 
-    /// Plain text the user keeps; it ends any pending give-back.
+    /// Called only before posting, or after a request plus grace. No unconfirmed timer path.
+    static func finish(_ paste: Paste) {
+        guard owns(paste) else { return }
+        invalidatePaste()
+        giveBack(paste.lease, ifUnchangedSince: paste.change)
+    }
+
+    static func giveBack(_ lease: Lease, ifUnchangedSince change: Int) {
+        guard lease.board === pasteboard, pasteboard.changeCount == change else { return }
+        restore(lease.saved)
+    }
+
+    /// Explicit user copy is allowed to replace an unresolved paste. Old tokens become inert.
     @discardableResult
     static func keep(_ text: String) -> Bool {
-        cancelPending()
+        invalidatePaste()
         pasteboard.clearContents()
         return pasteboard.setString(text, forType: .string)
     }
 
-    private static func cancelPending() {
-        pending?.task.cancel()
-        pending = nil
+    private static func invalidatePaste() {
+        activePaste?.provider.invalidate()
+        activePaste = nil
     }
 
-    private static func snapshot() -> Snapshot {
-        (pasteboard.pasteboardItems ?? []).map { item in
+    private static func snapshot(_ board: NSPasteboard) -> Snapshot? {
+        var result: Snapshot = []
+        for item in board.pasteboardItems ?? [] {
             var entry: [NSPasteboard.PasteboardType: Data] = [:]
             for type in item.types {
-                if let data = item.data(forType: type) { entry[type] = data }
+                // If a promised format cannot be captured, do not destroy it by borrowing.
+                guard let data = item.data(forType: type) else { return nil }
+                entry[type] = data
             }
-            return entry
+            result.append(entry)
         }
+        return result
     }
 
     private static func restore(_ snapshot: Snapshot) {

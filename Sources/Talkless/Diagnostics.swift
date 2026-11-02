@@ -68,7 +68,7 @@ final class Diagnostics: @unchecked Sendable {
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
             "unavailable", "invalid_format", "empty_audio", "empty_result", "cancelled", "timeout", "network", "model", "unknown",
             "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout",
-            "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed", "clipboard_changed", "localization_missing",
+            "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed", "clipboard_changed", "read_observed", "paste_unconfirmed", "paste_pending", "clipboard_write_failed", "localization_missing",
             "route_mismatch", "route_unavailable", "native_operation_timeout", "startup_release", "startup_failed", "stop_failed", "finish_before_start",
         ],
         "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
@@ -304,7 +304,10 @@ final class Diagnostics: @unchecked Sendable {
             Logs do not contain recordings, transcripts, selected text, prompts, credentials,
             endpoints/URLs, error descriptions, device names/UIDs, or response bodies.
             paste_returned records mean the insertion call returned, not that another app
-            confirmed receiving text. Wall-clock time can change; use sequence and elapsed_ms
+            confirmed receiving text. reason=read_observed means a lazy clipboard data request
+            was observed; the reader may be a clipboard manager, not the destination app.
+            paste_unconfirmed/paste_pending preserve unresolved text rather than restoring on a timer.
+            Wall-clock time can change; use sequence and elapsed_ms
             within a session for ordering, and metadata timings for individual operation stages.
             system.json contains app/OS versions, hardware model, architecture, CPU count,
             and physical memory. It excludes serial numbers, user names, and host names.
