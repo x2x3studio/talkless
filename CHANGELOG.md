@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- Doubao online settings now offer automatic recognition or 25 spoken languages. Automatic keeps live recognition; selecting a language switches to the supported streaming-input endpoint, which returns text after 15 seconds of audio or when recording ends. The choice is saved independently of translation and offline recognition.
+
+## 2026.1102.10168
+
 ### Fixed
 - Quickly starting and stopping Doubao dictation now closes quietly when the service returns empty-audio code 45000002, without showing a recognition error or retrying offline. Other service errors still report normally.
 

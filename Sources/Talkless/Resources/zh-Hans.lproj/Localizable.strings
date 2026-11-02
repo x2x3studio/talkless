@@ -830,6 +830,12 @@
 "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "只有 %@ + %@ 才会修改选中的文字；只按听写键永远是输入文字，像打字一样替换选中内容。编辑时浮窗显示铅笔图标。也可以先开始说话，再按下 %@。没有选中文字时，照常输入你说的话。AI 润色开关不影响这个功能。";
 "Offline" = "离线识别";
 "Doubao online" = "豆包在线识别";
+"Speech input language" = "语音输入语言";
+"Supports Chinese, English, Shanghainese, Southern Min, Sichuan, Shaanxi, Cantonese, Jilu, Lanyin and Jianghuai dialects." = "支持中英文，以及上海话、闽南语、四川、陕西、粤语、冀鲁、兰银、江淮方言。";
+"Mandarin Chinese" = "中文普通话";
+"Nepali" = "尼泊尔语";
+"Cantonese" = "粤语";
+"Online recognition with a choice of spoken language. Needs internet and a Doubao account." = "在线识别，可选择语音输入语言。需要联网和豆包账号。";
 "Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac." = "使用本机模型，免费，断网也能用，录音不离开这台 Mac。";
 "Text appears as you speak. Needs internet and a Doubao account." = "边说边出字，需要联网和豆包账号。";
 "Allow falling back to offline recognition" = "豆包不可用时，允许降级为离线识别";

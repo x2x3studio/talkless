@@ -73,7 +73,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
         let socket = self.socket, state = self.state
         worker = Task.detached(priority: .userInitiated) {
             do {
-                let text = try await Self.run(socket: socket, state: state, timeout: timeout)
+                let text = try await Self.run(socket: socket, state: state, timeout: timeout, inputLanguage: config.inputLanguage)
                 state.resolve(.success(text))
             } catch {
                 let safeError: Error
@@ -103,7 +103,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
                     defer { group.cancelAll(); socket.close() }
                     group.addTask {
                         try Task.checkCancellation()
-                        try await socket.send(DoubaoProtocol.configuration())
+                        try await socket.send(DoubaoProtocol.configuration(inputLanguage: config.inputLanguage))
                         _ = try DoubaoProtocol.response(await socket.receive())
                     }
                     group.addTask {
@@ -149,11 +149,12 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
     }
     deinit { state.cancel(); socket.close(); worker?.cancel() }
 
-    private static func run(socket: any DoubaoSocket, state: DoubaoSessionState, timeout: TimeInterval) async throws -> String {
+    private static func run(socket: any DoubaoSocket, state: DoubaoSessionState, timeout: TimeInterval,
+                            inputLanguage: DoubaoInputLanguage) async throws -> String {
         try await withThrowingTaskGroup(of: String?.self) { group in
             defer { group.cancelAll(); socket.close(); state.closeMailbox() }
             group.addTask {
-                try await socket.send(DoubaoProtocol.configuration())
+                try await socket.send(DoubaoProtocol.configuration(inputLanguage: inputLanguage))
                 var pending = Data()
                 for try await chunk in state.audio {
                     try Task.checkCancellation()

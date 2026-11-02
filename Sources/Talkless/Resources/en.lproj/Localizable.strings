@@ -830,6 +830,12 @@
 "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off." = "Only %@ + %@ edits a selection; the dictation key alone always types, replacing any selection like typing does. While editing, the overlay shows a pencil. You can also press %@ after you start speaking. Without a selection, your words are typed as usual. This works whether AI polishing is on or off.";
 "Offline" = "Offline";
 "Doubao online" = "Doubao online";
+"Speech input language" = "Speech input language";
+"Supports Chinese, English, Shanghainese, Southern Min, Sichuan, Shaanxi, Cantonese, Jilu, Lanyin and Jianghuai dialects." = "Supports Chinese, English, Shanghainese, Southern Min, Sichuan, Shaanxi, Cantonese, Jilu, Lanyin and Jianghuai dialects.";
+"Mandarin Chinese" = "Mandarin Chinese";
+"Nepali" = "Nepali";
+"Cantonese" = "Cantonese";
+"Online recognition with a choice of spoken language. Needs internet and a Doubao account." = "Online recognition with a choice of spoken language. Needs internet and a Doubao account.";
 "Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac." = "Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac.";
 "Text appears as you speak. Needs internet and a Doubao account." = "Text appears as you speak. Needs internet and a Doubao account.";
 "Allow falling back to offline recognition" = "Allow falling back to offline recognition";

@@ -405,6 +405,14 @@ struct ProviderSettingsTests {
         check(speechStore.speech == "synthetic-doubao-key" && online.doubaoConfigured, "Doubao key uses Keychain")
         check(speechDefaults.string(forKey: "doubaoAPIKey") == nil, "Doubao key never enters preferences")
         check(settings(speechDefaults, speechStore).doubaoAPIKey == "synthetic-doubao-key", "Doubao key reloads")
+        check(online.doubaoInputLanguage == .automatic, "Existing settings keep automatic Doubao recognition")
+        let outputLanguage = online.outputLanguage
+        online.doubaoInputLanguage = .japanese
+        check(online.doubaoConfig.inputLanguage == .japanese, "Input language reaches Doubao configuration")
+        check(settings(speechDefaults, speechStore).doubaoInputLanguage == .japanese, "Input language reloads")
+        check(online.outputLanguage == outputLanguage, "Input language does not change polish output language")
+        speechDefaults.set("unsupported", forKey: "doubaoInputLanguage")
+        check(settings(speechDefaults, speechStore).doubaoInputLanguage == .automatic, "Unknown language safely defaults to automatic")
         speechStore.failWrites = true
         online.doubaoAPIKey = "session-only"
         check(online.doubaoAPIKey == "session-only" && online.doubaoCredentialError != nil, "Save failure keeps session key and explains failure")

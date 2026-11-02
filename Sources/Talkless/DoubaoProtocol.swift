@@ -15,16 +15,63 @@ enum DoubaoResource: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum DoubaoInputLanguage: String, CaseIterable, Identifiable, Sendable {
+    case automatic = "auto"
+    case mandarin = "zh-CN", english = "en-US", japanese = "ja-JP"
+    case indonesian = "id-ID", spanish = "es-MX", portuguese = "pt-BR"
+    case german = "de-DE", french = "fr-FR", korean = "ko-KR"
+    case filipino = "fil-PH", malay = "ms-MY", thai = "th-TH"
+    case arabic = "ar-SA", italian = "it-IT", bengali = "bn-BD"
+    case greek = "el-GR", dutch = "nl-NL", russian = "ru-RU"
+    case turkish = "tr-TR", vietnamese = "vi-VN", polish = "pl-PL"
+    case romanian = "ro-RO", nepali = "ne-NP", ukrainian = "uk-UA", cantonese = "yue-CN"
+
+    var id: String { rawValue }
+    var code: String? { self == .automatic ? nil : rawValue }
+    var title: String {
+        switch self {
+        case .automatic: L10n.tr("Auto")
+        case .mandarin: L10n.tr("Mandarin Chinese")
+        case .english: L10n.tr("English")
+        case .japanese: L10n.tr("Japanese")
+        case .indonesian: L10n.tr("Indonesian")
+        case .spanish: L10n.tr("Spanish")
+        case .portuguese: L10n.tr("Portuguese")
+        case .german: L10n.tr("German")
+        case .french: L10n.tr("French")
+        case .korean: L10n.tr("Korean")
+        case .filipino: L10n.tr("Filipino")
+        case .malay: L10n.tr("Malay")
+        case .thai: L10n.tr("Thai")
+        case .arabic: L10n.tr("Arabic")
+        case .italian: L10n.tr("Italian")
+        case .bengali: L10n.tr("Bengali")
+        case .greek: L10n.tr("Greek")
+        case .dutch: L10n.tr("Dutch")
+        case .russian: L10n.tr("Russian")
+        case .turkish: L10n.tr("Turkish")
+        case .vietnamese: L10n.tr("Vietnamese")
+        case .polish: L10n.tr("Polish")
+        case .romanian: L10n.tr("Romanian")
+        case .nepali: L10n.tr("Nepali")
+        case .ukrainian: L10n.tr("Ukrainian")
+        case .cantonese: L10n.tr("Cantonese")
+        }
+    }
+}
+
 struct DoubaoConfig: Sendable, Equatable {
     var apiKey: String
     var resource: DoubaoResource = .duration
+    var inputLanguage: DoubaoInputLanguage = .automatic
 
     var isConfigured: Bool { (try? request()) != nil }
 
     func request() throws -> URLRequest {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw DoubaoError.configuration }
-        var request = URLRequest(url: URL(string: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async")!, timeoutInterval: 10)
+        let endpoint = inputLanguage == .automatic ? "bigmodel_async" : "bigmodel_nostream"
+        var request = URLRequest(url: URL(string: "wss://openspeech.bytedance.com/api/v3/sauc/\(endpoint)")!, timeoutInterval: 10)
         request.setValue(key, forHTTPHeaderField: "X-Api-Key")
         request.setValue(resource.rawValue, forHTTPHeaderField: "X-Api-Resource-Id")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
@@ -59,11 +106,13 @@ enum DoubaoProtocol {
         let isFinal: Bool
     }
 
-    static func configuration() throws -> Data {
+    static func configuration(inputLanguage: DoubaoInputLanguage = .automatic) throws -> Data {
+        var audio: [String: Any] = ["format": "pcm", "codec": "raw", "rate": 16000, "bits": 16, "channel": 1]
+        if let code = inputLanguage.code { audio["language"] = code }
         let payload = try JSONSerialization.data(withJSONObject: [
             // Random per session, not a persistent user or device identifier.
             "user": ["uid": UUID().uuidString],
-            "audio": ["format": "pcm", "codec": "raw", "rate": 16000, "bits": 16, "channel": 1],
+            "audio": audio,
             "request": ["model_name": "bigmodel", "result_type": "full", "enable_itn": true,
                         "enable_punc": true, "enable_ddc": false, "show_utterances": true],
         ])

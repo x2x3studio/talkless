@@ -59,7 +59,7 @@ enum ASREngine: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .qwen: L10n.tr("Uses the model on your Mac. Free, works without internet, and audio never leaves your Mac.")
-        case .doubao: L10n.tr("Text appears as you speak. Needs internet and a Doubao account.")
+        case .doubao: L10n.tr("Online recognition with a choice of spoken language. Needs internet and a Doubao account.")
         }
     }
     var symbol: String { self == .qwen ? "laptopcomputer" : "cloud" }
@@ -181,7 +181,10 @@ final class AppSettings: ObservableObject {
     @Published var doubaoResource: DoubaoResource {
         didSet { save(doubaoResource.rawValue, "doubaoResource") }
     }
-    var doubaoConfig: DoubaoConfig { .init(apiKey: doubaoAPIKey, resource: doubaoResource) }
+    @Published var doubaoInputLanguage: DoubaoInputLanguage {
+        didSet { save(doubaoInputLanguage.rawValue, "doubaoInputLanguage") }
+    }
+    var doubaoConfig: DoubaoConfig { .init(apiKey: doubaoAPIKey, resource: doubaoResource, inputLanguage: doubaoInputLanguage) }
     var doubaoConfigured: Bool { doubaoConfig.isConfigured }
     @Published var onlineLocalFallback: Bool { didSet { save(onlineLocalFallback, "onlineLocalFallback") } }
     var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
@@ -288,6 +291,7 @@ final class AppSettings: ObservableObject {
         doubaoCredentialError = nil
         onlineLocalFallback = d.bool(forKey: "onlineLocalFallback")
         doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
+        doubaoInputLanguage = DoubaoInputLanguage(rawValue: d.string(forKey: "doubaoInputLanguage") ?? "") ?? .automatic
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         punctuationStyle = PunctuationStyle(rawValue: d.string(forKey: "punctuationStyle") ?? "") ?? .keepAll

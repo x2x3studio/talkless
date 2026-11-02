@@ -137,6 +137,45 @@ private actor ValidationGate {
         #expect(!String(decoding: body, as: UTF8.self).contains("synthetic-key"))
     }
 
+    @Test func languageSelectsSupportedEndpointAndAudioField() throws {
+        let expected = ["zh-CN", "en-US", "ja-JP", "id-ID", "es-MX", "pt-BR", "de-DE", "fr-FR", "ko-KR",
+                        "fil-PH", "ms-MY", "th-TH", "ar-SA", "it-IT", "bn-BD", "el-GR", "nl-NL", "ru-RU",
+                        "tr-TR", "vi-VN", "pl-PL", "ro-RO", "ne-NP", "uk-UA", "yue-CN"]
+        #expect(Set(DoubaoInputLanguage.allCases.compactMap(\.code)) == Set(expected))
+        for language in DoubaoInputLanguage.allCases {
+            for resource in DoubaoResource.allCases {
+                let config = DoubaoConfig(apiKey: "synthetic", resource: resource, inputLanguage: language)
+                let request = try config.request()
+                #expect(request.url?.lastPathComponent == (language == .automatic ? "bigmodel_async" : "bigmodel_nostream"))
+                #expect(request.value(forHTTPHeaderField: "X-Api-Resource-Id") == resource.rawValue)
+            }
+            let frame = try DoubaoProtocol.configuration(inputLanguage: language)
+            let body = try DoubaoProtocol.gzip(Data(frame.dropFirst(8)), decompress: true)
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let audio = try #require(json["audio"] as? [String: Any])
+            #expect(audio["language"] as? String == language.code)
+            #expect(audio["rate"] as? Int == 16000)
+        }
+    }
+
+    @Test func selectedLanguageReachesSessionAndConnectionCheck() async throws {
+        for language in [DoubaoInputLanguage.automatic, .japanese, .cantonese] {
+            let config = DoubaoConfig(apiKey: "synthetic", inputLanguage: language)
+            let checkSocket = ScriptedDoubaoSocket()
+            try await DoubaoTranscriptionSession.validateConnection(config: config, socket: checkSocket)
+            let socket = ScriptedDoubaoSocket()
+            let session = try DoubaoTranscriptionSession(config: config, socket: socket, timeout: 60)
+            #expect(try await session.finish(samples: []) == "Final words")
+            for sent in [checkSocket.sent, socket.sent] {
+                let frame = try #require(sent.first)
+                let body = try DoubaoProtocol.gzip(Data(frame.dropFirst(8)), decompress: true)
+                let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                #expect((json["audio"] as? [String: Any])?["language"] as? String == language.code)
+            }
+            #expect(checkSocket.sent.count == 1)
+        }
+    }
+
     @Test func compressedAndPlainResponses() throws {
         for compressed in [false, true] {
             for sequence in [false, true] {

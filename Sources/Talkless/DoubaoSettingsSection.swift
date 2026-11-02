@@ -39,6 +39,16 @@ struct DoubaoSettingsSection: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Picker(L10n.tr("Speech input language"), selection: $settings.doubaoInputLanguage) {
+                    ForEach(DoubaoInputLanguage.allCases) { Text($0.title).tag($0) }
+                }
+                if settings.doubaoInputLanguage == .automatic {
+                    Text(L10n.tr("Supports Chinese, English, Shanghainese, Southern Min, Sichuan, Shaanxi, Cantonese, Jilu, Lanyin and Jianghuai dialects."))
+                        .settingsNote()
+                }
+            }
+
             Toggle(isOn: $settings.onlineLocalFallback) {
                 Text(L10n.tr("Allow falling back to offline recognition"))
                 Text(L10n.tr("When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded."))
