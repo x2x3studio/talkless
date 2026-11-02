@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # name|command — prefer Tests/TalklessTests (swift test) for new tests; the scripts below
 # compile selected sources with fakes and are kept where that isolation is the point.
 SUITES=(
-  "unit|swift test --package-path '$ROOT'"
+  "unit|swift test --build-system native --package-path '$ROOT'"
   "localization|bash '$ROOT/Tests/LocalizationTests/run-tests.sh'"
   "translation-flow|python3 -I '$ROOT/Tests/TranslationFlowTests/run-tests.py'"
   "qwen-state|swift '$ROOT/Tests/NativeTests/run-qwen-state-tests.swift'"
@@ -38,7 +38,7 @@ SUITES=(
   "hotkeys|python3 -I '$ROOT/Tests/HotkeyTests/run-tests.py'"
   "shortcut-recorder|python3 -I '$ROOT/Tests/ShortcutRecorderTests/run-tests.py'"
   "diagnostics|bash '$ROOT/Tests/DiagnosticsTests/run-tests.sh'"
-  "release-tool|swift test --package-path '$ROOT/Tools/ReleaseTool'"
+  "release-tool|swift test --build-system native --package-path '$ROOT/Tools/ReleaseTool'"
   "bundle|python3 -I '$ROOT/Tests/BundleTests/run-tests.py'"
 )
 
