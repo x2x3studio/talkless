@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Fixed
+- Offline recognition no longer waits for UI previews to finish; stale previews cannot overwrite a completed result.
+- Responsiveness monitoring keeps only one pending heartbeat and writes logs asynchronously, avoiding a flood of queued work after a UI stall.
+- Cancelling an insertion now prevents its queued paste. Selection-copy and dictation-paste operations share a clipboard queue so they cannot overwrite each other's pending text.
+
+## 2026.1102.39642
+
+### Fixed
 - Doubao recognition no longer waits for UI previews before receiving more responses or completing. Pending previews are coalesced and discarded after completion or cancellation.
 - Audio input device queries in Settings run off the main thread without overlapping polls.
 - Ending dictation closes audio capture before HUD updates and startup/selection waits, preventing extra audio from being recorded while the UI is delayed.

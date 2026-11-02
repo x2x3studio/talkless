@@ -137,7 +137,7 @@ let tests = #"""
         recovery.enqueue([1])
         recovery.close(samples: audio + [1])
         let recovered = try await recoveryTask.value
-        precondition(recovered == chinese && recoveredPreviews == ["", chinese])
+        precondition(recovered == chinese && recoveredPreviews == [""])
         print("PASS longer final replaces header-only preview with actual speech")
 
         await runtime.reset([.malformedHeader])

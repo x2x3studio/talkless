@@ -86,6 +86,18 @@ let tests = #"""
     static func main() async throws {
         let runtime = QwenModelRuntime.shared
         let directory = URL(fileURLWithPath: "/unused")
+        let blockedUI = QwenCaptureState()
+        blockedUI.close(samples: [1, 2, 3])
+        let completed = DispatchSemaphore(value: 0)
+        let independent = Task.detached {
+            defer { completed.signal() }
+            return try await blockedUI.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in })
+        }
+        func waitWithoutYieldingMain() -> DispatchTimeoutResult { completed.wait(timeout: .now() + 1) }
+        precondition(waitWithoutYieldingMain() == .success, "Final recognition must not wait for UI rendering")
+        let independentResult = try await independent.value
+        precondition(independentResult == "[1..3]")
+        await runtime.reset()
         let state = QwenCaptureState()
         let all = (0..<520000).map { Float($0 + 1) }
 

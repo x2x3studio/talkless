@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import Synchronization
 
 /// Read selected text and insert text into the frontmost app. Both require Accessibility permission.
 @MainActor
@@ -60,27 +61,47 @@ enum TextIO {
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
         let pid = app.processIdentifier
-        let pasteboard = NSPasteboard.general
-        let lease = BorrowedClipboard.borrow()
-        let before = pasteboard.changeCount
-        if !pressCopyMenuItem(of: pid) { postShortcut(vKeyC, to: pid) }
+        return await selectedTextViaCopy(
+            isTargetCurrent: { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid },
+            requestCopy: { if !pressCopyMenuItem(of: pid) { postShortcut(vKeyC, to: pid) } }
+        )
+    }
 
-        var result: String?
-        var wholeLine = false
-        for _ in 0..<20 {
-            try? await Task.sleep(for: .milliseconds(25))
-            if pasteboard.changeCount != before { break }
+    /// Injectable copy action for tests; all clipboard transactions share the insertion queue.
+    static func selectedTextViaCopy(
+        isTargetCurrent: @escaping @MainActor () -> Bool,
+        requestCopy: @escaping @MainActor () -> Void,
+        wait: @escaping @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) async -> String? {
+        await withClipboardOperation(cancelledValue: nil) { cancellation in
+            // Posting ⌘V is not an acknowledgement that the app has read the clipboard.
+            // Copy must also respect the preceding paste's short consumption grace period.
+            await BorrowedClipboard.waitForPendingGiveBack()
+            guard isTargetCurrent(), !cancellation.isCancelled else { return nil }
+            let pasteboard = BorrowedClipboard.pasteboard
+            let lease = BorrowedClipboard.borrow()
+            let before = pasteboard.changeCount
+            requestCopy()
+
+            var result: String?
+            var wholeLine = false
+            // Once Copy was requested, finish observing/returning the borrowed clipboard
+            // even if the caller cancels. Otherwise a late copy could corrupt the next paste.
+            for _ in 0..<20 {
+                await wait(.milliseconds(25))
+                if pasteboard.changeCount != before { break }
+            }
+            let after = pasteboard.changeCount
+            // Exactly one change is the app's copy; more may include a copy by the user.
+            if after == before + 1, isTargetCurrent(), !cancellation.isCancelled {
+                result = pasteboard.string(forType: .string)
+                wholeLine = copiedLineWithoutSelection(pasteboard)
+            }
+            // The app's copy is ours to undo; anything newer belongs to the user.
+            if after == before + 1 { BorrowedClipboard.giveBack(lease, ifUnchangedSince: after) }
+            guard !wholeLine, let result, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return result
         }
-        let after = pasteboard.changeCount
-        // Exactly one change is the app's copy; more may include a copy by the user.
-        if after == before + 1, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
-            result = pasteboard.string(forType: .string)
-            wholeLine = copiedLineWithoutSelection(pasteboard)
-        }
-        // The app's copy is ours to undo; anything newer belongs to the user.
-        if after == before + 1 { BorrowedClipboard.giveBack(lease, ifUnchangedSince: after) }
-        guard !wholeLine, let result, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return result
     }
 
     /// Press the app's own Copy menu item, found by its ⌘C key equivalent so it works in any
@@ -137,24 +158,66 @@ enum TextIO {
         return ["globe_action": globe, "input_method": String(inputMethod)]
     }
 
-    /// Pastes run one at a time; the next waits until this one's keys are posted.
-    private static var pasteQueue: Task<Void, Never>?
+    /// Copy acquisition and insertion must never overlap their borrowed clipboard contents.
+    private static var clipboardQueue: Task<Void, Never>?
+
+    /// A caller's cancellation must reach its queued operation, not just its await of the task.
+    /// The handler can run off the main actor, so this flag is synchronized.
+    private final class ClipboardCancellation: Sendable {
+        private let cancelled = Mutex(false)
+        var isCancelled: Bool { cancelled.withLock { $0 } }
+        func cancel() { cancelled.withLock { $0 = true } }
+    }
+
+    private static func withClipboardOperation<Result: Sendable>(
+        cancelledValue: Result,
+        _ operation: @escaping @MainActor (ClipboardCancellation) async -> Result
+    ) async -> Result {
+        let cancellation = ClipboardCancellation()
+        return await withTaskCancellationHandler {
+            let previous = clipboardQueue
+            let task = Task { @MainActor in
+                await previous?.value
+                guard !cancellation.isCancelled else { return cancelledValue }
+                return await operation(cancellation)
+            }
+            clipboardQueue = Task { @MainActor in _ = await task.value }
+            return await task.value
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
 
     /// Insert text at the cursor using the clipboard and ⌘V. Returns once ⌘V is posted; the
     /// user's clipboard comes back 400 ms later, so the next dictation never waits for it.
-    static func insert(_ text: String) async {
-        let previous = pasteQueue
-        let task = Task { @MainActor in
-            await previous?.value
+    @discardableResult
+    static func insert(_ text: String) async -> Bool {
+        await insert(text, wait: { try? await Task.sleep(for: $0) },
+                     sendPaste: { await postShortcut(vKeyV) })
+    }
+
+    /// Tests supply a suspended wait and fake event sender; never post keys to real apps.
+    /// False means cancelled or clipboard ownership was lost before posting keys.
+    @discardableResult
+    static func insert(_ text: String,
+                       wait: @escaping @MainActor (Duration) async -> Void,
+                       sendPaste: @escaping @MainActor () async -> Void) async -> Bool {
+        await withClipboardOperation(cancelledValue: false) { cancellation in
             let lease = BorrowedClipboard.borrow()
             let change = BorrowedClipboard.writeTransient(text)
             // Let the clipboard write and any just-released dictation key settle first.
-            try? await Task.sleep(for: .milliseconds(50))
-            await postShortcut(vKeyV)
+            await wait(.milliseconds(50))
+            guard !cancellation.isCancelled else {
+                BorrowedClipboard.giveBack(lease, ifUnchangedSince: change)
+                return false
+            }
+            guard BorrowedClipboard.pasteboard.changeCount == change else { return false }
+            // Once key posting starts, complete the shortcut (especially Command-up).
+            // Cancelling halfway through it could leave the modifier pressed.
+            await sendPaste()
             BorrowedClipboard.giveBack(lease, ifUnchangedSince: change, after: .milliseconds(400))
+            return true
         }
-        pasteQueue = task
-        await task.value
     }
 
     /// Text the user asked to keep (copy buttons, results saved for ⌘V). Ends any borrow.
@@ -232,6 +295,11 @@ enum BorrowedClipboard {
             pending = nil
             if pasteboard.changeCount == change { restore(current.lease.saved) }
         })
+    }
+
+    /// Copy must not replace a just-posted paste before its recipient can consume it.
+    static func waitForPendingGiveBack() async {
+        await pending?.task.value
     }
 
     /// Plain text the user keeps; it ends any pending give-back.

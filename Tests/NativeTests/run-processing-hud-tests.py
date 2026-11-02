@@ -130,10 +130,11 @@ enum PolishValidation {
     static func insertionContext() -> [String: String] { ["globe_action": "none", "input_method": "false"] }
     static var inserted: [String] = []
     static var onInsert: (String) -> Void = { _ in }
-    static func insert(_ text: String) async {
+    static func insert(_ text: String) async -> Bool {
         onInsert(text)
         await Task.yield()
         inserted.append(text)
+        return true
     }
     static var copied: [String] = []
     static func copyToClipboard(_ text: String) { copied.append(text) }

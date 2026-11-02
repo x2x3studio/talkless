@@ -732,9 +732,17 @@ final class DictationController: ObservableObject {
                 self.hud.model.revisionOriginal = editSelection == nil ? recognized : nil
                 self.hud.model.preview = output
                 self.hud.show(.inserting)
-                await TextIO.insert(output)
-                operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted)])
+                let pasted = await TextIO.insert(output)
                 guard generation == self.generation, !Task.isCancelled else { return }
+                guard pasted else {
+                    operation?.record("paste_skipped", ["reason": "clipboard_changed"])
+                    self.history.add(HistoryEntry(
+                        kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
+                    ))
+                    self.finish(.error(L10n.tr("Clipboard changed; result saved")))
+                    return
+                }
+                operation?.record("paste_returned", ["duration_ms": DictationOperation.milliseconds(since: stageStarted)])
                 self.history.add(HistoryEntry(
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
@@ -838,7 +846,13 @@ final class DictationController: ObservableObject {
             }
             return
         }
-        await TextIO.insert(text)
+        let pasted = await TextIO.insert(text)
+        guard !Task.isCancelled else { return }
+        if !pasted {
+            Diagnostics.shared.record(event: "paste_skipped", metadata: ["reason": "clipboard_changed"])
+            lastTranscript = text
+            if state == .idle { hud.show(.error(L10n.tr("Clipboard changed; result saved"))) }
+        }
     }
 
     func runAudioTest(url: URL) async throws -> String {

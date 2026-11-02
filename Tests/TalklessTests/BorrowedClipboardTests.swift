@@ -9,7 +9,12 @@ import Testing
         let board = NSPasteboard(name: NSPasteboard.Name("talkless-tests-\(UUID().uuidString)"))
         let original = BorrowedClipboard.pasteboard
         BorrowedClipboard.pasteboard = board
-        defer { BorrowedClipboard.pasteboard = original; board.releaseGlobally() }
+        defer {
+            // Cancel private-board give-back tasks before restoring the production dependency.
+            _ = BorrowedClipboard.borrow()
+            BorrowedClipboard.pasteboard = original
+            board.releaseGlobally()
+        }
         board.clearContents()
         board.setString("user's own text", forType: .string)
         try await body(board)
@@ -59,6 +64,140 @@ import Testing
             #expect(BorrowedClipboard.keep("result to paste later"))
             try await Task.sleep(for: .milliseconds(150))
             #expect(board.string(forType: .string) == "result to paste later")
+        }
+    }
+
+    /// Holds the clipboard transaction at a known suspension without wall-clock timing.
+    @MainActor private final class Gate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        func wait() async { await withCheckedContinuation { continuation = $0 } }
+        func untilWaiting() async {
+            while continuation == nil { await Task.yield() }
+        }
+        func release() { continuation?.resume(); continuation = nil }
+    }
+
+    @Test func cancellingInsertionBeforePasteRestoresClipboardWithoutPostingKeys() async {
+        await withPrivatePasteboard { board in
+            let gate = Gate()
+            var pasted: [String] = []
+            let insertion = Task {
+                await TextIO.insert("cancelled result", wait: { _ in await gate.wait() }, sendPaste: {
+                    pasted.append(board.string(forType: .string) ?? "")
+                })
+            }
+            await gate.untilWaiting()
+            #expect(board.string(forType: .string) == "cancelled result")
+            insertion.cancel()
+            gate.release()
+            let inserted = await insertion.value
+            #expect(!inserted)
+            #expect(pasted.isEmpty)
+            #expect(board.string(forType: .string) == "user's own text")
+        }
+    }
+
+    @Test func externalClipboardChangeSkipsPasteAndPreservesTheNewContents() async {
+        await withPrivatePasteboard { board in
+            let gate = Gate()
+            var posted = false
+            let insertion = Task {
+                await TextIO.insert("dictated", wait: { _ in await gate.wait() }, sendPaste: { posted = true })
+            }
+            await gate.untilWaiting()
+            board.clearContents()
+            board.setString("user copied meanwhile", forType: .string)
+            gate.release()
+            let pasted = await insertion.value
+            #expect(!pasted)
+            #expect(!posted)
+            #expect(board.string(forType: .string) == "user copied meanwhile")
+        }
+    }
+
+    @Test func cancelledQueuedInsertionCannotWriteIntoTheNextRound() async {
+        await withPrivatePasteboard { board in
+            let gate = Gate()
+            var pasted: [String] = []
+            let send: @MainActor () async -> Void = { pasted.append(board.string(forType: .string) ?? "") }
+            let first = Task { await TextIO.insert("first", wait: { _ in await gate.wait() }, sendPaste: send) }
+            await gate.untilWaiting()
+            let cancelled = Task { await TextIO.insert("cancelled", wait: { _ in }, sendPaste: send) }
+            // Let the second operation enqueue behind the suspended first operation.
+            for _ in 0..<20 { await Task.yield() }
+            cancelled.cancel()
+            gate.release()
+            let firstInserted = await first.value
+            let cancelledInserted = await cancelled.value
+            #expect(firstInserted)
+            #expect(!cancelledInserted)
+            await TextIO.insert("second", wait: { _ in }, sendPaste: send)
+            await TextIO.insert("third", wait: { _ in }, sendPaste: send)
+            #expect(pasted == ["first", "second", "third"])
+            let original = BorrowedClipboard.borrow()
+            BorrowedClipboard.giveBack(original, ifUnchangedSince: board.changeCount)
+            #expect(board.string(forType: .string) == "user's own text")
+        }
+    }
+
+    @Test func copyWaitsUntilPendingPasteHasPostedItsKeys() async {
+        await withPrivatePasteboard { board in
+            let gate = Gate()
+            var events: [String] = []
+            let paste = Task {
+                await TextIO.insert("dictated", wait: { _ in await gate.wait() }, sendPaste: {
+                    events.append("paste: " + (board.string(forType: .string) ?? ""))
+                })
+            }
+            await gate.untilWaiting()
+            let copy = Task {
+                await TextIO.selectedTextViaCopy(isTargetCurrent: { true }, requestCopy: {
+                    events.append("copy")
+                    board.clearContents()
+                    board.setString("selected", forType: .string)
+                }, wait: { _ in })
+            }
+            for _ in 0..<20 { await Task.yield() }
+            #expect(events.isEmpty)
+            #expect(board.string(forType: .string) == "dictated")
+            gate.release()
+            let inserted = await paste.value
+            #expect(inserted)
+            let selection = await copy.value
+            #expect(selection == "selected")
+            #expect(events == ["paste: dictated", "copy"])
+            #expect(board.string(forType: .string) == "user's own text")
+        }
+    }
+
+    @Test func pasteWaitsForCopyToReadAndReturnItsClipboard() async {
+        await withPrivatePasteboard { board in
+            let gate = Gate()
+            var pasted: [String] = []
+            let copy = Task {
+                await TextIO.selectedTextViaCopy(isTargetCurrent: { true }, requestCopy: {
+                    board.clearContents()
+                    board.setString("selected", forType: .string)
+                }, wait: { _ in await gate.wait() })
+            }
+            await gate.untilWaiting()
+            let paste = Task {
+                await TextIO.insert("dictated", wait: { _ in }, sendPaste: {
+                    pasted.append(board.string(forType: .string) ?? "")
+                })
+            }
+            for _ in 0..<20 { await Task.yield() }
+            #expect(pasted.isEmpty)
+            #expect(board.string(forType: .string) == "selected")
+            gate.release()
+            let selection = await copy.value
+            let inserted = await paste.value
+            #expect(inserted)
+            #expect(selection == "selected")
+            #expect(pasted == ["dictated"])
+            let original = BorrowedClipboard.borrow()
+            BorrowedClipboard.giveBack(original, ifUnchangedSince: board.changeCount)
+            #expect(board.string(forType: .string) == "user's own text")
         }
     }
 

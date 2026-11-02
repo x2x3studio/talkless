@@ -296,6 +296,9 @@ private final class QwenCaptureState: @unchecked Sendable {
     private var receivedSamples = 0
     private var closed = false
     private var cancelled = false
+    private var finished = false
+    private var pendingPreview: String?
+    private var previewScheduled = false
     private var failure: (any Error)?
     private let wakeups: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
@@ -379,10 +382,25 @@ private final class QwenCaptureState: @unchecked Sendable {
         if !lock.withLock({ cancelled }) { callback(message) }
     }
 
-    @MainActor
     private func publish(_ text: String) {
-        let callback = lock.withLock { cancelled ? nil : onPartial }
-        callback?(text)
+        let schedule = lock.withLock {
+            guard !cancelled, !finished else { return false }
+            pendingPreview = text
+            guard !previewScheduled else { return false }
+            previewScheduled = true
+            return true
+        }
+        guard schedule else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let delivery = self.lock.withLock { () -> (String, (@MainActor @Sendable (String) -> Void))? in
+                defer { self.previewScheduled = false; self.pendingPreview = nil }
+                guard !self.cancelled, !self.finished,
+                      let text = self.pendingPreview, let callback = self.onPartial else { return nil }
+                return (text, callback)
+            }
+            if let (text, callback) = delivery { callback(text) }
+        }
     }
 
     func run(
@@ -392,6 +410,8 @@ private final class QwenCaptureState: @unchecked Sendable {
         defer {
             lock.withLock {
                 closed = true
+                finished = true
+                pendingPreview = nil
                 pending.removeAll()
                 pendingSamples = 0
                 continuation.finish()
@@ -438,7 +458,7 @@ private final class QwenCaptureState: @unchecked Sendable {
                 audio.removeFirst(cut)
                 decodedSamples = 0
                 liveOutput = .transcript("")
-                await publish(committed)
+                publish(committed)
             }
 
             if inbox.1 {
@@ -450,7 +470,6 @@ private final class QwenCaptureState: @unchecked Sendable {
                 }
                 try checkCancellation()
                 let final = Self.join(committed, try liveOutput.finalText())
-                await publish(final)
                 return final
             }
 
@@ -465,7 +484,7 @@ private final class QwenCaptureState: @unchecked Sendable {
                 decodedSamples = audio.count
                 // Header-only short-window results are not user text. Retain their
                 // state so releasing with no new samples still fails closed.
-                await publish(Self.join(committed, liveOutput.previewText))
+                publish(Self.join(committed, liveOutput.previewText))
             }
         }
         try checkCancellation()
