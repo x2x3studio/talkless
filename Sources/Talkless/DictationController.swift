@@ -588,6 +588,12 @@ final class DictationController: ObservableObject {
 
     private func stopAndProcess() {
         guard state == .recording, let session else { return }
+        // Freeze audio before diagnostics, HUD work, or any startup/selection await.
+        guard recorder.beginFinalization() else {
+            // Startup has not run yet; do not let it open capture after finish.
+            cancel(reason: "finish_before_start")
+            return
+        }
         let shouldPolish = recordingPolishEnabled
         pressedAt = nil
         let operation = diagnosticOperation

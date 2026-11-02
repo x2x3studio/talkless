@@ -198,6 +198,20 @@ import Testing
         }
     }
 
+    @Test func rendersDisconnectedMicrophoneWithoutResettingSelection() {
+        let suite = "talkless-disconnected-mic-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
+        settings.audioInputDeviceUID = "disconnected-mic"
+        let view = Form {
+            AudioInputSettingsView(settings: settings, loadDevices: { [] })
+        }.formStyle(.grouped)
+        #expect(render(view, size: NSSize(width: 604, height: 300)).count > 2_000)
+        #expect(settings.audioInputDeviceUID == "disconnected-mic")
+        #expect(defaults.string(forKey: "audioInputDeviceUID") == "disconnected-mic")
+    }
+
     private func render(_ view: some View, size: NSSize, dark: Bool = false) -> Data {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height)

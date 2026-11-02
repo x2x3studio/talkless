@@ -261,7 +261,6 @@ private final class Observations: @unchecked Sendable {
     var buffers: Int { lock.withLock { count } }
 }
 extension AudioRecorder {
-    @MainActor fileprivate func testBeginFinalization() { native.beginFinalization() }
     @MainActor fileprivate func testNative(_ action: @escaping @Sendable (TestAudioEngine) -> Void) async throws {
         try await operations.run(timeout: 1, onTimeout: {}) { [native] in
             if let engine = native.engine { action(engine) }
@@ -470,7 +469,7 @@ extension AudioRecorder {
         let recovering = Task { @MainActor in try await recorder.testMonitor() }
         try await waitForNative() // Recovery decision was made before finalization.
         let beforeFinish = observations.buffers
-        recorder.testBeginFinalization()
+        precondition(recorder.beginFinalization())
         TestHardware.block = nil; TestHardware.release.signal()
         _ = try await recovering.value
         precondition(observations.buffers == beforeFinish && recorder.duration == 0,
@@ -479,6 +478,46 @@ extension AudioRecorder {
         precondition(finishedDuringRecovery.isEmpty)
         recorder.cancel(); try await recorder.testDrain()
         print("PASS finalization racing already-running recovery never admits post-finish audio")
+
+        precondition(!recorder.beginFinalization(), "Idle finalization must not affect the next session")
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver() }
+        let captured = recorder.duration
+        let delivered = observations.buffers
+        precondition(recorder.beginFinalization() && recorder.beginFinalization())
+        try await recorder.testNative { $0.deliver(); $0.deliver(wrongFormat: true) }
+        precondition(observations.buffers == delivered && recorder.duration == captured)
+        let frozen = try await recorder.stop()
+        precondition(Double(frozen.count) / AudioRecorder.sampleRate == captured && !frozen.isEmpty,
+                     "Early closure preserves the last accepted buffer and rejects all later buffers")
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS early/idempotent finalization preserves accepted samples and rejects late callbacks")
+
+        for stage in ["inputNode", "start"] {
+            TestHardware.plans = [.init(deliverDuringStart: true)]
+            TestHardware.block = stage
+            let starting = Task { @MainActor in try await recorder.start() }
+            try await waitForNative()
+            let before = observations.buffers
+            precondition(recorder.beginFinalization())
+            TestHardware.block = nil; TestHardware.release.signal()
+            try await starting.value
+            try await recorder.testNative { $0.deliver() }
+            TestClock.now += 4
+            let monitoring = try await recorder.testMonitor()
+            precondition(!monitoring && recorder.interruptionError == nil,
+                         "A finalized startup must not trigger the no-audio watchdog")
+            let samples = try await recorder.stop()
+            precondition(samples.isEmpty && observations.buffers == before,
+                         "Startup must not reopen a gate closed before/during engine.start")
+            recorder.cancel(); try await recorder.testDrain()
+            try await recorder.start()
+            try await recorder.testNative { $0.deliver() }
+            let next = try await recorder.stop()
+            precondition(!next.isEmpty, "The next recording must open its own gate")
+            recorder.cancel(); try await recorder.testDrain()
+        }
+        print("PASS finalization during pending startup rejects startup/late audio, skips watchdog, and permits next turn")
 
         // A HAL call is intentionally blocked; the MainActor must keep scheduling
         // heartbeats, cancellation must resolve immediately, and timeout must poison

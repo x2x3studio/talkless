@@ -65,16 +65,27 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
+    /// Close only the current capture gate, including an in-flight startup. Keep
+    /// accepted buffers for stop(); all native validation/teardown stays on its worker.
+    /// False means startup has not reserved a session, so there is nothing to finish.
+    @MainActor
+    @discardableResult
+    func beginFinalization() -> Bool {
+        guard session != nil else { return false }
+        native.beginFinalization()
+        monitorTask?.cancel()
+        monitorTask = nil
+        return true
+    }
+
     @MainActor
     func stop() async throws -> [Float] {
         guard let session else {
             if let error = interruptionError { throw TalklessError.message(error) }
             return []
         }
-        monitorTask?.cancel()
-        monitorTask = nil
         // Closing capture is lock-only; final HAL validation precedes engine.stop.
-        native.beginFinalization()
+        beginFinalization()
         do {
             let samples = try await perform(timeout: 3, stage: "shutdown", session: session, operation: operationID) {
                 try $0.stop(session: session)
@@ -562,7 +573,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     }
 
     fileprivate func monitor(session: UUID) -> Bool {
-        guard lock.withLock({ sessionID == session }) else { return false }
+        guard lock.withLock({ sessionID == session && !finalizing }) else { return false }
         logFirstBuffer()
         let state = lock.withLock { (captureFailure, validationScheduled) }
         if state.0 != nil || state.1 || engine?.isRunning == false {

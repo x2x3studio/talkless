@@ -70,10 +70,14 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
          onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }) throws {
         let request = try config.request()
         self.socket = socket ?? DoubaoWebSocket(request: request)
+        state.logsTiming = socket == nil
+        state.streaming = config.inputLanguage == .automatic
+        state.trace("started")
         let socket = self.socket, state = self.state
         worker = Task.detached(priority: .userInitiated) {
             do {
                 let text = try await Self.run(socket: socket, state: state, timeout: timeout, inputLanguage: config.inputLanguage)
+                state.trace("completed")
                 state.resolve(.success(text))
             } catch {
                 let safeError: Error
@@ -81,6 +85,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
                 else if let error = error as? DoubaoError { safeError = error }
                 else if let error = error as? URLError, error.code == .timedOut { safeError = DoubaoError.timeout }
                 else { safeError = DoubaoError.connection }
+                state.trace(safeError is CancellationError ? "cancelled" : "failed")
                 state.resolve(.failure(safeError))
                 if !(safeError is CancellationError) {
                     await MainActor.run {
@@ -134,6 +139,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
     func finish(samples: [Float]) async throws -> String {
         // feed() owns the audio. The recorder's full copy must never be uploaded a second time.
         state.endAudio()
+        state.trace("audio_ended")
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             let value = try await state.value()
@@ -155,6 +161,7 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
             defer { group.cancelAll(); socket.close(); state.closeMailbox() }
             group.addTask {
                 try await socket.send(DoubaoProtocol.configuration(inputLanguage: inputLanguage))
+                state.trace("configuration_sent")
                 var pending = Data()
                 for try await chunk in state.audio {
                     try Task.checkCancellation()
@@ -168,7 +175,9 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
                 }
                 try Task.checkCancellation()
                 state.markFinalSent()
+                state.trace("final_send_started")
                 try await socket.send(DoubaoProtocol.audio(pending, final: true))
+                state.trace("final_sent")
                 return nil
             }
             group.addTask {
@@ -183,16 +192,12 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
                         return ""
                     }
                     state.markConnected() // A successful send alone does not prove service acceptance.
-                    if let text = response.text {
-                        await MainActor.run {
-                            let callback = state.lock.withLock { state.isCancelledLocked ? nil : state.onPartial }
-                            callback?(text)
-                        }
-                    }
                     if response.isFinal {
                         guard state.finalWasSent else { throw DoubaoError.invalidResponse }
+                        state.trace("final_received")
                         return response.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     }
+                    if let text = response.text { state.publishPreview(text) }
                 }
             }
             group.addTask {
@@ -225,6 +230,45 @@ private final class DoubaoSessionState: @unchecked Sendable {
     private var endedAt: TimeInterval?
     private var result: Result<String, Error>?
     private var waiter: CheckedContinuation<String, Error>?
+    private var pendingPreview: String?
+    private var previewScheduled = false
+    var logsTiming = false
+    var streaming = true
+    private let operationID = UUID().uuidString
+    private var tracedStages: Set<String> = []
+
+    func trace(_ stage: String) {
+        guard logsTiming else { return }
+        let metadata = lock.withLock { () -> [String: String]? in
+            guard tracedStages.insert(stage).inserted else { return nil }
+            return ["operation_id": operationID, "engine": "doubao", "stage": stage,
+                    "streaming": String(streaming),
+                    "elapsed_ms": String(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)),
+                    "num_samples": String(bufferedSamples)]
+        }
+        if let metadata { Diagnostics.shared.recordAsync(event: "asr_timing", metadata: metadata) }
+    }
+
+    func publishPreview(_ text: String) {
+        let schedule = lock.withLock {
+            guard !isCancelledLocked, result == nil else { return false }
+            pendingPreview = text
+            guard !previewScheduled else { return false }
+            previewScheduled = true
+            return true
+        }
+        guard schedule else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let delivery = self.lock.withLock { () -> (String, (@MainActor @Sendable (String) -> Void))? in
+                defer { self.previewScheduled = false; self.pendingPreview = nil }
+                guard !self.isCancelledLocked, self.result == nil,
+                      let text = self.pendingPreview, let callback = self.onPartial else { return nil }
+                return (text, callback)
+            }
+            if let (text, callback) = delivery { callback(text) }
+        }
+    }
 
     init() { (audio, continuation) = AsyncThrowingStream.makeStream() }
     func enqueue(_ samples: [Float]) {
@@ -242,7 +286,10 @@ private final class DoubaoSessionState: @unchecked Sendable {
     func consumed(_ count: Int) {
         lock.withLock { bufferedSamples -= count; lastProgress = ProcessInfo.processInfo.systemUptime }
     }
-    func markConnected() { lock.withLock { connected = true } }
+    func markConnected() {
+        lock.withLock { connected = true }
+        trace("first_response")
+    }
     func markFinalSent() { lock.withLock { finalSent = true } }
     var finalWasSent: Bool { lock.withLock { finalSent } }
     func hasTimedOut(limit: TimeInterval) -> Bool {

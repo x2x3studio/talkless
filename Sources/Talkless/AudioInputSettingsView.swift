@@ -4,9 +4,10 @@ import SwiftUI
 struct AudioInputSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var settings: AppSettings
-    var loadDevices: () throws -> [AudioInputDevice] = AudioInputDevices.available
-    @State private var devices: [AudioInputDevice] = []
-    @State private var discoveryError: String?
+    var loadDevices: @Sendable () throws -> [AudioInputDevice] = AudioInputDevices.available
+    @StateObject private var discovery = AudioInputDeviceDiscovery()
+    private var devices: [AudioInputDevice] { discovery.devices }
+    private var discoveryError: String? { discovery.error }
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -55,8 +56,12 @@ struct AudioInputSettingsView: View {
         }
         // Poll only while this section is displayed, including while its picker is open.
         // Discovery does not start an engine, request microphone access, or change settings.
-        .onAppear(perform: refreshDevices)
+        .onAppear {
+            discovery.activate()
+            refreshDevices()
+        }
         .onReceive(refresh) { _ in refreshDevices() }
+        .onDisappear { discovery.deactivate() }
     }
 
     private func label(for device: AudioInputDevice) -> String {
@@ -65,14 +70,54 @@ struct AudioInputSettingsView: View {
     }
 
     private func refreshDevices() {
-        do {
-            // Assign only on change: polling must not redraw the whole Dictation page every 2 s.
-            let found = try loadDevices()
-            if found != devices { devices = found }
-            if discoveryError != nil { discoveryError = nil }
-        } catch {
-            // Keep the last successful list and the explicit UID during temporary errors.
-            discoveryError = error.localizedDescription
+        discovery.refresh(using: loadDevices)
+    }
+}
+
+/// The synchronous Core Audio read must neither run on MainActor nor accumulate timer work.
+@MainActor
+final class AudioInputDeviceDiscovery: ObservableObject {
+    @Published private(set) var devices: [AudioInputDevice] = []
+    @Published private(set) var error: String?
+    private var inFlight: Task<Void, Never>?
+    private var isActive = false
+    private var generation = 0
+
+    func activate() {
+        isActive = true
+    }
+
+    func deactivate() {
+        isActive = false
+        generation &+= 1
+        // Core Audio's synchronous call cannot be cancelled. Keep its slot occupied until
+        // it actually returns, even if the view disappears and immediately reappears.
+    }
+
+    @discardableResult
+    func refresh(using loadDevices: @escaping @Sendable () throws -> [AudioInputDevice]) -> Task<Void, Never>? {
+        guard isActive, inFlight == nil else { return nil }
+        let generation = generation
+        let query = Task.detached(priority: .utility) {
+            Result { try loadDevices() }
         }
+        let completion = Task { [weak self] in
+            let result = await query.value
+            guard let self else { return }
+            self.inFlight = nil
+            guard self.isActive, self.generation == generation else { return }
+            switch result {
+            case .success(let found):
+                // Assign only on change: polling must not redraw the whole Dictation page every 2 s.
+                if found != self.devices { self.devices = found }
+                if self.error != nil { self.error = nil }
+            case .failure(let error):
+                // Keep the last successful list and the explicit UID during temporary errors.
+                let message = error.localizedDescription
+                if message != self.error { self.error = message }
+            }
+        }
+        inFlight = completion
+        return completion
     }
 }

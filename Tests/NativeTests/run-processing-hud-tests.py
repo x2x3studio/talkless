@@ -45,7 +45,9 @@ enum L10n {
 @MainActor final class FakeHUD {
     var phases: [HUDModel.Phase] = []
     let model = HUDModel()
+    var onShow: (HUDModel.Phase) -> Void = { _ in }
     func show(_ phase: HUDModel.Phase) {
+        onShow(phase)
         phases.append(phase)
         model.phase = phase
         if phase == .hidden { model.preview = "" }
@@ -64,6 +66,8 @@ final class Diagnostics: @unchecked Sendable {
     var stops = 0
     var pendingStop: CheckedContinuation<[Float], Error>?
     var suspendStop = false
+    var finalizing = false
+    func beginFinalization() -> Bool { finalizing = true; return true }
     func stop() async throws -> [Float] {
         stops += 1
         if suspendStop { return try await withCheckedThrowingContinuation { pendingStop = $0 } }
@@ -471,9 +475,23 @@ TESTS = r'''
         print("PASS explicit dictionary fixes run after recognition, before polish, and are visible against recognized words")
         let late = ProcessingHarness()
         late.recordingPolishEnabled = false
-        late.selectionTask = Task { @MainActor in late.editSelection = "selected text" }
+        var selectionReady: CheckedContinuation<Void, Never>?
+        late.selectionTask = Task { @MainActor in
+            await withCheckedContinuation { selectionReady = $0 }
+            late.editSelection = "selected text"
+        }
+        late.hud.onShow = { phase in
+            if phase == .recognizing {
+                precondition(late.recorder.finalizing, "Capture must close before showing the processing HUD")
+            }
+        }
         LLMClient.calls = 0
         late.stopAndProcess()
+        precondition(late.recorder.finalizing && late.recorder.stops == 0)
+        while selectionReady == nil { await Task.yield() }
+        precondition(late.recorder.finalizing && late.recorder.stops == 0,
+                     "Pending selection must not extend capture")
+        selectionReady!.resume()
         await late.processingTask?.value
         precondition(late.history.entries.first?.kind == .edit && LLMClient.calls == 1,
                      "A selection copied after recording started still makes this a voice edit")
@@ -656,7 +674,18 @@ enum AVCaptureDevice {
     var cancelCalls = 0
     var stopFailure: Error?
     var selectedDevice: String?
+    var active = false
+    var finalizing = false
+    var finalizations = 0
+    func beginFinalization() -> Bool {
+        guard active else { return false }
+        finalizing = true
+        finalizations += 1
+        return true
+    }
     func start(deviceUID: String?, operationID: UUID) async throws {
+        active = true
+        finalizing = false
         startCalls += 1
         selectedDevice = deviceUID
         if suspendStart { try await withCheckedThrowingContinuation { starts.append($0) } }
@@ -669,12 +698,13 @@ enum AVCaptureDevice {
     }
     // Deliberately don't resume pending continuations: simulate callbacks from
     // a native operation that returns after cancellation and a newer start.
-    func cancel() { cancelCalls += 1 }
+    func cancel() { cancelCalls += 1; active = false }
 }
 typealias AudioRecorder = FakeRecorder
 @MainActor final class FakeHUD {
     let model = HUDModel()
-    func show(_ phase: HUDModel.Phase) { model.phase = phase }
+    var onShow: (HUDModel.Phase) -> Void = { _ in }
+    func show(_ phase: HUDModel.Phase) { onShow(phase); model.phase = phase }
     func hide() { model.phase = .hidden; model.preview = ""; model.isEditMode = false }
 }
 @MainActor final class FakeHotkeys { var editModifierHeld = false }
@@ -970,6 +1000,21 @@ STARTUP_TESTS = r'''
         precondition(neverOpened.recorder.startCalls == 0 && neverOpened.recorder.stopCalls == 0)
         print("PASS hold release before task launch never opens or uploads audio")
 
+        for action in ["toggle", "menu"] {
+            let test = StartupHarness()
+            test.settings.recordingGestureMode = .toggle
+            test.triggerPressed(at: timestamp)
+            let startup = test.startupTask!
+            let session = FakeSession.latest!
+            if action == "toggle" { test.triggerPressed(at: timestamp + 1) }
+            else { test.toggleFromMenu() }
+            await startup.value
+            precondition(test.state == .idle && test.recorder.startCalls == 0 && test.recorder.stopCalls == 0)
+            precondition(test.processingTask == nil && session.cancelled && session.finishes == 0,
+                         "Explicit finish before startup must not open capture or finish a stale recorder")
+        }
+        print("PASS explicit toggle/menu finish before startup never opens capture or submits audio")
+
         for action in ["hold_release", "escape", "combo", "user"] {
             for staleFailure in [false, true] {
                 let test = StartupHarness()
@@ -1030,12 +1075,17 @@ STARTUP_TESTS = r'''
                 await wait { test.recorder.starts.count == 1 }
                 test.triggerReleased(at: timestamp + 10)
                 precondition(test.state == .recording && test.handsFree)
+                test.hud.onShow = { phase in
+                    if phase == .recognizing { precondition(test.recorder.finalizing) }
+                }
                 switch action {
                 case "toggle": test.triggerPressed(at: timestamp + 20)
                 default: test.toggleFromMenu()
                 }
                 let task = test.processingTask!
                 precondition(test.state == .processing && test.recorder.stopCalls == 0)
+                precondition(test.recorder.finalizing && test.recorder.finalizations == 1,
+                             "Explicit finish must close capture while startup is still pending")
                 test.triggerPressed(at: timestamp + 30)
                 test.triggerReleased(at: timestamp + 40)
                 test.toggleFromMenu()
@@ -1067,6 +1117,8 @@ STARTUP_TESTS = r'''
         queued.recorder.starts[0].resume()
         await staleProcessing.value
         precondition(queued.state == .recording && queued.recorder.stopCalls == 0 && staleSession.finishes == 0)
+        precondition(!queued.recorder.finalizing && queued.recorder.finalizations == 1,
+                     "Cancelled finish must not close the next recording's gate")
         queued.recorder.starts[1].resume()
         await currentStartup.value
         precondition(queued.state == .recording && queued.startupTask == nil && queued.recorder.stopCalls == 0)

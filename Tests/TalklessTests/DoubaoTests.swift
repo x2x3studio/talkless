@@ -233,7 +233,7 @@ private actor ValidationGate {
             audio.floatChannelData![0].initialize(repeating: 0, count: 3_200)
             session.feed(audio)
             #expect(try await session.finish(samples: []) == "")
-            #expect(previews.contains("Live words"))
+            #expect(previews.allSatisfy { $0 == "Live words" })
             #expect(errors.isEmpty)
         }
     }
@@ -263,7 +263,7 @@ private actor ValidationGate {
                     session.feed(audio)
                 }
                 #expect(try await session.finish(samples: samples) == "")
-                if sampleCount == 3_200 { #expect(previews.contains("Live words")) }
+                if sampleCount == 3_200 { #expect(previews.allSatisfy { $0 == "Live words" }) }
             }
         }
     }
@@ -311,12 +311,26 @@ private actor ValidationGate {
         session.feed(audio)
         let result = try await session.finish(samples: [Float](repeating: 1, count: 3_201))
         #expect(result == "Final words")
-        #expect(previews.contains("Live words"))
+        #expect(previews.allSatisfy { $0 == "Live words" })
         let packets = socket.sent
         #expect(packets.count == 3, "One config, one 200 ms audio packet, one final tail")
         #expect(packets[0][1] == 0x10 && packets[1][1] == 0x20 && packets[2][1] == 0x22)
         let audioBytes = try packets.dropFirst().map { try DoubaoProtocol.gzip(Data($0.dropFirst(8)), decompress: true).count }.reduce(0, +)
         #expect(audioBytes == 6_402, "Recorder samples passed to finish must not be sent again")
+    }
+
+    @MainActor @Test func previewStillAppearsWhileRecording() async throws {
+        let session = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: ScriptedDoubaoSocket(), timeout: 60)
+        var preview: String?
+        session.onPartial = { preview = $0 }
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+        let audio = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 3_200)!
+        audio.frameLength = 3_200
+        audio.floatChannelData![0].initialize(repeating: 0, count: 3_200)
+        session.feed(audio)
+        for _ in 0..<100 where preview == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(preview == "Live words")
+        #expect(try await session.finish(samples: []) == "Final words")
     }
 
     @Test func sendFailureAndOversizedBacklogFailClosed() async throws {

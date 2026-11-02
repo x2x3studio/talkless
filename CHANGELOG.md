@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+- Doubao recognition no longer waits for UI previews before receiving more responses or completing. Pending previews are coalesced and discarded after completion or cancellation.
+- Audio input device queries in Settings run off the main thread without overlapping polls.
+- Ending dictation closes audio capture before HUD updates and startup/selection waits, preventing extra audio from being recorded while the UI is delayed.
+
+### Added
+- Content-free ASR timing checkpoints distinguish configuration upload, first response, audio end, final upload and final response from UI delay.
+
+## 2026.1102.37188
+
 ### Added
 - Model diagnostics now track download, pause, failure, selection and deletion, including delete-confirmation UI, runtime unload and each filesystem stage. Critical checkpoints are synchronized to disk and linked by operation IDs without recording paths or content. This improves investigation of deletion crashes; it does not claim to fix the unconfirmed crash.
 

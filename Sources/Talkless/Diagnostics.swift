@@ -40,7 +40,7 @@ final class Diagnostics: @unchecked Sendable {
         "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
         "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
         "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused",
-        "ui_stall", "settings_renders", "model_operation", "model_delete_ui", "model_runtime",
+        "asr_timing", "ui_stall", "settings_renders", "model_operation", "model_delete_ui", "model_runtime",
         "diagnostics.export_started", "diagnostics.export_completed", "diagnostics.export_failed",
     ]
     private static let numericKeys: Set<String> = [
@@ -62,14 +62,14 @@ final class Diagnostics: @unchecked Sendable {
         "engine": ["qwen", "doubao"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
-        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear"],
+        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear", "configuration_sent", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received"],
         "reason": [
             "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
             "unavailable", "invalid_format", "empty_audio", "empty_result", "cancelled", "timeout", "network", "model", "unknown",
             "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout",
             "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed", "localization_missing",
-            "route_mismatch", "route_unavailable", "native_operation_timeout", "startup_release", "startup_failed", "stop_failed",
+            "route_mismatch", "route_unavailable", "native_operation_timeout", "startup_release", "startup_failed", "stop_failed", "finish_before_start",
         ],
         "mode": ["dictation", "edit", "translation", "hold", "toggle", "hands_free"],
         "recording_mode": ["hold", "toggle"],
