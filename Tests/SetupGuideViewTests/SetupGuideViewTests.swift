@@ -53,7 +53,7 @@ enum SettingsAppearance {
 
 @MainActor final class AppSettings: ObservableObject {
     enum Engine { case qwen, doubao }
-    struct Key { var title = "Right ⌘"; var keyCode: Int? = 1 }
+    struct Key: Equatable { var title = "Right ⌘"; var keyCode: Int? = 1 }
     enum Gesture { case hold, toggle }
     static let shared = AppSettings()
     var asrEngine = Engine.qwen
@@ -68,6 +68,10 @@ enum SettingsAppearance {
 }
 
 // The live speech and AI steps embed real Settings views; the guide's own logic is tested here.
+struct SetupRecordingSetup: View {
+    init(controller: DictationController) {}
+    var body: some View { EmptyView() }
+}
 struct SetupSpeechSetup: View {
     init(controller: DictationController, openSettings: @escaping () -> Void) {}
     var body: some View { EmptyView() }

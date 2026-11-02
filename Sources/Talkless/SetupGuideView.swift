@@ -115,6 +115,7 @@ struct SetupGuideView: View {
     let launchAtLogin: LaunchAtLoginPresentation
     /// Live choices embedded by the app: engine, model download or Doubao key, and the AI service.
     /// Previews and tests leave them nil and get status rows with buttons into Settings instead.
+    let controlsSetup: AnyView?
     let speechSetup: AnyView?
     let aiSetup: AnyView?
     @ObservedObject private var localization: LocalizationSettings
@@ -123,11 +124,12 @@ struct SetupGuideView: View {
 
     init(state: SetupGuideState, actions: SetupGuideActions,
          launchAtLogin: LaunchAtLoginPresentation = .init(),
-         speechSetup: AnyView? = nil, aiSetup: AnyView? = nil,
+         controlsSetup: AnyView? = nil, speechSetup: AnyView? = nil, aiSetup: AnyView? = nil,
          localization: LocalizationSettings = .shared, initialStep: SetupGuideStep = .welcome) {
         self.state = state
         self.actions = actions
         self.launchAtLogin = launchAtLogin
+        self.controlsSetup = controlsSetup
         self.speechSetup = speechSetup
         self.aiSetup = aiSetup
         self.localization = localization
@@ -224,9 +226,12 @@ struct SetupGuideView: View {
             }
         case .controls:
             explanation("Click a text field in another app, then use your dictation key. Talkless inserts the result there.")
+            controlsSetup
             VStack(alignment: .leading, spacing: 14) {
-                shortcutRow(snapshot.controls.dictationKeyTitle, title: L10n.tr("Dictation"),
-                            detail: snapshot.controls.dictationInstruction)
+                if controlsSetup == nil {
+                    shortcutRow(snapshot.controls.dictationKeyTitle, title: L10n.tr("Dictation"),
+                                detail: snapshot.controls.dictationInstruction)
+                }
                 shortcutRow("Esc", title: L10n.tr("Cancel"),
                             detail: L10n.tr("Cancel recording or processing without inserting text."))
                 if let key = snapshot.controls.translationShortcutTitle {
@@ -234,7 +239,9 @@ struct SetupGuideView: View {
                                 detail: L10n.tr("Select text in another app, then use this shortcut. An AI service is required."))
                 }
             }
-            explanation("These are your current shortcuts. Change them in Settings; the menu bar also shows a quick reference.", small: true)
+            if controlsSetup == nil {
+                explanation("These are your current shortcuts. Change them in Settings; the menu bar also shows a quick reference.", small: true)
+            }
         case .microphone:
             explanation("Allow Talkless to record your voice when you start dictation.")
             permissionContent(snapshot.microphone, isMicrophone: true)

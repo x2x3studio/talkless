@@ -87,6 +87,27 @@ import Testing
         #expect(SettingsControlLayout.valueWidth + SettingsControlLayout.resetWidth < 300)
     }
 
+    @Test func guideEmbedsRecordingControls() throws {
+        let actions = SetupGuideActions(refresh: {}, requestMicrophone: {}, openMicrophoneSettings: {},
+            requestAccessibility: {}, openAccessibilitySettings: {}, openSpeechSettings: {}, openAISettings: {},
+            enablePolish: {}, finish: {}, skipSetup: {}, setLaunchAtLogin: { _ in }, openLoginItems: {})
+        let state = SetupGuideState()
+        for mode in RecordingGestureMode.allCases {
+            var key = TriggerKey.rightCommand
+            var selectedMode = mode
+            let controls = Form {
+                RecordingSettingsSection(mode: Binding(get: { selectedMode }, set: { selectedMode = $0 }),
+                    triggerKey: Binding(get: { key }, set: { key = $0 }),
+                    setCaptureActive: { _ in true }, resetKey: { nil })
+            }.formStyle(.grouped).scrollDisabled(true).frame(height: 280)
+            let guide = SetupGuideView(state: state, actions: actions, controlsSetup: AnyView(controls), initialStep: .controls)
+            #expect(guide.controlsSetup != nil)
+            let image = render(guide, size: NSSize(width: 600, height: 640))
+            #expect(image.count > 2_000)
+            #expect(selectedMode == mode && key == .rightCommand, "Rendering never changes shortcut preferences")
+        }
+    }
+
     @Test func rendersSettingsPagesWithoutServices() throws {
         let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../Sources/Talkless/Resources").standardizedFileURL

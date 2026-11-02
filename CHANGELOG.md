@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- Setup Guide now lets you record the dictation shortcut and choose hold-to-talk or tap-to-toggle directly in its controls step. It uses the same controls and saved preferences as Settings, including reset and safe shortcut capture.
+
+## 2026.1102.11727
+
+### Added
 - The menu bar now offers quick switches between offline and Doubao online recognition, plus a spoken-language menu when online. Selections stay in sync with Settings; switching is disabled during dictation.
 
 ### Fixed

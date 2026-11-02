@@ -1,5 +1,23 @@
 import SwiftUI
 
+struct SetupRecordingSetup: View {
+    @ObservedObject var controller: DictationController
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        Form {
+            RecordingSettingsSection(mode: $settings.recordingGestureMode, triggerKey: $settings.triggerKey,
+                                     isBusy: controller.state != .idle,
+                                     setCaptureActive: controller.setShortcutCaptureActive,
+                                     resetKey: settings.resetTriggerKey)
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .frame(height: 280)
+        .onDisappear { ShortcutRecorder.cancelCapture() }
+    }
+}
+
 /// The guide's speech step: choose offline or Doubao, then download the model or enter the key
 /// right here. Every download or request still starts only from a button.
 struct SetupSpeechSetup: View {

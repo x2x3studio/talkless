@@ -73,9 +73,12 @@ struct SetupGuideLiveView: View {
             },
             openLoginItems: launchAtLogin.openLoginItems
         ), launchAtLogin: LaunchAtLoginPresentation(controller: launchAtLogin),
+           controlsSetup: AnyView(SetupRecordingSetup(controller: controller)),
            speechSetup: AnyView(SetupSpeechSetup(controller: controller, openSettings: { openSettings(.models) })),
            aiSetup: AnyView(SetupAISetup()))
         .onAppear(perform: refresh)
+        .onChange(of: settings.triggerKey) { _, _ in refresh() }
+        .onChange(of: settings.recordingGestureMode) { _, _ in refresh() }
         .onReceive(refreshTimer) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .interfaceLanguageDidChange)) { _ in refresh() }
