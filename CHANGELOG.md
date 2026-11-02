@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Doubao dictation now closes quietly when recognition finishes successfully without any text, such as when you press the dictation key but do not speak. Malformed responses and service failures still report an error.
+
+## 2026.1101.64760
+
 ### Changed
 - Automatic update checks now run every 6 hours on the Beta channel and every 48 hours on Stable, instead of every 30 minutes.
 - AI service settings are laid out as one block for provider, address, key and model, with the refresh button that fetches models right beside the model. Protocol and authentication sit in their own Advanced section with a short note, instead of a disclosure squeezed into the list.
