@@ -5,6 +5,8 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/talkless-model-core.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 swiftc -swift-version 6 -parse-as-library \
   "$ROOT/Sources/Talkless/L10n.swift" \
+  "$ROOT/Sources/Talkless/Diagnostics.swift" \
+  "$ROOT/Sources/Talkless/SettingsNavigation.swift" \
   "$ROOT/Sources/Talkless/ModelCatalog.swift" \
   "$ROOT/Sources/Talkless/ModelDownloader.swift" \
   "$ROOT/Sources/Talkless/ModelManager.swift" \

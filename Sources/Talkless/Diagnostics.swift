@@ -40,11 +40,11 @@ final class Diagnostics: @unchecked Sendable {
         "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
         "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
         "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused",
-        "ui_stall", "settings_renders",
+        "ui_stall", "settings_renders", "model_operation", "model_delete_ui", "model_runtime",
         "diagnostics.export_started", "diagnostics.export_completed", "diagnostics.export_failed",
     ]
     private static let numericKeys: Set<String> = [
-        "duration_ms", "sample_rate", "num_channels", "num_samples", "error_code",
+        "duration_ms", "sample_rate", "num_channels", "num_samples", "error_code", "downloaded_bytes", "total_bytes",
         "generation", "report_count", "elapsed_ms", "operation_ms", "startup_ms", "first_buffer_ms",
         "attempt", "channel_count", "common_format", "before_sample_rate", "before_channel_count",
         "before_common_format", "buffer_count", "frame_count", "input_frame_count", "notification_count",
@@ -52,15 +52,17 @@ final class Diagnostics: @unchecked Sendable {
     ]
     private static let booleanKeys: Set<String> = [
         "include_crash_reports", "streaming", "cold_start", "hands_free", "polish_enabled", "opposite_finish",
-        "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
+        "completed", "model_loaded", "model_busy", "selected_model", "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
         "before_interleaved", "device_changed", "device_available", "format_changed", "audio_delivered", "recovered",
         "input_method", "resolved_device_available", "route_matches_requested", "formats_compatible", "selected_device_changed", "actual_device_changed",
     ]
     private static let enumValues: [String: Set<String>] = [
+        "action": ["inspect", "install", "cancel", "select", "delete", "unload"],
+        "model_phase": ["checking", "notInstalled", "downloading", "verifying", "paused", "installed", "failed", "deleting"],
         "engine": ["qwen", "doubao"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
-        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop"],
+        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear"],
         "reason": [
             "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
@@ -195,6 +197,7 @@ final class Diagnostics: @unchecked Sendable {
             // Lifecycle calls are infrequent (never audio-frame callbacks). Persist critical
             // startup/failure and pre-native-work checkpoints, not every ordinary event.
             if event.hasSuffix("failed") || event.hasSuffix("error") || event == "recording_start"
+                || event == "model_operation" || event == "model_delete_ui" || event == "model_runtime"
                 || event == "model_load_start" || event == "recognition_finish"
                 || event == "audio_start" || event == "audio_start_configuration"
                 || event == "app_start" || event == "app_stop" || event == "session.previous_unclean_exit" {
@@ -305,6 +308,14 @@ final class Diagnostics: @unchecked Sendable {
             within a session for ordering, and metadata timings for individual operation stages.
             system.json contains app/OS versions, hardware model, architecture, CPU count,
             and physical memory. It excludes serial numbers, user names, and host names.
+
+            Model checkpoints are written and synchronized before returning to the operation.
+            model_delete_ui records the click, sheet appearance, confirmation/cancel and dismissal.
+            model_operation records inspect/install/select/delete stages; the delete operation_id
+            joins UI, coordination and filesystem checkpoints. completed=false/true marks directory
+            validation/removal boundaries. Model IDs, phases and byte counts contain no file paths.
+            model_runtime records unload request, gate acquisition, model release and cache cleanup.
+            A missing completed checkpoint narrows the failing stage; it is not a crash backtrace.
 
             A session.previous_unclean_exit event means Talkless did not finish normally.
             It can also follow Force Quit, power loss, or an interrupted system shutdown;

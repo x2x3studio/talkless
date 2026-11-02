@@ -1,6 +1,37 @@
 import Foundation
 import CryptoKit
 
+/// Shared metadata builder keeps model operations content-free even with an injected sink.
+/// The sink is synchronous so pre-work checkpoints precede filesystem/native calls.
+enum ModelOperationDiagnostics {
+    typealias Recorder = @Sendable ([String: String]) -> Void
+
+    static let record: Recorder = { Diagnostics.shared.record(event: "model_operation", metadata: $0) }
+
+    static func metadata(modelID: String?, operationID: UUID, action: String, stage: String,
+                         phase: String? = nil, downloadedBytes: Int64? = nil, totalBytes: Int64? = nil,
+                         error: (any Error)? = nil) -> [String: String] {
+        var metadata = ["operation_id": operationID.uuidString, "action": action, "stage": stage]
+        // Never log an unrecognized caller-supplied ID (it might be a path).
+        if let modelID, let model = ModelCatalog.model(id: modelID) { metadata["model_id"] = model.id }
+        if let phase { metadata["model_phase"] = phase }
+        if let downloadedBytes { metadata["downloaded_bytes"] = String(downloadedBytes) }
+        if let totalBytes { metadata["total_bytes"] = String(totalBytes) }
+        if let error {
+            let nsError = error as NSError
+            let allowedDomains: Set<String> = [
+                NSCocoaErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain, NSURLErrorDomain,
+                "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError",
+                "Talkless.ModelManagementError",
+            ]
+            metadata["error_code"] = String(nsError.code)
+            metadata["error_domain"] = error is ModelManagementError ? "Talkless.ModelManagementError"
+                : (allowedDomains.contains(nsError.domain) ? nsError.domain : "unknown")
+        }
+        return metadata
+    }
+}
+
 /// One file at a time. URLSession delivers bounded chunks directly to disk; weights
 /// are never collected in a Data value. A .part is reusable only with its pinned manifest.
 final class ModelFileDownloader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
@@ -185,10 +216,13 @@ actor ModelStore {
     private static let manifestName = "model-manifest.json"
     private static let sourceName = "download-source.json"
     private let makeDownloader: @Sendable () -> ModelFileDownloader
+    private let diagnostics: ModelOperationDiagnostics.Recorder
 
-    init(root: URL, makeDownloader: @escaping @Sendable () -> ModelFileDownloader = { ModelFileDownloader() }) {
+    init(root: URL, makeDownloader: @escaping @Sendable () -> ModelFileDownloader = { ModelFileDownloader() },
+         diagnostics: @escaping ModelOperationDiagnostics.Recorder = ModelOperationDiagnostics.record) {
         self.root = root.standardizedFileURL
         self.makeDownloader = makeDownloader
+        self.diagnostics = diagnostics
     }
 
     func directory(_ model: CatalogModel) -> URL { root.appendingPathComponent(model.id, isDirectory: true) }
@@ -392,17 +426,35 @@ actor ModelStore {
         try fm.moveItem(at: stage, to: destination)
     }
 
-    func delete(_ model: CatalogModel) throws {
-        try prepareRoot(model)
-        // Validate BOTH trees before removing either one. Never follow a symlink or remove unowned content.
-        let folders = [directory(model), staging(model)]
-        for folder in folders {
-            try Self.checkPath(folder)
-            if fm.fileExists(atPath: folder.path) { try checkContents(folder, model: model, partials: true) }
+    func delete(_ model: CatalogModel, operationID: UUID = UUID()) throws {
+        func record(_ stage: String, completed: Bool, error: (any Error)? = nil) {
+            var metadata = ModelOperationDiagnostics.metadata(
+                modelID: model.id, operationID: operationID, action: "delete", stage: stage,
+                phase: "deleting", totalBytes: model.totalBytes, error: error
+            )
+            metadata["completed"] = String(completed)
+            diagnostics(metadata)
         }
-        for folder in folders where fm.fileExists(atPath: folder.path) {
-            try Self.checkPath(folder)
-            try fm.removeItem(at: folder)
+        do {
+            record("validate", completed: false)
+            try prepareRoot(model)
+            // Validate BOTH trees before removing either one. Never follow a symlink or remove unowned content.
+            let folders = [directory(model), staging(model)]
+            for folder in folders {
+                try Self.checkPath(folder)
+                if fm.fileExists(atPath: folder.path) { try checkContents(folder, model: model, partials: true) }
+            }
+            record("validate", completed: true)
+            for (index, folder) in folders.enumerated() where fm.fileExists(atPath: folder.path) {
+                let stage = index == 0 ? "remove_installed" : "remove_staging"
+                record(stage, completed: false)
+                try Self.checkPath(folder)
+                try fm.removeItem(at: folder)
+                record(stage, completed: true)
+            }
+        } catch {
+            record("failed", completed: false, error: error)
+            throw error
         }
     }
 }

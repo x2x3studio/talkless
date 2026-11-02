@@ -8,6 +8,7 @@ struct ModelManagementView: View {
     @AppStorage("modelDownloadSourceChoice") private var sourceChoice = "huggingFace"
     @AppStorage("customModelDownloadSource") private var customSource = ""
     @State private var deletion: CatalogModel?
+    @State private var deletionOperationID = UUID()
     @State private var deleting = false
     @State private var deletionError: String?
     @State private var actionError: String?
@@ -138,6 +139,8 @@ struct ModelManagementView: View {
 
     private func deleteButton(_ entry: ModelEntry) -> some View {
         Button(L10n.tr("Delete…"), role: .destructive) {
+            deletionOperationID = UUID()
+            logDeletion(entry.model, stage: "requested")
             deletionError = nil
             deletion = entry.model
         }
@@ -181,18 +184,25 @@ struct ModelManagementView: View {
                     Text(L10n.tr("Deleting…")).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(L10n.tr("Cancel"), role: .cancel) { deletion = nil }
+                Button(L10n.tr("Cancel"), role: .cancel) {
+                    logDeletion(model, stage: "cancelled")
+                    deletion = nil
+                }
                     .keyboardShortcut(.cancelAction)
                     .disabled(deleting)
                 Button(L10n.tr("Delete Model"), role: .destructive) {
+                    logDeletion(model, stage: "confirmed")
+                    let operationID = deletionOperationID
                     deleting = true
                     deletionError = nil
                     Task {
                         defer { deleting = false }
                         do {
-                            try await manager.delete(modelID: model.id)
+                            try await manager.delete(modelID: model.id, operationID: operationID)
+                            logDeletion(model, stage: "completed")
                             deletion = nil
                         } catch {
+                            logDeletion(model, stage: "failed", error: error)
                             deletionError = error.localizedDescription
                         }
                     }
@@ -204,6 +214,25 @@ struct ModelManagementView: View {
         .padding(24)
         .frame(width: 420)
         .interactiveDismissDisabled(deleting)
+        .onAppear { logDeletion(model, stage: "shown") }
+        .onDisappear { logDeletion(model, stage: "dismissed") }
+    }
+
+    private func logDeletion(_ model: CatalogModel, stage: String, error: Error? = nil) {
+        var metadata = ["operation_id": deletionOperationID.uuidString, "model_id": model.id,
+                        "action": "delete", "stage": stage, "state": controller.state == .idle ? "idle" : controller.state == .recording ? "recording" : "processing",
+                        "model_busy": String(manager.isBusy), "selected_model": String(manager.activeModelID == model.id)]
+        if let entry = manager.entry(modelID: model.id) {
+            metadata["model_phase"] = entry.phase.rawValue
+            metadata["downloaded_bytes"] = String(entry.downloadedBytes)
+            metadata["total_bytes"] = String(entry.totalBytes)
+        }
+        if let error {
+            let failure = ModelOperationDiagnostics.metadata(modelID: model.id, operationID: deletionOperationID,
+                                                            action: "delete", stage: stage, error: error)
+            metadata.merge(failure) { _, value in value }
+        }
+        Diagnostics.shared.record(event: "model_delete_ui", metadata: metadata)
     }
 }
 

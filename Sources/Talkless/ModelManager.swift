@@ -43,15 +43,18 @@ final class ModelManager: ObservableObject {
     let rootDirectory: URL
     private let store: ModelStore
     private let defaults: UserDefaults
+    private let diagnostics: ModelOperationDiagnostics.Recorder
     private var operation: Task<Void, Never>?
     private var operationToken: UUID?
     private var installedIDs: Set<String> = []
     private var lastSources: [String: ModelDownloadSource] = [:]
 
-    init(rootDirectory: URL = ModelManager.defaultRootDirectory, defaults: UserDefaults = .standard) {
+    init(rootDirectory: URL = ModelManager.defaultRootDirectory, defaults: UserDefaults = .standard,
+         diagnostics: @escaping ModelOperationDiagnostics.Recorder = ModelOperationDiagnostics.record) {
         self.rootDirectory = rootDirectory.standardizedFileURL
         self.defaults = defaults
-        store = ModelStore(root: rootDirectory)
+        self.diagnostics = diagnostics
+        store = ModelStore(root: rootDirectory, diagnostics: diagnostics)
         entries = ModelCatalog.models.map { ModelEntry(model: $0) }
         let saved = defaults.string(forKey: "managedModelID")
         activeModelID = saved.flatMap { ModelCatalog.model(id: $0)?.id } ?? ModelCatalog.defaultModelID
@@ -61,6 +64,8 @@ final class ModelManager: ObservableObject {
 
     private func checkExistingFiles() async {
         for model in ModelCatalog.models {
+            let operationID = UUID()
+            record(model.id, operationID: operationID, action: "inspect", stage: "started")
             do {
                 let result = try await store.inspect(model)
                 if result.installed { installedIDs.insert(model.id) }
@@ -70,8 +75,10 @@ final class ModelManager: ObservableObject {
                     $0.downloadedBytes = result.bytes
                     $0.source = result.source
                 }
+                record(model.id, operationID: operationID, action: "inspect", stage: "completed")
             } catch {
                 update(model.id) { $0.phase = .failed; $0.error = error.localizedDescription }
+                record(model.id, operationID: operationID, action: "inspect", stage: "failed", error: error)
             }
         }
         isChecking = false
@@ -99,17 +106,34 @@ final class ModelManager: ObservableObject {
     }
 
     func install(modelID: String, source: ModelDownloadSource) {
-        guard !isBusy else { error = ModelManagementError.busy.localizedDescription; return }
-        guard let model = ModelCatalog.model(id: modelID) else { error = ModelManagementError.unknownModel.localizedDescription; return }
-        guard !installedIDs.contains(modelID) else { return }
-        do { for file in model.manifest.files { _ = try source.url(for: file, manifest: model.manifest) } }
-        catch { self.error = error.localizedDescription; return }
-        error = nil
         let token = UUID()
+        record(modelID, operationID: token, action: "install", stage: "requested")
+        guard !isBusy else {
+            error = ModelManagementError.busy.localizedDescription
+            record(modelID, operationID: token, action: "install", stage: "rejected", error: ModelManagementError.busy)
+            return
+        }
+        guard let model = ModelCatalog.model(id: modelID) else {
+            error = ModelManagementError.unknownModel.localizedDescription
+            record(modelID, operationID: token, action: "install", stage: "rejected", error: ModelManagementError.unknownModel)
+            return
+        }
+        guard !installedIDs.contains(modelID) else {
+            record(modelID, operationID: token, action: "install", stage: "rejected")
+            return
+        }
+        do { for file in model.manifest.files { _ = try source.url(for: file, manifest: model.manifest) } }
+        catch {
+            self.error = error.localizedDescription
+            record(modelID, operationID: token, action: "install", stage: "rejected", error: error)
+            return
+        }
+        error = nil
         operationToken = token
         operationModelID = modelID
         lastSources[modelID] = source
         update(modelID) { $0.phase = .verifying; $0.error = nil; $0.source = source }
+        record(modelID, operationID: token, action: "install", stage: "started")
         onModelOperationChange?()
         operation = Task { [weak self, store] in
             guard let self else { return }
@@ -128,6 +152,7 @@ final class ModelManager: ObservableObject {
                 self.operationToken = nil
                 self.installedIDs.insert(modelID)
                 self.update(modelID) { $0.phase = .installed; $0.downloadedBytes = model.totalBytes; $0.currentFile = nil; $0.error = nil }
+                self.record(modelID, operationID: token, action: "install", stage: "completed")
             } catch {
                 self.operationToken = nil
                 let retainedBytes = (try? await store.stagedBytes(model)) ?? 0
@@ -135,11 +160,13 @@ final class ModelManager: ObservableObject {
                     self.update(modelID) {
                         $0.phase = .paused; $0.currentFile = nil; $0.error = nil; $0.downloadedBytes = retainedBytes
                     }
+                    self.record(modelID, operationID: token, action: "install", stage: "cancelled", error: error)
                 } else {
                     self.error = error.localizedDescription
                     self.update(modelID) {
                         $0.phase = .failed; $0.currentFile = nil; $0.error = error.localizedDescription; $0.downloadedBytes = retainedBytes
                     }
+                    self.record(modelID, operationID: token, action: "install", stage: "failed", error: error)
                 }
             }
             self.operation = nil
@@ -150,48 +177,81 @@ final class ModelManager: ObservableObject {
 
     /// Retain staged verified files AND the current .part. The next attempt checks
     /// Content-Range and final SHA-256; servers ignoring Range restart only that file.
-    func cancel() { operation?.cancel() }
+    func cancel() {
+        let operationID = operationToken ?? UUID()
+        record(operationModelID, operationID: operationID, action: "cancel", stage: "requested")
+        operation?.cancel()
+        record(operationModelID, operationID: operationID, action: "cancel", stage: operation != nil ? "completed" : "rejected")
+    }
 
     func retry(modelID: String) {
         install(modelID: modelID, source: lastSources[modelID] ?? .huggingFace)
     }
 
     func select(modelID: String) async throws {
-        guard !isBusy else { throw ModelManagementError.busy }
-        guard ModelCatalog.model(id: modelID) != nil else { throw ModelManagementError.unknownModel }
-        guard installedDirectory(modelID) != nil else { throw ModelManagementError.notInstalled }
-        guard let beforeModelChange else { throw ModelManagementError.coordinationRequired }
+        let operationID = UUID()
+        record(modelID, operationID: operationID, action: "select", stage: "requested")
+        let beforeModelChange: @MainActor (String?) async throws -> Void
+        do {
+            guard !isBusy else { throw ModelManagementError.busy }
+            guard ModelCatalog.model(id: modelID) != nil else { throw ModelManagementError.unknownModel }
+            guard installedDirectory(modelID) != nil else { throw ModelManagementError.notInstalled }
+            guard let coordinator = self.beforeModelChange else { throw ModelManagementError.coordinationRequired }
+            beforeModelChange = coordinator
+        } catch {
+            record(modelID, operationID: operationID, action: "select", stage: "rejected", error: error)
+            throw error
+        }
         operationModelID = modelID
         error = nil
+        record(modelID, operationID: operationID, action: "select", stage: "started")
         onModelOperationChange?()
         defer { operationModelID = nil; onModelOperationChange?() }
         do {
+            record(modelID, operationID: operationID, action: "select", stage: "coordination")
             try await beforeModelChange(modelID)
+            record(modelID, operationID: operationID, action: "select", stage: "coordinated")
             activeModelID = modelID
             defaults.set(modelID, forKey: "managedModelID")
+            record(modelID, operationID: operationID, action: "select", stage: "completed")
         } catch {
             self.error = error.localizedDescription
+            record(modelID, operationID: operationID, action: "select", stage: "failed", error: error)
             throw error
         }
     }
 
     /// Explicit deletion only. The runtime coordinator is awaited BEFORE removing a
     /// selected model. Deleting it selects the default ID, never another installed model.
-    func delete(modelID: String) async throws {
-        guard !isBusy else { throw ModelManagementError.busy }
-        guard let model = ModelCatalog.model(id: modelID) else { throw ModelManagementError.unknownModel }
-        if modelID == activeModelID && beforeModelChange == nil { throw ModelManagementError.coordinationRequired }
+    func delete(modelID: String, operationID: UUID = UUID()) async throws {
+        record(modelID, operationID: operationID, action: "delete", stage: "requested")
+        let model: CatalogModel
+        do {
+            guard !isBusy else { throw ModelManagementError.busy }
+            guard let found = ModelCatalog.model(id: modelID) else { throw ModelManagementError.unknownModel }
+            model = found
+            if modelID == activeModelID && beforeModelChange == nil { throw ModelManagementError.coordinationRequired }
+        } catch {
+            record(modelID, operationID: operationID, action: "delete", stage: "rejected", error: error)
+            throw error
+        }
         operationModelID = modelID
         error = nil
         let oldPhase = entry(modelID: modelID)?.phase ?? .notInstalled
         update(modelID) { $0.phase = .deleting; $0.error = nil }
+        record(modelID, operationID: operationID, action: "delete", stage: "started")
         onModelOperationChange?()
         defer { operationModelID = nil; onModelOperationChange?() }
         do {
             // Always notify the coordinator if present: a manual override can point
             // at a managed folder other than the currently selected managed ID.
-            if let beforeModelChange { try await beforeModelChange(nil) }
-            try await store.delete(model)
+            if let beforeModelChange {
+                record(modelID, operationID: operationID, action: "delete", stage: "coordination")
+                try await beforeModelChange(nil)
+                record(modelID, operationID: operationID, action: "delete", stage: "coordinated")
+            }
+            record(modelID, operationID: operationID, action: "delete", stage: "filesystem")
+            try await store.delete(model, operationID: operationID)
             installedIDs.remove(modelID)
             lastSources.removeValue(forKey: modelID)
             if activeModelID == modelID {
@@ -199,14 +259,26 @@ final class ModelManager: ObservableObject {
                 defaults.set(activeModelID, forKey: "managedModelID")
             }
             update(modelID) { $0.phase = .notInstalled; $0.downloadedBytes = 0; $0.currentFile = nil; $0.source = nil }
+            record(modelID, operationID: operationID, action: "delete", stage: "completed")
         } catch {
             self.error = error.localizedDescription
             update(modelID) { $0.phase = oldPhase; $0.error = error.localizedDescription }
+            record(modelID, operationID: operationID, action: "delete", stage: "failed", error: error)
             throw error
         }
     }
 
     func clearError() { error = nil }
+
+    private func record(_ modelID: String?, operationID: UUID, action: String, stage: String,
+                        error: (any Error)? = nil) {
+        let entry = modelID.flatMap { self.entry(modelID: $0) }
+        diagnostics(ModelOperationDiagnostics.metadata(
+            modelID: modelID, operationID: operationID, action: action, stage: stage,
+            phase: entry?.phase.rawValue, downloadedBytes: entry?.downloadedBytes,
+            totalBytes: entry?.totalBytes, error: error
+        ))
+    }
 
     private func update(_ id: String, _ mutate: (inout ModelEntry) -> Void) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }

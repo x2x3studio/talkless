@@ -82,6 +82,25 @@ require(startupResourceError["metadata"] as? [String: String] == ["stage": "star
 let schemaLogs = root.appendingPathComponent("schema")
 let schema = Diagnostics(directory: schemaLogs, crashReportsDirectory: absentReports)
 let operationID = UUID().uuidString
+let modelMetadata = ["operation_id": operationID, "model_id": "Qwen3-ASR-0.6B-4bit", "action": "delete",
+                     "stage": "remove_staging", "model_phase": "paused", "downloaded_bytes": "1234",
+                     "total_bytes": "9999", "model_busy": "true", "model_loaded": "false",
+                     "selected_model": "true", "completed": "false"]
+for event in ["model_operation", "model_delete_ui", "model_runtime"] {
+    var supplied = modelMetadata
+    supplied["path"] = "/PRIVATE/model"
+    supplied["error_description"] = "PRIVATE_CONTENT"
+    diagnostic.record(event: event, metadata: supplied)
+    let row = try events(logs).last!
+    require(row["event"] as? String == event, "Model checkpoints must be available immediately without shutdown")
+    require(row["metadata"] as? [String: String] == modelMetadata, "Model metadata lost fields or leaked content")
+}
+for stage in ["requested", "shown", "confirmed", "coordination", "coordinated", "filesystem", "validate",
+              "remove_installed", "remove_staging", "completed", "failed", "cancelled", "rejected",
+              "dismissed", "acquired", "released", "cache_clear"] {
+    diagnostic.record(event: "model_delete_ui", metadata: ["stage": stage])
+    require((try events(logs).last!["metadata"] as? [String: String])?["stage"] == stage, "Model stage must survive filtering")
+}
 let technicalFields = [
     "operation_id": operationID, "generation": "12", "engine": "doubao", "mode": "edit",
     "recording_mode": "toggle", "hands_free": "true", "operation_ms": "15", "state": "recording",

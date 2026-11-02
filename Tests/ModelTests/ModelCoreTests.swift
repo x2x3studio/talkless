@@ -11,6 +11,14 @@ private func expectThrows(_ message: String, _ action: () throws -> Void) throws
 }
 private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
+private final class OperationLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var records: [[String: String]] = []
+    func record(_ metadata: [String: String]) { lock.withLock { records.append(metadata) } }
+    var all: [[String: String]] { lock.withLock { records } }
+    func reset() { lock.withLock { records = [] } }
+}
+
 private final class HTTPFixture: URLProtocol, @unchecked Sendable {
     struct Plan: Sendable {
         var status = 200
@@ -161,7 +169,8 @@ struct ModelCoreTests {
         let file = ModelFile(name: "model.safetensors", bytes: Int64(bytes.count), sha256: digest(bytes))
         let manifest = ModelManifest(modelID: "test-model", repository: "test/model", revision: String(repeating: "a", count: 40), files: [file])
         let model = CatalogModel(id: manifest.modelID, name: "Test", summary: "Test", isRecommended: false, manifest: manifest)
-        let store = ModelStore(root: folder, makeDownloader: { downloader() })
+        let log = OperationLog()
+        let store = ModelStore(root: folder, makeDownloader: { downloader() }, diagnostics: { log.record($0) })
         let initial = try await store.inspect(model)
         try expect(!initial.installed, "Absent model installed")
         HTTPFixture.state.reset([.init(body: Data(repeating: 0, count: bytes.count))])
@@ -172,7 +181,7 @@ struct ModelCoreTests {
         try expect(!FileManager.default.fileExists(atPath: destination.path), "Failed download published directory")
         try expect(!FileManager.default.fileExists(atPath: stage.appendingPathComponent(file.name + ".part").path), "Corrupt partial not removed")
         try Data(bytes.prefix(4)).write(to: stage.appendingPathComponent(file.name + ".part"))
-        let recovered = try await ModelStore(root: folder).inspect(model)
+        let recovered = try await ModelStore(root: folder, diagnostics: { log.record($0) }).inspect(model)
         try expect(!recovered.installed && recovered.bytes == 4 && recovered.source == .huggingFace, "Restart did not recover partial/source")
         HTTPFixture.state.reset([.init(status: 206, headers: ["Content-Range": "bytes 4-\(bytes.count - 1)/\(bytes.count)"], body: Data(bytes.dropFirst(4)))])
         try await store.install(model, source: .hfMirror) { _, _, _ in }
@@ -210,16 +219,28 @@ struct ModelCoreTests {
         try expect(try Data(contentsOf: outside) == bytes, "Symlink target changed")
         try FileManager.default.removeItem(at: weight)
         try bytes.write(to: weight)
-        try await store.delete(model)
+        // Both valid trees must be validated before either is removed, with paired checkpoints.
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false)
+        try JSONEncoder().encode(manifest).write(to: stage.appendingPathComponent("model-manifest.json"))
+        log.reset()
+        let deleteID = UUID()
+        try await store.delete(model, operationID: deleteID)
+        try expect(log.all.map { $0["stage"]! } == ["validate", "validate", "remove_installed", "remove_installed", "remove_staging", "remove_staging"], "Deletion checkpoint order changed")
+        try expect(log.all.map { $0["completed"]! } == ["false", "true", "false", "true", "false", "true"], "Missing pre/post filesystem checkpoints")
+        try expect(log.all.allSatisfy { $0["operation_id"] == deleteID.uuidString && $0["action"] == "delete" }, "Store lost caller operation ID")
+        try expect(log.all.allSatisfy { $0["model_id"] == nil }, "Uncatalogued model ID leaked")
         try expect(!FileManager.default.fileExists(atPath: destination.path), "Managed delete failed")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
         try bytes.write(to: destination.appendingPathComponent("user-file"))
+        log.reset()
         do { try await store.delete(model); throw TestFailure.assertion("Unmanaged deletion accepted") }
         catch is TestFailure { throw TestFailure.assertion("Unmanaged deletion accepted") } catch {}
+        try expect(log.all.map { $0["stage"]! } == ["validate", "failed"], "Invalid tree reached removal or missed failure log")
+        try expect(log.all.last?["error_code"].flatMap(Int.init) != nil, "Missing numeric filesystem error")
         try expect(FileManager.default.fileExists(atPath: destination.appendingPathComponent("user-file").path), "Unmanaged content deleted")
         let linkedRoot = root.appendingPathComponent("linked-models")
         try FileManager.default.createSymbolicLink(at: linkedRoot, withDestinationURL: folder)
-        do { _ = try await ModelStore(root: linkedRoot).inspect(model); throw TestFailure.assertion("Symlink root accepted") }
+        do { _ = try await ModelStore(root: linkedRoot, diagnostics: { log.record($0) }).inspect(model); throw TestFailure.assertion("Symlink root accepted") }
         catch is TestFailure { throw TestFailure.assertion("Symlink root accepted") } catch {}
     }
 
@@ -228,7 +249,9 @@ struct ModelCoreTests {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("../../outside", forKey: "managedModelID")
-        let manager = ModelManager(rootDirectory: root.appendingPathComponent("manager"), defaults: defaults)
+        let log = OperationLog()
+        let manager = ModelManager(rootDirectory: root.appendingPathComponent("manager"), defaults: defaults,
+                                   diagnostics: { log.record($0) })
         while manager.isChecking { try await Task.sleep(for: .milliseconds(10)) }
         try expect(manager.activeModelID == ModelCatalog.defaultModelID, "Unknown saved selection accepted")
         try expect(manager.entries.allSatisfy { $0.phase == .notInstalled }, "Initialization downloaded or adopted a model")
@@ -237,8 +260,33 @@ struct ModelCoreTests {
         catch is TestFailure { throw TestFailure.assertion("Uninstalled selection accepted") } catch {}
         manager.install(modelID: "../outside", source: .huggingFace)
         try expect(!manager.isBusy && manager.error != nil, "Unknown install accepted")
-        manager.beforeModelChange = { _ in }
-        try await manager.delete(modelID: ModelCatalog.defaultModelID)
+        let inspection = log.all.filter { $0["action"] == "inspect" }
+        try expect(inspection.map { $0["stage"]! } == ["started", "completed"], "Inspection lifecycle missing")
+        try expect(inspection.first?["model_phase"] == "checking" && inspection.last?["model_phase"] == "notInstalled", "Inspection phases incorrect")
+        try expect(inspection.first?["operation_id"] == inspection.last?["operation_id"], "Inspection operation changed")
+        let rejection = log.all.filter { $0["action"] == "install" }
+        try expect(rejection.map { $0["stage"]! } == ["requested", "rejected"], "Unknown install rejection missing")
+        try expect(rejection.allSatisfy { $0["model_id"] == nil }, "Caller-supplied path leaked into model ID")
+        manager.beforeModelChange = { _ in
+            try expect(log.all.last?["stage"] == "coordination", "Coordinator ran before synchronous checkpoint")
+        }
+        log.reset()
+        let deleteID = UUID()
+        try await manager.delete(modelID: ModelCatalog.defaultModelID, operationID: deleteID)
         try expect(manager.activeModelID == ModelCatalog.defaultModelID, "Default delete selected unexpected model")
+        try expect(log.all.map { $0["stage"]! } == ["requested", "started", "coordination", "coordinated", "filesystem", "validate", "validate", "completed"], "Manager/store deletion lifecycle out of order")
+        try expect(log.all.allSatisfy { $0["operation_id"] == deleteID.uuidString && $0["model_id"] == ModelCatalog.defaultModelID }, "Manager/store operation correlation lost")
+        try expect(log.all.last?["downloaded_bytes"] == "0" && log.all.last?["model_phase"] == "notInstalled", "Deletion completion snapshot incorrect")
+
+        log.reset()
+        manager.beforeModelChange = { _ in throw NSError(domain: "private-host/path", code: 27, userInfo: [NSLocalizedDescriptionKey: "secret"]) }
+        do { try await manager.delete(modelID: ModelCatalog.defaultModelID); throw TestFailure.assertion("Coordinator failure ignored") }
+        catch is TestFailure { throw TestFailure.assertion("Coordinator failure ignored") } catch {}
+        try expect(log.all.map { $0["stage"]! } == ["requested", "started", "coordination", "failed"], "Coordinator failure reached disk or missed log")
+        try expect(log.all.last?["error_domain"] == "unknown" && log.all.last?["error_code"] == "27", "Unknown error domain not sanitized")
+        try expect(!log.all.flatMap(\.values).contains("secret"), "Error description leaked")
+        log.reset()
+        manager.cancel()
+        try expect(log.all.map { $0["stage"]! } == ["requested", "rejected"], "Idle cancel not diagnosed")
     }
 }

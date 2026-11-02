@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- Model diagnostics now track download, pause, failure, selection and deletion, including delete-confirmation UI, runtime unload and each filesystem stage. Critical checkpoints are synchronized to disk and linked by operation IDs without recording paths or content. This improves investigation of deletion crashes; it does not claim to fix the unconfirmed crash.
+
+## 2026.1102.33401
+
 ### Fixed
 - Removed the Command-comma shortcut for Talkless Settings. Settings remains accessible from the menu bar without handling that key combination.
 

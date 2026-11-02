@@ -168,9 +168,20 @@ private actor QwenModelRuntime {
     }
 
     func unload() async {
+        let operationID = UUID().uuidString
+        func checkpoint(_ stage: String) {
+            Diagnostics.shared.record(event: "model_runtime", metadata: [
+                "operation_id": operationID, "action": "unload", "stage": stage,
+                "model_loaded": String(loaded != nil), "model_busy": String(busy),
+            ])
+        }
+        checkpoint("requested")
         await acquire()
-        defer { release() }
+        defer { release(); checkpoint("completed") }
+        checkpoint("acquired")
         loaded = nil
+        checkpoint("released")
+        checkpoint("cache_clear")
         Memory.clearCache()
     }
 
