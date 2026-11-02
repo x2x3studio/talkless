@@ -173,7 +173,14 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
             group.addTask {
                 while true {
                     try Task.checkCancellation()
-                    let response = try DoubaoProtocol.response(await socket.receive())
+                    let response: DoubaoProtocol.Response
+                    do {
+                        response = try DoubaoProtocol.response(await socket.receive())
+                    } catch DoubaoError.service(45_000_002) where state.finalWasSent {
+                        // The service reports empty audio as an error, not an empty final result.
+                        try Task.checkCancellation()
+                        return ""
+                    }
                     state.markConnected() // A successful send alone does not prove service acceptance.
                     if let text = response.text {
                         await MainActor.run {

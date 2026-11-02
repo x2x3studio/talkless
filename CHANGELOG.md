@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- Quickly starting and stopping Doubao dictation now closes quietly when the service returns empty-audio code 45000002, without showing a recognition error or retrying offline. Other service errors still report normally.
+
+## 2026.1102.9321
+
+### Fixed
 - Doubao dictation now closes quietly when recognition finishes successfully without any text, such as when you press the dictation key but do not speak. Malformed responses and service failures still report an error.
 
 ## 2026.1101.64760

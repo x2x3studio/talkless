@@ -19,6 +19,17 @@ private func responseFrame(body: [String: Any], final: Bool = false, compressed:
     return data
 }
 
+private func errorFrame(_ code: UInt32) -> Data {
+    let payload = Data("synthetic service message".utf8)
+    var data = Data([0x11, 0xf0, 0, 0])
+    var code = code.bigEndian
+    var size = UInt32(payload.count).bigEndian
+    withUnsafeBytes(of: &code) { data.append(contentsOf: $0) }
+    withUnsafeBytes(of: &size) { data.append(contentsOf: $0) }
+    data.append(payload)
+    return data
+}
+
 /// The sender gets an acknowledgment, then a partial and final transcript. No general
 /// clipboard, microphone, user settings or real network connections are used.
 private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
@@ -30,6 +41,8 @@ private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
     var respond = true
     var failAudio = false
     var finalText: String? = "Final words"
+    var finalResponse: Data?
+    var configurationResponse: Data?
     init() { (events, continuation) = AsyncThrowingStream.makeStream() }
     var sent: [Data] { lock.withLock { packets } }
     func send(_ data: Data) async throws {
@@ -41,8 +54,8 @@ private final class ScriptedDoubaoSocket: DoubaoSocket, @unchecked Sendable {
         guard allowed else { throw CancellationError() }
         if failAudio, data[1] >> 4 == 2 { throw URLError(.networkConnectionLost) }
         guard respond else { return }
-        if data[1] >> 4 == 1 { continuation.yield(try responseFrame(nil)) }
-        else if data[1] & 2 != 0 { continuation.yield(try responseFrame(finalText, final: true)) }
+        if data[1] >> 4 == 1 { continuation.yield(try configurationResponse ?? responseFrame(nil)) }
+        else if data[1] & 2 != 0 { continuation.yield(try finalResponse ?? responseFrame(finalText, final: true)) }
         else { continuation.yield(try responseFrame("Live words")) }
     }
     func receive() async throws -> Data {
@@ -184,6 +197,56 @@ private actor ValidationGate {
             #expect(previews.contains("Live words"))
             #expect(errors.isEmpty)
         }
+    }
+
+    @MainActor @Test func emptyAudioErrorClosesQuietlyWithoutFallback() async throws {
+        let responses = [errorFrame(45_000_002),
+                         try responseFrame(body: ["code": 45_000_002], compressed: true),
+                         try responseFrame(body: ["code": 45_000_002], compressed: false)]
+        for response in responses {
+            for sampleCount in [0, 160, 3_200] {
+                let socket = ScriptedDoubaoSocket()
+                socket.finalResponse = response
+                let online = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: socket,
+                    timeout: 60, onError: { _ in Issue.record("Empty audio must not show an error") })
+                let session = FallbackTranscriptionSession(online: online, makeLocal: {
+                    Issue.record("Empty audio must not start local recognition")
+                    return online
+                }, onFallback: { Issue.record("Empty audio must not notify fallback") })
+                var previews: [String] = []
+                session.onPartial = { previews.append($0) }
+                let samples = [Float](repeating: 0, count: sampleCount)
+                if sampleCount > 0 {
+                    let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+                    let audio = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleCount))!
+                    audio.frameLength = audio.frameCapacity
+                    audio.floatChannelData![0].initialize(repeating: 0, count: sampleCount)
+                    session.feed(audio)
+                }
+                #expect(try await session.finish(samples: samples) == "")
+                if sampleCount == 3_200 { #expect(previews.contains("Live words")) }
+            }
+        }
+    }
+
+    @Test func otherServiceErrorsAndConnectionChecksStillFail() async throws {
+        for code: UInt32 in [45_000_001, 45_000_081, 45_000_151, 55_000_031] {
+            for response in [errorFrame(code), try responseFrame(body: ["code": code])] {
+                let socket = ScriptedDoubaoSocket()
+                socket.finalResponse = response
+                let session = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: socket, timeout: 60)
+                do {
+                    _ = try await session.finish(samples: [])
+                    Issue.record("Other service errors must not become empty success")
+                } catch DoubaoError.service(let actual) { #expect(actual == code) }
+            }
+        }
+        let socket = ScriptedDoubaoSocket()
+        socket.configurationResponse = errorFrame(45_000_002)
+        do {
+            try await DoubaoTranscriptionSession.validateConnection(config: .init(apiKey: "synthetic"), socket: socket)
+            Issue.record("Empty-audio rejection must not verify a connection")
+        } catch DoubaoError.service(let code) { #expect(code == 45_000_002) }
     }
 
     @Test func gzipAndPCM() throws {
