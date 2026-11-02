@@ -15,6 +15,8 @@ private final class MenuTarget: NSObject {
     @objc func openSettings() { calls.append("settings") }
     @objc func updates() { calls.append("updates") }
     @objc func quit() { calls.append("quit") }
+    @objc func selectEngine(_ sender: NSMenuItem) { calls.append("engine-\(sender.representedObject as! String)") }
+    @objc func selectLanguage(_ sender: NSMenuItem) { calls.append("language-\(sender.representedObject as! String)") }
 
     var actions: MenuContent.Actions {
         .init(fix: #selector(fix(_:)), copyLastResult: #selector(copyLast), dictate: #selector(dictate), translate: #selector(translate), openSettings: #selector(openSettings), quit: #selector(quit))
@@ -168,6 +170,45 @@ struct MenuTests {
             }
         }
         localization.interfaceLanguage = .english
+        var quickActions = target.actions
+        quickActions.selectEngine = #selector(MenuTarget.selectEngine(_:))
+        quickActions.selectInputLanguage = #selector(MenuTarget.selectLanguage(_:))
+        let quickMenu = NSMenu()
+        for engine in ASREngine.allCases {
+            for language in [DoubaoInputLanguage.automatic, .japanese, .cantonese] {
+                for phase in [MenuContent.DictationPhase.idle, .recording, .processing] {
+                    MenuContent.populate(quickMenu, state: .init(dictation: phase, asrEngine: engine, inputLanguage: language),
+                                         target: target, actions: quickActions, updateItem: nil)
+                    quickMenu.update()
+                    let engines = quickMenu.items.first { $0.title == "Speech recognition" }!
+                    check(engines.subtitle == engine.title, "Recognition menu shows current engine")
+                    check(engines.isEnabled == (phase == .idle), "Engine switching is disabled during dictation")
+                    let engineRows = engines.submenu!.items
+                    check(engineRows.map(\.title) == ASREngine.allCases.map(\.title), "Both recognition engines are available")
+                    check(engineRows.filter { $0.state == .on }.first?.representedObject as? String == engine.rawValue,
+                          "Current engine is checked")
+                    let languages = quickMenu.items.first { $0.title == "Speech input language" }
+                    check((languages != nil) == (engine == .doubao), "Language menu only appears online")
+                    if let languages {
+                        check(languages.subtitle == language.title && languages.isEnabled == (phase == .idle),
+                              "Language menu shows selection and respects busy state")
+                        check(languages.submenu!.items.count == 26, "Auto and all 25 languages are available")
+                        check(languages.submenu!.items.filter { $0.state == .on }.first?.representedObject as? String == language.rawValue,
+                              "Current language is checked")
+                        if phase == .idle {
+                            target.calls = []
+                            languages.submenu!.performActionForItem(at: DoubaoInputLanguage.allCases.firstIndex(of: .japanese)!)
+                            check(target.calls == ["language-ja-JP"], "Language choice dispatches stable API code")
+                        }
+                    }
+                    if phase == .idle {
+                        target.calls = []
+                        engines.submenu!.performActionForItem(at: 1)
+                        check(target.calls == ["engine-doubao"], "Engine choice dispatches saved engine value")
+                    }
+                }
+            }
+        }
         print("PASS \(assertions) native menu ordering, clickable dictation/translation commands, busy states, updater states, and target/action assertions")
 
         if let index = CommandLine.arguments.firstIndex(of: "--snapshots"),

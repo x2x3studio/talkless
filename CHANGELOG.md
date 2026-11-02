@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- The menu bar now offers quick switches between offline and Doubao online recognition, plus a spoken-language menu when online. Selections stay in sync with Settings; switching is disabled during dictation.
+
+### Fixed
+- The translation popup can now be dragged by its top edge or language labels. Text selection and controls remain interactive, and translation updates keep the moved position.
+
+## 2026.1102.10997
+
+### Added
 - Doubao online settings now offer automatic recognition or 25 spoken languages. Automatic keeps live recognition; selecting a language switches to the supported streaming-input endpoint, which returns text after 15 seconds of audio or when recording ends. The choice is saved independently of translation and offline recognition.
 
 ## 2026.1102.10168

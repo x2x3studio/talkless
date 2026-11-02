@@ -318,10 +318,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             translationShortcutTitle: settings.translationShortcut.keyCode == nil ? nil : settings.translationShortcut.title,
             dictation: controller.state == .idle ? .idle : controller.state == .recording ? .recording : .processing,
             problems: currentProblems(),
-            hasLastResult: !controller.lastTranscript.isEmpty
+            hasLastResult: !controller.lastTranscript.isEmpty,
+            asrEngine: settings.asrEngine,
+            inputLanguage: settings.doubaoInputLanguage
         ), target: self, actions: .init(
             fix: #selector(fixProblem(_:)),
             copyLastResult: #selector(copyLastResult),
+            selectEngine: #selector(selectRecognitionEngine(_:)),
+            selectInputLanguage: #selector(selectSpeechInputLanguage(_:)),
             dictate: #selector(toggleDictation),
             translate: #selector(translateSelection),
             openSettings: #selector(openSettingsAction),
@@ -355,6 +359,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if setupGuide.shouldPresentOnLaunch { openSetupGuide() } else { openSettings() }
         return false
+    }
+
+    @objc private func selectRecognitionEngine(_ sender: NSMenuItem) {
+        guard controller.state == .idle,
+              let value = sender.representedObject as? String, let engine = ASREngine(rawValue: value) else { return }
+        settings.asrEngine = engine
+    }
+
+    @objc private func selectSpeechInputLanguage(_ sender: NSMenuItem) {
+        guard controller.state == .idle, settings.asrEngine == .doubao,
+              let value = sender.representedObject as? String, let language = DoubaoInputLanguage(rawValue: value) else { return }
+        settings.doubaoInputLanguage = language
     }
 
     @objc private func toggleDictation() { controller.toggleFromMenu() }

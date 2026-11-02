@@ -606,7 +606,7 @@ struct TranslationView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .bottom, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.tr("Source language")).font(.caption).foregroundStyle(.secondary)
+                    draggableLanguageTitle("Source language")
                     LanguagePickerView(title: L10n.tr("Source language"), selection: sourceSelection,
                                        preferences: preferences, automaticLabel: automaticSourceLabel)
                 }
@@ -620,7 +620,7 @@ struct TranslationView: View {
                 .accessibilityLabel(L10n.tr("Swap languages"))
                 .padding(.bottom, 4)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.tr("Target language")).font(.caption).foregroundStyle(.secondary)
+                    draggableLanguageTitle("Target language")
                     LanguagePickerView(title: L10n.tr("Target language"), selection: targetSelection,
                                        preferences: preferences, automaticLabel: automaticTargetLabel, allowCustom: true)
                 }
@@ -669,5 +669,23 @@ struct TranslationView: View {
         .frame(width: 420)
         .background(RoundedRectangle(cornerRadius: 12).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+        .overlay(alignment: .top) {
+            // Only the top padding and language captions drag the window. Keep the
+            // pickers, buttons and selectable result outside the gesture's hit area.
+            Color.clear
+                .frame(height: 14)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func draggableLanguageTitle(_ title: String) -> some View {
+        Text(L10n.tr(title))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .gesture(WindowDragGesture())
     }
 }

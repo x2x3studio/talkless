@@ -347,15 +347,28 @@ TESTS = r'''
                                           preferences: preferences, resolution: unknown,
                                           onLanguagesChanged: { _, _ in }, onCopy: { _ in }, onReplace: { _ in }, onClose: {})
         precondition(unknownView.automaticSourceLabel == L10n.tr("Auto") && !unknownView.canSwap)
-        if CommandLine.arguments.count > 1 {
-            let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-            try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        do {
+            let directory = CommandLine.arguments.count > 1
+                ? URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true) : nil
+            if let directory {
+                try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
             let panel = TranslationPanelController()
             var closeCount = 0
             let source = "Please send the updated meeting notes before Friday."
             let translated = "\u{8BF7}\u{5728}\u{5468}\u{4E94}\u{4E4B}\u{524D}\u{53D1}\u{9001}\u{66F4}\u{65B0}\u{540E}\u{7684}\u{4F1A}\u{8BAE}\u{8BB0}\u{5F55}。"
+            panel.show(source: source, result: nil, error: nil,
+                       preferences: preferences,
+                       resolution: TranslationLanguages.resolve(text: source, preferences: preferences),
+                       onLanguagesChanged: { _, _ in }, onReplace: { _ in }, onClose: { closeCount += 1 })
+            let draggedWindow = app.windows.first { $0.isVisible && $0 is NSPanel }!
+            // AppKit owns WindowDragGesture movement. Simulate its frame change,
+            // then exercise actual production updates with different content heights.
+            draggedWindow.setFrameOrigin(NSPoint(x: draggedWindow.frame.minX + 37,
+                                                 y: draggedWindow.frame.minY + 29))
+            let draggedTopLeft = NSPoint(x: draggedWindow.frame.minX, y: draggedWindow.frame.maxY)
             for language in [InterfaceLanguage.english, .simplifiedChinese] {
                 LocalizationSettings.shared.interfaceLanguage = language
                 panel.show(source: source, result: translated, error: nil,
@@ -370,10 +383,29 @@ TESTS = r'''
                 content.layoutSubtreeIfNeeded()
                 window.displayIfNeeded()
                 await settle()
-                let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
-                content.cacheDisplay(in: content.bounds, to: bitmap)
-                try! bitmap.representation(using: .png, properties: [:])!.write(
-                    to: directory.appendingPathComponent("translation-popup-synthetic-\(language.rawValue).png"))
+                precondition(window === draggedWindow, "Results must update the existing dragged panel")
+                precondition(NSPoint(x: window.frame.minX, y: window.frame.maxY) == draggedTopLeft,
+                             "Results and interface language updates must preserve the dragged top-left anchor")
+                if let directory {
+                    let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
+                    content.cacheDisplay(in: content.bounds, to: bitmap)
+                    try! bitmap.representation(using: .png, properties: [:])!.write(
+                        to: directory.appendingPathComponent("translation-popup-synthetic-\(language.rawValue).png"))
+                }
+            }
+            preferences.source = .languageID("de")
+            preferences.target = .languageID("ja")
+            for (result, error) in [(nil, nil), (String(repeating: translated + "\n", count: 30), nil),
+                                    (nil, "Synthetic translation error")] as [(String?, String?)] {
+                panel.show(source: source, result: result, error: error,
+                           preferences: preferences,
+                           resolution: TranslationLanguages.resolve(text: source, preferences: preferences),
+                           onLanguagesChanged: { _, _ in }, onReplace: { _ in }, onClose: { closeCount += 1 })
+                draggedWindow.contentView!.layoutSubtreeIfNeeded()
+                await settle()
+                precondition(NSPoint(x: draggedWindow.frame.minX, y: draggedWindow.frame.maxY) == draggedTopLeft,
+                             "Language changes, loading, long results and errors must preserve the dragged anchor")
+                precondition(panel.isVisible && closeCount == 0, "Updates must not close or recreate the panel")
             }
             let popupWindow = app.windows.first { $0.isVisible && $0 is NSPanel }!
             panel.handleLocalClick(in: popupWindow)
@@ -391,7 +423,7 @@ TESTS = r'''
             precondition(!panel.isVisible && closeCount == 1, "Local Settings clicks dismiss the popup")
             panel.close()
             precondition(closeCount == 1, "Closing is idempotent and invalidates exactly once")
-            print("PASS: native clickable nonactivating popup, in-place update and idempotent close; synthetic en/zh screenshots saved")
+            print("PASS: native nonactivating popup, moved anchor preserved across result/language/error updates, menu interaction and idempotent close")
         }
         print("PASS: translation lifecycle, cancellation/races, source/target/swap bindings, original source/app, zero-call guards, scripts, Auto labels and localization")
     }

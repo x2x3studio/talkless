@@ -27,12 +27,16 @@ enum MenuContent {
         var problems: [Problem] = []
         /// Shown only once this session has a dictation or edit result.
         var hasLastResult = false
+        var asrEngine: ASREngine = .qwen
+        var inputLanguage: DoubaoInputLanguage = .automatic
     }
 
     struct Actions {
         /// Receives the problem row; its tag is the Problem raw value.
         var fix: Selector? = nil
         var copyLastResult: Selector? = nil
+        var selectEngine: Selector? = nil
+        var selectInputLanguage: Selector? = nil
         let dictate: Selector
         let translate: Selector
         let openSettings: Selector
@@ -108,6 +112,42 @@ enum MenuContent {
             item.keyEquivalentModifierMask = []
             item.toolTip = L10n.tr("Copy the most recent dictation result to the clipboard.")
             menu.addItem(symbol(item, "doc.on.clipboard"))
+        }
+
+        if let selectEngine = actions.selectEngine {
+            menu.addItem(.separator())
+            let engineMenu = NSMenu()
+            engineMenu.autoenablesItems = false
+            for engine in ASREngine.allCases {
+                let item = action(engine.title, selectEngine, key: "")
+                item.keyEquivalentModifierMask = []
+                item.representedObject = engine.rawValue
+                item.state = engine == state.asrEngine ? .on : .off
+                item.isEnabled = state.dictation == .idle
+                engineMenu.addItem(symbol(item, engine.symbol))
+            }
+            let engineItem = NSMenuItem(title: L10n.tr("Speech recognition"), action: nil, keyEquivalent: "")
+            engineItem.subtitle = state.asrEngine.title
+            engineItem.submenu = engineMenu
+            engineItem.isEnabled = state.dictation == .idle
+            menu.addItem(symbol(engineItem, state.asrEngine.symbol))
+        }
+        if state.asrEngine == .doubao, let selectLanguage = actions.selectInputLanguage {
+            let languageMenu = NSMenu()
+            languageMenu.autoenablesItems = false
+            for language in DoubaoInputLanguage.allCases {
+                let item = action(language.title, selectLanguage, key: "")
+                item.keyEquivalentModifierMask = []
+                item.representedObject = language.rawValue
+                item.state = language == state.inputLanguage ? .on : .off
+                item.isEnabled = state.dictation == .idle
+                languageMenu.addItem(item)
+            }
+            let languageItem = NSMenuItem(title: L10n.tr("Speech input language"), action: nil, keyEquivalent: "")
+            languageItem.subtitle = state.inputLanguage.title
+            languageItem.submenu = languageMenu
+            languageItem.isEnabled = state.dictation == .idle
+            menu.addItem(symbol(languageItem, "globe"))
         }
 
         menu.addItem(.separator())
