@@ -171,7 +171,7 @@ private actor ValidationGate {
             let socket = ScriptedDoubaoSocket()
             socket.finalText = finalText
             var errors: [String] = []
-            let session = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: socket,
+            let session = try DoubaoTranscriptionSession(config: .init(apiKey: "synthetic"), socket: socket, timeout: 60,
                                                         onError: { errors.append($0) })
             var previews: [String] = []
             session.onPartial = { previews.append($0) }
