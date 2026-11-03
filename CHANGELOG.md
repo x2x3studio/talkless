@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- Accessibility selection reads and Copy-menu discovery run on a bounded serial worker rather than the main thread. Requests have time and traversal budgets; cancellation and original-app checks prevent stale selection results from being used.
+- The final Copy action remains a single 25 ms-bounded operation next to clipboard ownership checks; clipboard transaction and audio-capture behavior are unchanged.
+
+## 2026.1103.59153
+
+### Changed
 - Audio capture copies into preallocated bounded buffers and coalesces worker wakeups. Conversion, metering and recognizer callbacks run on a separate processing queue rather than the capture callback.
 - Normal stop drains accepted audio before final recognition; cancellation invalidates queued audio without making the UI wait. Queue/format failures end the current capture instead of delivering a partial transcript.
 

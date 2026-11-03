@@ -191,7 +191,7 @@ extension Int { var processIdentifier: Int32 { Int32(self) } }
     static func copyToClipboard(_ text: String) { copied.append(text) }
     static var copiedSelection: String?
     static var copyReads = 0
-    static func selectedTextViaCopy() async -> String? { copyReads += 1; await Task.yield(); return copiedSelection }
+    static func selectedTextViaCopy(targetPID: Int32? = nil) async -> String? { copyReads += 1; await Task.yield(); return copiedSelection }
 }
 struct HistoryEntry {
     enum Kind { case dictation, edit }
@@ -785,7 +785,7 @@ struct AppContext { let name: String; let bundleID: String }
 struct FakeApp { let localizedName: String?; let bundleIdentifier: String?; var processIdentifier: Int32 { 1 } }
 @MainActor final class FakeWorkspace {
     static let shared = FakeWorkspace()
-    let frontmostApplication: FakeApp? = nil
+    var frontmostApplication: FakeApp? = FakeApp(localizedName: "Synthetic app", bundleIdentifier: "test.synthetic")
 }
 @MainActor final class ModelManager {
     static let shared = ModelManager()
@@ -1121,6 +1121,7 @@ STARTUP_TESTS = r'''
         precondition(TextIO.axReads == 0 && TextIO.copyReads == 0 && !plain.hud.model.isEditMode && plain.editSelection == nil,
                      "Plain dictation never reads the selection")
         plain.editModifierPressed()
+        await plain.selectionTask?.value
         precondition(TextIO.axReads == 1 && plain.hud.model.isEditMode && plain.editSelection == "https://example.com/selected-on-focus",
                      "Pressing the edit modifier during recording switches to voice editing")
         plain.cancel()
@@ -1204,6 +1205,7 @@ STARTUP_TESTS = r'''
             test.settings.voiceEditEnabled = true
             test.editIntent = true
             test.startRecording()
+            await test.selectionTask?.value
             FakeSession.latest?.onPartial?("NextSession")
             precondition(test.hud.model.isEditMode && test.hud.model.dictionaryTerms.isEmpty)
             precondition(matched(test.hud.model).isEmpty, "Voice edit instructions never decorate")
@@ -1503,7 +1505,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
         enum SelectionReading: Equatable { case text(String), empty, unavailable }
         static var axSelection: String? = "Selected sentence"
         static var axReads = 0
-        static func selectionViaAX() -> SelectionReading { axReads += 1; return axSelection.map { .text($0) } ?? .unavailable }
+        static func selectionViaAX(targetPID: Int32? = nil) async -> SelectionReading { axReads += 1; await Task.yield(); return axSelection.map { .text($0) } ?? .unavailable }
     }
     @MainActor final class FakeTranslationPanel {
         var isVisible = false

@@ -44,7 +44,7 @@ for name in ("pressedAt", "recordingGestureMode", "recordingPolishEnabled", "edi
     assert match, f"Missing production field: {name}"
     fields.append(match.group().replace("private ", "", 1))
 error_callback = re.search(
-    r"onError: \{ \[weak self\] message in\n(.*?)\n                \}",
+    r"onError: \{ \[weak self\] message in\n(.*?)\n[ ]+\}",
     controller, re.S,
 )
 assert error_callback, "Missing production Qwen error callback"

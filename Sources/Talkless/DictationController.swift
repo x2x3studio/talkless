@@ -585,21 +585,28 @@ final class DictationController: ObservableObject {
     /// Read the selection for voice editing: Accessibility first, then the app's Copy in the
     /// background when the app cannot report it. Without a selection, the words are dictated.
     private func captureEditSelection() {
-        guard settings.voiceEditEnabled, settings.llmConfigured, editSelection == nil, selectionTask == nil else { return }
+        guard settings.voiceEditEnabled, settings.llmConfigured, editSelection == nil, selectionTask == nil,
+              !acquiringTranslationSelection,
+              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
         let generation = self.generation
-        switch TextIO.selectionViaAX() {
-        case .text(let text):
-            adoptEditSelection(text)
-        case .empty:
-            hud.model.notice = L10n.tr("No text is selected, so this will be typed as dictation.")
-        case .unavailable:
-            guard !acquiringTranslationSelection else { return }
-            acquiringTranslationSelection = true // One clipboard user at a time.
-            selectionTask = Task { [weak self] in
-                let selection = await TextIO.selectedTextViaCopy()
-                guard let self else { return }
-                self.acquiringTranslationSelection = false
-                guard self.generation == generation, self.state == .recording || self.state == .processing else { return }
+        acquiringTranslationSelection = true // Keep the same owner through AX and Copy awaits.
+        selectionTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.acquiringTranslationSelection = false }
+            let reading = await TextIO.selectionViaAX(targetPID: pid)
+            guard !Task.isCancelled, self.generation == generation,
+                  self.state == .recording || self.state == .processing,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+            switch reading {
+            case .text(let text):
+                self.adoptEditSelection(text)
+            case .empty:
+                self.hud.model.notice = L10n.tr("No text is selected, so this will be typed as dictation.")
+            case .unavailable:
+                let selection = await TextIO.selectedTextViaCopy(targetPID: pid)
+                guard !Task.isCancelled, self.generation == generation,
+                      self.state == .recording || self.state == .processing,
+                      NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
                 if let selection { self.adoptEditSelection(selection) }
                 else { self.hud.model.notice = L10n.tr("No text is selected, so this will be typed as dictation.") }
             }
@@ -864,6 +871,7 @@ final class DictationController: ObservableObject {
         hud.model.notice = nil
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false
+        selectionTask?.cancel()
         selectionTask = nil
         let fields = ["reason": reason, "state": String(describing: state)]
         if let diagnosticOperation {
@@ -1034,8 +1042,9 @@ final class DictationController: ObservableObject {
         let targetApp = NSWorkspace.shared.frontmostApplication
         acquiringTranslationSelection = true
         defer { acquiringTranslationSelection = false }
-        let selected = await TextIO.selectedText()
-        guard token == translationGeneration, !Task.isCancelled else { return }
+        let selected = await TextIO.selectedText(targetPID: targetApp?.processIdentifier)
+        guard token == translationGeneration, !Task.isCancelled,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == targetApp?.processIdentifier else { return }
         guard let text = selected, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             if state == .idle {
                 hud.show(.error(Self.accessibilityGranted

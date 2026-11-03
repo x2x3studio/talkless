@@ -7,6 +7,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--snapshots", type=Path, help="Write synthetic native popup snapshots to this directory")
+parser.add_argument("--headless", action="store_true", help="Skip native window creation; run isolated flow tests only")
 arguments = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +24,7 @@ import SwiftUI
 
 struct FakeApplication: Equatable {
     let localizedName: String?
+    var processIdentifier: Int32 { localizedName == "Different app" ? 2 : 1 }
 }
 @MainActor final class FakeWorkspace {
     static let shared = FakeWorkspace()
@@ -59,7 +61,7 @@ struct HistoryEntry {
     static var suspendSelection = false
     static var selections: [CheckedContinuation<String?, Never>] = []
     static var copies: [String] = []
-    static func selectedText() async -> String? {
+    static func selectedText(targetPID: Int32? = nil) async -> String? {
         if suspendSelection { return await withCheckedContinuation { selections.append($0) } }
         return selection
     }
@@ -347,7 +349,7 @@ TESTS = r'''
                                           preferences: preferences, resolution: unknown,
                                           onLanguagesChanged: { _, _ in }, onCopy: { _ in }, onReplace: { _ in }, onClose: {})
         precondition(unknownView.automaticSourceLabel == L10n.tr("Auto") && !unknownView.canSwap)
-        do {
+        if !CommandLine.arguments.contains("--headless") {
             let directory = CommandLine.arguments.count > 1
                 ? URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true) : nil
             if let directory {
@@ -454,4 +456,5 @@ with tempfile.TemporaryDirectory(prefix="talkless-translation-flow-") as tempora
         str(ROOT / "Sources/Talkless/SettingsStyle.swift"),
         str(source), "-o", str(binary),
     ], check=True)
-    subprocess.run([str(binary)] + ([str(arguments.snapshots.resolve())] if arguments.snapshots else []), check=True)
+    subprocess.run([str(binary)] + ([str(arguments.snapshots.resolve())] if arguments.snapshots else [])
+                   + (["--headless"] if arguments.headless else []), check=True)
