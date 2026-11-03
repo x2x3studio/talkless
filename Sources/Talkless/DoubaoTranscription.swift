@@ -8,20 +8,50 @@ protocol DoubaoSocket: Sendable {
     func close()
 }
 
-private final class DoubaoWebSocket: NSObject, DoubaoSocket, URLSessionTaskDelegate, @unchecked Sendable {
-    private var session: URLSession!
-    private var task: URLSessionWebSocketTask!
+/// Keep URLSession's transport resources across utterances, never the completed ASR stream.
+final class DoubaoTransport: @unchecked Sendable {
+    static let shared = DoubaoTransport()
+    let session: URLSession
 
-    init(request: URLRequest) {
-        super.init()
+    init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
         configuration.httpShouldSetCookies = false
-        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        task = session.webSocketTask(with: request)
+        session = URLSession(configuration: configuration)
+    }
+
+    func makeTask(request: URLRequest, onOpen: @escaping @Sendable () -> Void = {}) -> URLSessionWebSocketTask {
+        let task = session.webSocketTask(with: request)
+        task.delegate = DoubaoTaskDelegate(onOpen: onOpen)
         task.maximumMessageSize = DoubaoProtocol.maximumPayload + 1024
+        return task
+    }
+
+    deinit { session.invalidateAndCancel() }
+}
+
+final class DoubaoTaskDelegate: NSObject, URLSessionWebSocketDelegate, Sendable {
+    private let onOpen: @Sendable () -> Void
+    init(onOpen: @escaping @Sendable () -> Void) { self.onOpen = onOpen }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        onOpen()
+    }
+
+    // Never forward the Speech API key through a redirect.
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
+private final class DoubaoWebSocket: DoubaoSocket, @unchecked Sendable {
+    private let task: URLSessionWebSocketTask
+
+    init(request: URLRequest, onOpen: @escaping @Sendable () -> Void = {}) {
+        task = DoubaoTransport.shared.makeTask(request: request, onOpen: onOpen)
         task.resume()
     }
     func send(_ data: Data) async throws {
@@ -44,12 +74,6 @@ private final class DoubaoWebSocket: NSObject, DoubaoSocket, URLSessionTaskDeleg
     }
     func close() {
         task.cancel(with: .goingAway, reason: nil)
-        session.invalidateAndCancel()
-    }
-    // Never forward the Speech API key through a redirect.
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(nil)
     }
 }
 
@@ -69,11 +93,14 @@ final class DoubaoTranscriptionSession: TranscriptionSession, @unchecked Sendabl
          timeout: TimeInterval = 15,
          onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }) throws {
         let request = try config.request()
-        self.socket = socket ?? DoubaoWebSocket(request: request)
+        let state = self.state
         state.logsTiming = socket == nil
         state.streaming = config.inputLanguage == .automatic
         state.trace("started")
-        let socket = self.socket, state = self.state
+        self.socket = socket ?? DoubaoWebSocket(request: request, onOpen: { [weak state] in
+            state?.trace("websocket_open")
+        })
+        let socket = self.socket
         worker = Task.detached(priority: .userInitiated) {
             do {
                 let text = try await Self.run(socket: socket, state: state, timeout: timeout, inputLanguage: config.inputLanguage)

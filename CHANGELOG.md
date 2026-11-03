@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- Doubao recognition and connection checks reuse a long-lived URLSession instead of creating and invalidating one per utterance. Each recognition still uses its own WebSocket, credentials and request ID; ending one stream does not cancel others.
+- ASR timing logs now record WebSocket handshake completion separately from the first recognition response. No idle ASR connections or empty-audio keepalives are created.
+
+## 2026.1102.48286
+
+### Changed
 - Unconfirmed or pending clipboard pastes now close quietly without an error notice. Clipboard protection, saved results and diagnostic records remain unchanged.
 
 ## 2026.1102.44438

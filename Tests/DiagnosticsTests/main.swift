@@ -101,7 +101,7 @@ for stage in ["requested", "shown", "confirmed", "coordination", "coordinated", 
     diagnostic.record(event: "model_delete_ui", metadata: ["stage": stage])
     require((try events(logs).last!["metadata"] as? [String: String])?["stage"] == stage, "Model stage must survive filtering")
 }
-for stage in ["started", "configuration_sent", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received", "completed", "failed"] {
+for stage in ["started", "websocket_open", "configuration_sent", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received", "completed", "failed"] {
     let timing = ["operation_id": operationID, "engine": "doubao", "stage": stage, "streaming": "true", "elapsed_ms": "123", "num_samples": "3200"]
     diagnostic.record(event: "asr_timing", metadata: timing.merging(["text": "PRIVATE_TEXT", "api_key": "PRIVATE_KEY"]) { _, rhs in rhs })
     require(try events(logs).last!["metadata"] as? [String: String] == timing, "ASR timing preserves only content-free stages and durations")

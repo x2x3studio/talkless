@@ -62,7 +62,7 @@ final class Diagnostics: @unchecked Sendable {
         "engine": ["qwen", "doubao"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
-        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear", "configuration_sent", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received"],
+        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear", "configuration_sent", "websocket_open", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received"],
         "reason": [
             "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
