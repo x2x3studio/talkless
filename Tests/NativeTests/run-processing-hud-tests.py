@@ -76,7 +76,7 @@ final class Diagnostics: @unchecked Sendable {
     }
     func cancel() {}
 }
-@MainActor final class FakeSession {
+@MainActor class FakeSession {
     var onFinish: () -> Void = {}
     var result = "raw transcript"
     var failure: Error?
@@ -92,8 +92,16 @@ final class Diagnostics: @unchecked Sendable {
         return result
     }
 }
+@MainActor final class EnhancedTranscriptionSession: FakeSession {
+    var secondaryTranscript: String?
+    init(online: FakeSession, local: FakeSession) { super.init() }
+}
 enum OutputLanguage { case original, english }
 struct Settings {
+    var enhancedRecognition = false
+    var sentenceCandidates = false
+    var candidateWaitSeconds = 5
+    var doubaoConfigured = true
     var polishEnabled = true
     var llmConfigured = true
     var llmConfig = 0
@@ -121,6 +129,37 @@ enum Prompts {
         onComplete()
         if fail { throw NSError(domain: "Synthetic polish failure", code: 1) }
         return "processed transcript"
+    }
+}
+@MainActor enum EnhancedPolish {
+    static var choices = ["processed transcript"]
+    static var inputs: [(primary: String, secondary: String?)] = []
+    static func run(primary: String, secondary: String?, context: Context?, settings: Settings) async throws -> [String] {
+        inputs.append((primary, secondary))
+        await Task.yield()
+        return choices
+    }
+}
+@MainActor final class SentenceCandidatesPanel {
+    struct Selection {
+        let text: String
+        let explicit: Bool
+    }
+    var requests: [(candidates: [String], timeout: TimeInterval)] = []
+    var selection: Selection?
+    var suspendChoice = false
+    var pendingChoice: CheckedContinuation<Selection?, Never>?
+    var cancels = 0
+    func choose(candidates: [String], timeout: TimeInterval) async -> Selection? {
+        requests.append((candidates, timeout))
+        if suspendChoice { return await withCheckedContinuation { pendingChoice = $0 } }
+        await Task.yield()
+        return selection
+    }
+    func cancel() {
+        cancels += 1
+        pendingChoice?.resume(returning: nil)
+        pendingChoice = nil
     }
 }
 enum PolishValidation {
@@ -174,6 +213,9 @@ struct HistoryEntry {
     private var diagnosticOperation: DictationOperation? = DictationOperation(generation: 0, engine: "qwen", recordingMode: "hold", handsFree: false)
     var pressedAt: UInt64? = 123
     var recordingPolishEnabled = true
+    var recordingCandidatesEnabled = false
+    var recordingCandidateWait: TimeInterval = 5
+    let sentencePanel = SentenceCandidatesPanel()
     let hotkeys = FakeHotkeys()
     func updateTriggerKey() {}
     var editSelection: String?
@@ -202,6 +244,8 @@ struct HistoryEntry {
         return appChanged ? ("target_changed", "The app changed. Result saved in History.") : nil
     }
     func cancel(reason: String = "user") {
+        sentencePanel.cancel()
+        aiInProgress = false
         diagnosticOperation?.record("dictation_cancel", ["reason": reason])
         cancelled = true
         acceptsRecognitionHUDUpdates = false
@@ -555,6 +599,90 @@ TESTS = r'''
             }
         }
         print("PASS successful Qwen finish repairs failed prewarm readiness with directory/generation isolation")
+        for explicit in [false, true] {
+            for translated in [false, true] {
+                let test = ProcessingHarness()
+                test.recordingCandidatesEnabled = true
+                test.recordingCandidateWait = 7
+                test.settings.outputLanguage = translated ? .english : .original
+                EnhancedPolish.choices = ["first candidate", "chosen candidate"]
+                EnhancedPolish.inputs = []
+                let selected = explicit ? "chosen candidate" : "first candidate"
+                test.sentencePanel.selection = .init(text: selected, explicit: explicit)
+                TextIO.inserted = []
+                LLMClient.calls = 0
+                test.stopAndProcess()
+                // Mid-processing preferences affect only the next recording.
+                test.settings.sentenceCandidates = false
+                test.settings.candidateWaitSeconds = 15
+                await test.processingTask?.value
+                precondition(EnhancedPolish.inputs.count == 1 && EnhancedPolish.inputs[0].primary == "raw transcript"
+                             && EnhancedPolish.inputs[0].secondary == nil && LLMClient.calls == 0)
+                precondition(test.sentencePanel.requests.count == 1
+                             && test.sentencePanel.requests[0].candidates == EnhancedPolish.choices
+                             && test.sentencePanel.requests[0].timeout == 7)
+                precondition(TextIO.inserted == [selected] && test.lastTranscript == selected)
+                precondition(test.history.entries.count == 1 && test.history.entries[0].output == selected)
+                let learning = explicit && !translated ? selected : "raw transcript"
+                precondition(test.settings.learned.count == 1
+                             && test.settings.learned[0] == ("raw transcript", learning),
+                             "Only an explicit same-language candidate is correction evidence; timeout only refreshes raw words")
+                precondition(test.hud.phases == [.recognizing, .polishing, .hidden, .inserting, .completed])
+                precondition(test.state == .idle && test.processingTask == nil && !test.aiInProgress)
+            }
+        }
+        print("PASS multiple candidates insert explicit choice or timeout default; only explicit same-language choices teach corrections")
+        for enhanced in [false, true] {
+            let test = ProcessingHarness()
+            test.recordingCandidatesEnabled = !enhanced
+            if enhanced {
+                let session = EnhancedTranscriptionSession(online: FakeSession(), local: FakeSession())
+                session.secondaryTranscript = "local transcript"
+                test.session = session
+            }
+            // Single-result candidate mode and enhanced recognition with review off both bypass the panel.
+            EnhancedPolish.choices = enhanced ? ["merged transcript", "unused alternative"] : ["only candidate"]
+            EnhancedPolish.inputs = []
+            TextIO.inserted = []
+            LLMClient.calls = 0
+            test.stopAndProcess()
+            await test.processingTask?.value
+            let expected = EnhancedPolish.choices[0]
+            precondition(test.sentencePanel.requests.isEmpty && TextIO.inserted == [expected])
+            precondition(EnhancedPolish.inputs.count == 1 && EnhancedPolish.inputs[0].primary == "raw transcript"
+                         && EnhancedPolish.inputs[0].secondary == (enhanced ? "local transcript" : nil))
+            precondition(LLMClient.calls == 0 && test.history.entries.count == 1)
+            precondition(test.settings.learned.count == 1 && test.settings.learned[0] == ("raw transcript", expected))
+            precondition(test.hud.phases == [.recognizing, .polishing, .inserting, .completed])
+        }
+        print("PASS a single candidate never opens the panel; enhanced recognition forwards secondary text and works without review")
+        for controllerCancel in [false, true] {
+            let test = ProcessingHarness()
+            test.recordingCandidatesEnabled = true
+            test.sentencePanel.suspendChoice = controllerCancel
+            EnhancedPolish.choices = ["first candidate", "second candidate"]
+            TextIO.inserted = []
+            Diagnostics.shared.events = []
+            test.stopAndProcess()
+            let task = test.processingTask!
+            if controllerCancel {
+                for _ in 0..<1000 {
+                    if test.sentencePanel.pendingChoice != nil { break }
+                    try? await Task.sleep(for: .milliseconds(1))
+                }
+                precondition(test.sentencePanel.pendingChoice != nil, "Candidate review must be pending before cancellation")
+                test.cancel()
+            }
+            await task.value
+            precondition(test.sentencePanel.requests.count == 1 && TextIO.inserted.isEmpty)
+            precondition(test.history.entries.isEmpty && test.settings.learned.isEmpty && test.lastTranscript.isEmpty,
+                         "Cancelling candidates must not insert, learn, or save an unchosen result")
+            precondition(test.state == .idle && test.processingTask == nil && !test.aiInProgress
+                         && test.hud.model.phase == .hidden)
+            precondition(Diagnostics.shared.events.contains { $0.0 == "processing_cancelled" })
+        }
+        EnhancedPolish.choices = ["processed transcript"]
+        print("PASS panel dismissal and controller cancellation never insert, learn, or save an unchosen candidate")
         await check("configured polish", phases: [.recognizing, .polishing, .inserting, .completed])
         await check("disabled polish", enabled: false, phases: [.recognizing, .inserting, .completed])
         await check("unconfigured polish", configured: false, phases: [.recognizing, .inserting, .completed])
@@ -597,6 +725,10 @@ final class Diagnostics: @unchecked Sendable {
 @MainActor final class FakeSettings {
     enum Engine: String, CaseIterable { case qwen, doubao }
     var asrEngine: Engine = .qwen
+    var enhancedRecognition = false
+    var sentenceCandidates = false
+    var candidateWaitSeconds = 5
+    var doubaoConfigured = true
     var audioInputDeviceUID: String?
     var polishEnabled = true
     var llmConfig = 0
@@ -618,7 +750,7 @@ final class Diagnostics: @unchecked Sendable {
     func learnFromDictation(raw: String, output: String, fired: Set<String>) {}
     var doubaoConfig = "synthetic-config"
     var onlineLocalFallback = false
-    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
+    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback || enhancedRecognition }
     var modelInstalled = true
     func resolvedQwenModelDirectory() throws -> URL {
         guard modelInstalled else { throw NSError(domain: "Synthetic", code: 2) }
@@ -676,9 +808,18 @@ enum AVCaptureDevice {
         super.init()
     }
 }
+@MainActor final class EnhancedTranscriptionSession: FakeSession {
+    var secondaryTranscript: String?
+    let online: any TranscriptionSession
+    let local: any TranscriptionSession
+    init(online: any TranscriptionSession, local: any TranscriptionSession) {
+        self.online = online; self.local = local
+        super.init()
+    }
+}
 @MainActor final class DoubaoTranscriptionSession: FakeSession {
     static var notConfigured = false
-    init(config: String, onError: @escaping (String) -> Void) throws {
+    init(config: String, onError: @escaping (String) -> Void = { _ in }) throws {
         if Self.notConfigured { throw NSError(domain: "Synthetic", code: 3) }
         super.init(); self.onError = onError
     }
@@ -773,6 +914,9 @@ typealias AudioRecorder = FakeRecorder
     var processingTask: Task<Void, Never>?
     var onModelSetupRequested: (() -> Void)?
     var recordingPolishEnabled = true
+    var recordingCandidatesEnabled = false
+    var recordingCandidateWait: TimeInterval = 5
+    let sentencePanel = SentenceCandidatesPanel()
     var lastTranscript = ""
     let history = FakeHistory()
     let translationPanel = FakeTranslationPanel()
@@ -869,6 +1013,49 @@ STARTUP_TESTS = r'''
             precondition(blocked.state == .idle && blocked.session == nil, "Without the switch, online setup errors still block")
         }
         print("PASS fallback is a safety net: no model keeps online, unset online uses local only when enabled")
+        for missing in ["doubao", "llm", "model"] {
+            let blocked = StartupHarness()
+            blocked.settings.asrEngine = .doubao
+            blocked.settings.enhancedRecognition = true
+            blocked.settings.onlineLocalFallback = true
+            blocked.settings.doubaoConfigured = missing != "doubao"
+            blocked.settings.llmConfigured = missing != "llm"
+            blocked.settings.modelInstalled = missing != "model"
+            FakeSession.latest = nil
+            LLMAPITransport.preconnects = []
+            TextIO.inserted = []
+            blocked.startRecording()
+            precondition(blocked.state == .idle && blocked.session == nil && blocked.startupTask == nil)
+            precondition(blocked.recorder.startCalls == 0 && FakeSession.latest == nil
+                         && LLMAPITransport.preconnects.isEmpty && TextIO.inserted.isEmpty,
+                         "Enhanced recognition requires every provider; fallback must not silently downgrade it")
+            guard case .error = blocked.hud.model.phase else { preconditionFailure("Missing enhanced setup must be actionable") }
+        }
+        print("PASS missing Doubao/AI/local model blocks enhanced recognition before capture, session creation, or preconnect")
+        for waitSeconds in [1, 5, 20] {
+            let enhanced = StartupHarness()
+            enhanced.settings.asrEngine = .doubao
+            enhanced.settings.enhancedRecognition = true
+            enhanced.settings.polishEnabled = false
+            enhanced.settings.sentenceCandidates = true
+            enhanced.settings.candidateWaitSeconds = waitSeconds
+            enhanced.startRecording()
+            await enhanced.startupTask?.value
+            guard let session = enhanced.session as? EnhancedTranscriptionSession else {
+                preconditionFailure("Enhanced startup must construct both recognizers")
+            }
+            precondition(session.online is DoubaoTranscriptionSession && session.local is QwenTranscriptionSession)
+            precondition(enhanced.recordingPolishEnabled && enhanced.recordingCandidatesEnabled
+                         && enhanced.recordingCandidateWait == TimeInterval(min(15, max(2, waitSeconds))))
+            precondition(enhanced.recordingModelDirectory == nil, "Online success cannot certify local readiness")
+            enhanced.settings.sentenceCandidates = false
+            enhanced.settings.candidateWaitSeconds = 3
+            precondition(enhanced.recordingCandidatesEnabled
+                         && enhanced.recordingCandidateWait == TimeInterval(min(15, max(2, waitSeconds))),
+                         "Recording captures candidate settings before asynchronous startup")
+            enhanced.cancel()
+        }
+        print("PASS enhanced startup constructs both engines, forces polish, and snapshots/clamps candidate wait")
 
         TextIO.axSelection = nil // An app that does not expose its selection through Accessibility.
         for voiceEdit in [false, true] {

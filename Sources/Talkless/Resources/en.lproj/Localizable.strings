@@ -1,6 +1,19 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "The microphone is not responding. Quit and reopen Talkless, then try again.";
 "About" = "About";
+"Enhanced recognition" = "Enhanced recognition";
+"Enhanced recognition could not finish. Check the local model and Doubao connection, then try again." = "Enhanced recognition could not finish. Check the local model and Doubao connection, then try again.";
+"Sentence alternatives" = "Sentence alternatives";
+"Candidate wait: %lld seconds" = "Candidate wait: %lld seconds";
+"Enhanced recognition needs a local model, Doubao, and an AI service." = "Enhanced recognition needs a local model, Doubao, and an AI service.";
+"Uses local recognition and Doubao together, then compares both transcripts with your AI service. Requires a downloaded local model and both services; uses more resources and may take longer." = "Uses local recognition and Doubao together, then compares both transcripts with your AI service. Requires a downloaded local model and both services; uses more resources and may take longer.";
+"When AI finds ambiguity, click one complete sentence. Hover to pause; the default is used when time runs out." = "When AI finds ambiguity, click one complete sentence. Hover to pause; the default is used when time runs out.";
+"Choose a sentence" = "Choose a sentence";
+"%d seconds · default" = "%d seconds · default";
+"Paused" = "Paused";
+"Click a sentence, or wait to use the default." = "Click a sentence, or wait to use the default.";
+"Default" = "Default";
+"Pointer inside pauses the countdown." = "Pointer inside pauses the countdown.";
 "Current microphone: %@" = "Current microphone: %@";
 "No available system microphone. Choose an input device." = "No available system microphone. Choose an input device.";
 "Checking microphones…" = "Checking microphones…";

@@ -1,6 +1,19 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "麦克风没有响应。请退出并重新打开 Talkless 后重试。";
 "About" = "关于";
+"Enhanced recognition" = "增强识别";
+"Enhanced recognition could not finish. Check the local model and Doubao connection, then try again." = "增强识别未能完成，请检查本地模型及豆包连接后重试。";
+"Sentence alternatives" = "整句备选";
+"Candidate wait: %lld seconds" = "候选等待：%lld 秒";
+"Enhanced recognition needs a local model, Doubao, and an AI service." = "增强识别需要本地模型、豆包和 AI 服务，请先完成配置。";
+"Uses local recognition and Doubao together, then compares both transcripts with your AI service. Requires a downloaded local model and both services; uses more resources and may take longer." = "本地与豆包同时识别，再由 AI 服务对照纠错。需要下载本地模型并配置两项服务，会增加资源消耗，也可能延长等待。";
+"When AI finds ambiguity, click one complete sentence. Hover to pause; the default is used when time runs out." = "AI 发现歧义时，可点击选择完整句子。鼠标移入暂停倒计时，超时采用默认句子。";
+"Choose a sentence" = "选择一句";
+"%d seconds · default" = "%d 秒后使用默认句";
+"Paused" = "已暂停";
+"Click a sentence, or wait to use the default." = "点击一句，或稍候使用默认句。";
+"Default" = "默认";
+"Pointer inside pauses the countdown." = "鼠标移入可暂停倒计时。";
 "Current microphone: %@" = "当前麦克风：%@";
 "No available system microphone. Choose an input device." = "没有可用的系统麦克风，请选择输入设备。";
 "Checking microphones…" = "正在检查麦克风…";

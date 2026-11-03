@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- Optional Enhanced recognition runs local ASR and Doubao on the same recording and asks the configured AI service to compare their transcripts. After the first nonempty result, it waits at most two seconds for the other; one recognizer failing does not discard the other result.
+- Optional Sentence alternatives shows up to three complete AI-polished versions only when ambiguity remains, with differing words highlighted. Click a sentence to use it; hovering pauses the countdown, leaving resumes it, and timeout uses the default. Wait time defaults to five seconds and is adjustable from two to fifteen.
+- Explicit sentence selections feed existing dictionary learning; a timed-out choice does not count as user approval. Both features default off and live in AI polishing settings. Accuracy gains have not yet been benchmarked with real recordings.
+
+## 2026.1103.15369
+
 ### Changed
 - Voice input settings now start with the microphone, followed by shortcuts and recognition options on one page. System default shows the actual device name, with an unavailable warning when needed.
 - AI polishing preferences and service setup share their own page; local text formatting has a separate page. Existing preferences are preserved.

@@ -193,7 +193,10 @@ final class AppSettings: ObservableObject {
     }
     var doubaoConfigured: Bool { doubaoConfig.isConfigured }
     @Published var onlineLocalFallback: Bool { didSet { save(onlineLocalFallback, "onlineLocalFallback") } }
-    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
+    @Published var enhancedRecognition: Bool { didSet { save(enhancedRecognition, "enhancedRecognition") } }
+    @Published var sentenceCandidates: Bool { didSet { save(sentenceCandidates, "sentenceCandidates") } }
+    @Published var candidateWaitSeconds: Int { didSet { save(candidateWaitSeconds, "candidateWaitSeconds") } }
+    var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback || enhancedRecognition }
 
 
     @Published var polishEnabled: Bool { didSet { save(polishEnabled, "polishEnabled") } }
@@ -296,6 +299,9 @@ final class AppSettings: ObservableObject {
         doubaoAPIKey = ""
         doubaoCredentialError = nil
         onlineLocalFallback = d.bool(forKey: "onlineLocalFallback")
+        enhancedRecognition = d.bool(forKey: "enhancedRecognition")
+        sentenceCandidates = d.bool(forKey: "sentenceCandidates")
+        candidateWaitSeconds = min(15, max(2, d.object(forKey: "candidateWaitSeconds") as? Int ?? 5))
         doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
         doubaoInputLanguage = DoubaoInputLanguage(rawValue: d.string(forKey: "doubaoInputLanguage") ?? "") ?? .automatic
         doubaoSpokenCleanup = d.bool(forKey: "doubaoSpokenCleanup")

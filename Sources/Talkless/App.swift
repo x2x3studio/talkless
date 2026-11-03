@@ -111,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.controller.prepareSelectedModel() }
             .store(in: &cancellables)
+        settings.$enhancedRecognition
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.controller.prepareSelectedModel() }
+            .store(in: &cancellables)
         controller.$state
             .removeDuplicates()
             .receive(on: RunLoop.main)

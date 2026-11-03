@@ -427,6 +427,18 @@ struct ProviderSettingsTests {
         check(speechStore.speech == "synthetic-doubao-key", "Save failure preserves the previous key")
         check(ASREngine.allCases == [.qwen, .doubao], "Exactly two recognition choices")
         check(!online.onlineLocalFallback && !online.needsLocalModel, "Online defaults to no local standby")
+        check(!online.enhancedRecognition && !online.sentenceCandidates && online.candidateWaitSeconds == 5,
+              "Enhanced recognition and sentence alternatives are opt-in")
+        online.enhancedRecognition = true
+        online.sentenceCandidates = true
+        online.candidateWaitSeconds = 8
+        check(online.needsLocalModel, "Enhanced recognition keeps a local model ready")
+        let enhancedRestored = settings(speechDefaults, speechStore)
+        check(enhancedRestored.enhancedRecognition && enhancedRestored.sentenceCandidates && enhancedRestored.candidateWaitSeconds == 8,
+              "Enhanced preferences persist independently")
+        online.enhancedRecognition = false
+        speechDefaults.set(999, forKey: "candidateWaitSeconds")
+        check(settings(speechDefaults, speechStore).candidateWaitSeconds == 15, "Candidate wait is bounded on restore")
         online.onlineLocalFallback = true
         check(online.needsLocalModel, "Online fallback keeps the local model resident")
         check(settings(speechDefaults, speechStore).onlineLocalFallback, "Fallback preference survives relaunch")

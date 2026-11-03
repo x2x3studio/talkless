@@ -72,6 +72,9 @@ final class DictationController: ObservableObject {
     private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
+    private var recordingCandidatesEnabled = false
+    private var recordingCandidateWait: TimeInterval = 5
+    private let sentencePanel = SentenceCandidatesPanel()
     /// Per-recording snapshot of explicit "heard as" fixes, like the dictionary hints.
     private var recordingReplacements: [DictionaryReplacement] = []
     private var languageSubscription: AnyCancellable?
@@ -381,15 +384,20 @@ final class DictationController: ObservableObject {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             return
         }
+        let enhanced = settings.enhancedRecognition && !editIntent
+        if enhanced && (!settings.doubaoConfigured || !settings.llmConfigured) {
+            hud.show(.error(L10n.tr("Enhanced recognition needs a local model, Doubao, and an AI service.")))
+            return
+        }
         let localSelected = settings.asrEngine == .qwen
         let modelBusy = ModelManager.shared.operationModelID != nil
-        if localSelected, modelBusy {
+        if localSelected || enhanced, modelBusy {
             operation.record("recording_blocked", ["reason": "model_busy", "stage": "startup"])
             hud.show(.error(L10n.tr("Wait for the model operation to finish before starting dictation.")))
             return
         }
         var qwenDirectory: URL?
-        if localSelected {
+        if localSelected || enhanced {
             do { qwenDirectory = try settings.resolvedQwenModelDirectory() }
             catch {
                 operation.record("recording_blocked", ["reason": "model_unavailable", "stage": "startup"])
@@ -448,45 +456,58 @@ final class DictationController: ObservableObject {
         }
         let session: any TranscriptionSession
         var usesLocalSession = localSelected
-        switch settings.asrEngine {
-        case .qwen:
-            guard let qwenDirectory else { return }
-            session = localSession(qwenDirectory)
-        case .doubao:
+        if enhanced, let qwenDirectory {
             do {
-                let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
-                    guard let self, self.isCurrentRecognition(generation) else { return }
-                    if fallbackEnabled {
-                        // Keep recording the whole utterance for local replay when the key is released.
-                        self.hud.model.notice = L10n.tr("Doubao failed. Offline recognition will finish this recording.")
-                    } else {
-                        self.cancel(reason: "recognition_error")
-                        self.hud.show(.error(message))
-                    }
-                })
-                if fallbackEnabled, let directory = qwenDirectory {
-                    session = FallbackTranscriptionSession(online: online, makeLocal: {
-                        QwenTranscriptionSession(modelDirectory: directory, language: nil, contextualStrings: dictionaryTerms)
-                    }, onFallback: { [weak self] in
-                        guard let self, self.isCurrentRecognition(generation) else { return }
-                        self.diagnosticOperation?.record("recognition_fallback", ["fallback": "true"])
-                        self.hud.model.preview = ""
-                        self.hud.model.notice = L10n.tr("Doubao failed. Using offline recognition for this recording.")
-                        self.hud.show(.recognizing)
-                    })
-                } else { session = online }
+                let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig)
+                let local = QwenTranscriptionSession(modelDirectory: qwenDirectory, language: nil, contextualStrings: dictionaryTerms)
+                session = EnhancedTranscriptionSession(online: online, local: local)
+                // A successful online result does not prove that the local model loaded.
+                usesLocalSession = false
             } catch {
-                guard fallbackEnabled, let qwenDirectory else {
-                    operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
-                    hud.show(.error(error.localizedDescription))
-                    onModelSetupRequested?()
-                    return
-                }
-                // Online cannot start (for example, no key yet): record locally instead.
-                operation.record("recognition_fallback", ["fallback": "true", "stage": "startup"])
-                hud.model.notice = L10n.tr("Doubao is not set up. Using offline recognition for this recording.")
+                hud.show(.error(error.localizedDescription))
+                return
+            }
+        } else {
+            switch settings.asrEngine {
+            case .qwen:
+                guard let qwenDirectory else { return }
                 session = localSession(qwenDirectory)
-                usesLocalSession = true
+            case .doubao:
+                do {
+                    let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
+                        guard let self, self.isCurrentRecognition(generation) else { return }
+                        if fallbackEnabled {
+                            // Keep recording the whole utterance for local replay when the key is released.
+                            self.hud.model.notice = L10n.tr("Doubao failed. Offline recognition will finish this recording.")
+                        } else {
+                            self.cancel(reason: "recognition_error")
+                            self.hud.show(.error(message))
+                        }
+                    })
+                    if fallbackEnabled, let directory = qwenDirectory {
+                        session = FallbackTranscriptionSession(online: online, makeLocal: {
+                            QwenTranscriptionSession(modelDirectory: directory, language: nil, contextualStrings: dictionaryTerms)
+                        }, onFallback: { [weak self] in
+                            guard let self, self.isCurrentRecognition(generation) else { return }
+                            self.diagnosticOperation?.record("recognition_fallback", ["fallback": "true"])
+                            self.hud.model.preview = ""
+                            self.hud.model.notice = L10n.tr("Doubao failed. Using offline recognition for this recording.")
+                            self.hud.show(.recognizing)
+                        })
+                    } else { session = online }
+                } catch {
+                    guard fallbackEnabled, let qwenDirectory else {
+                        operation.record("recording_blocked", ["reason": "not_configured", "stage": "startup"])
+                        hud.show(.error(error.localizedDescription))
+                        onModelSetupRequested?()
+                        return
+                    }
+                    // Online cannot start (for example, no key yet): record locally instead.
+                    operation.record("recognition_fallback", ["fallback": "true", "stage": "startup"])
+                    hud.model.notice = L10n.tr("Doubao is not set up. Using offline recognition for this recording.")
+                    session = localSession(qwenDirectory)
+                    usesLocalSession = true
+                }
             }
         }
         session.onPartial = { [weak self] partial in
@@ -517,7 +538,9 @@ final class DictationController: ObservableObject {
         // callbacks must never wait for engine/input-node/HAL startup or teardown.
         state = .recording
         // Snapshotted so a Settings change only affects the next recording.
-        recordingPolishEnabled = settings.polishEnabled
+        recordingPolishEnabled = settings.polishEnabled || enhanced
+        recordingCandidatesEnabled = settings.sentenceCandidates
+        recordingCandidateWait = TimeInterval(min(15, max(2, settings.candidateWaitSeconds)))
         // Overlap the AI service handshake with speech instead of paying it after recognition.
         if editSelection != nil || (recordingPolishEnabled && settings.llmConfigured) {
             LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
@@ -595,6 +618,8 @@ final class DictationController: ObservableObject {
             return
         }
         let shouldPolish = recordingPolishEnabled
+        let showCandidates = recordingCandidatesEnabled
+        let candidateWait = recordingCandidateWait
         pressedAt = nil
         let operation = diagnosticOperation
         let processingStarted = DispatchTime.now().uptimeNanoseconds
@@ -657,6 +682,8 @@ final class DictationController: ObservableObject {
                 var kind = HistoryEntry.Kind.dictation
                 var polishError: String?
                 var polished = false
+                var candidateReviewUsed = false
+                var explicitlyChosen = false
                 if let selection = editSelection {
                     kind = .edit
                     stage = "edit"
@@ -677,12 +704,30 @@ final class DictationController: ObservableObject {
                     self.aiInProgress = true
                     self.hud.show(.polishing)
                     do {
-                        output = try await LLMClient.complete(
-                            system: Prompts.polish(context: context, settings: self.settings),
-                            user: Prompts.polishInput(raw),
-                            config: self.settings.llmConfig,
-                            timeout: 15
-                        )
+                        if showCandidates || session is EnhancedTranscriptionSession {
+                            let secondary = (session as? EnhancedTranscriptionSession)?.secondaryTranscript
+                            let choices = try await EnhancedPolish.run(primary: raw, secondary: secondary,
+                                                                       context: context, settings: self.settings)
+                            guard generation == self.generation, !Task.isCancelled else { return }
+                            output = choices[0]
+                            if showCandidates, choices.count > 1 {
+                                candidateReviewUsed = true
+                                self.hud.show(.hidden)
+                                guard let selection = await self.sentencePanel.choose(candidates: choices, timeout: candidateWait) else {
+                                    throw CancellationError()
+                                }
+                                guard generation == self.generation, !Task.isCancelled else { return }
+                                output = selection.text
+                                explicitlyChosen = selection.explicit
+                            }
+                        } else {
+                            output = try await LLMClient.complete(
+                                system: Prompts.polish(context: context, settings: self.settings),
+                                user: Prompts.polishInput(raw),
+                                config: self.settings.llmConfig,
+                                timeout: 15
+                            )
+                        }
                         let emptyOutput = output.isEmpty
                         if emptyOutput { output = raw }
                         output = try PolishValidation.validate(source: raw, output: output)
@@ -703,6 +748,7 @@ final class DictationController: ObservableObject {
                 if kind == .dictation {
                     // Same-language polish is evidence of how the recognizer mishears this user.
                     let sameLanguage = polished && self.settings.outputLanguage == .original
+                        && (!candidateReviewUsed || explicitlyChosen)
                     self.settings.learnFromDictation(raw: raw, output: sameLanguage ? output : raw, fired: fixed.fired)
                     // The user's punctuation and spacing choices apply last, to every dictation.
                     output = TextFormatting.apply(output, punctuation: self.settings.punctuationStyle,
@@ -795,6 +841,7 @@ final class DictationController: ObservableObject {
     }
 
     func cancel(reason: String = "user") {
+        sentencePanel.cancel()
         hud.model.notice = nil
         acceptsRecognitionHUDUpdates = false
         aiInProgress = false

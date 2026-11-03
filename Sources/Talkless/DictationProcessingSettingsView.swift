@@ -18,6 +18,21 @@ struct DictationProcessingSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Toggle(L10n.tr("Enhanced recognition"), isOn: $settings.enhancedRecognition)
+            Text(L10n.tr("Uses local recognition and Doubao together, then compares both transcripts with your AI service. Requires a downloaded local model and both services; uses more resources and may take longer."))
+                .settingsNote()
+            if settings.enhancedRecognition, !settings.doubaoConfigured || !settings.llmConfigured {
+                Text(L10n.tr("Enhanced recognition needs a local model, Doubao, and an AI service."))
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            Toggle(L10n.tr("Sentence alternatives"), isOn: $settings.sentenceCandidates)
+            Text(L10n.tr("When AI finds ambiguity, click one complete sentence. Hover to pause; the default is used when time runs out."))
+                .settingsNote()
+            if settings.sentenceCandidates {
+                Stepper(L10n.format("Candidate wait: %lld seconds", Int64(settings.candidateWaitSeconds)),
+                        value: $settings.candidateWaitSeconds, in: 2...15)
+            }
+
             AIServiceStatusView(settings: settings)
             if !settings.llmConfigured {
                 Text(L10n.tr("Set up an AI service to use AI polishing. Until then, dictation skips AI polishing."))
