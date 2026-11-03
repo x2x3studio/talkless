@@ -801,14 +801,12 @@ enum AVCaptureDevice {
     func finish(samples: [Float]) async throws -> String { finishes += 1; return "raw transcript" }
 }
 @MainActor final class QwenTranscriptionSession: FakeSession {
-    let livePreview: Bool
     static var preparationCalls = 0
     static var unloadCalls = 0
     static func prepareAssets(modelDirectory: URL) async throws { preparationCalls += 1 }
     static func unloadModel() async { unloadCalls += 1; await Task.yield() }
-    init(modelDirectory: URL, language: String?, contextualStrings: [String], livePreview: Bool = true,
+    init(modelDirectory: URL, language: String?, contextualStrings: [String],
          onStatus: @escaping (String) -> Void = { _ in }, onError: @escaping (String) -> Void = { _ in }) {
-        self.livePreview = livePreview
         super.init(); terms = contextualStrings; self.onStatus = onStatus; self.onError = onError
     }
 }
@@ -1058,8 +1056,6 @@ STARTUP_TESTS = r'''
                 preconditionFailure("Enhanced startup must construct both recognizers")
             }
             precondition(session.online is DoubaoTranscriptionSession && session.local is QwenTranscriptionSession)
-            precondition(!(session.local as! QwenTranscriptionSession).livePreview,
-                         "Enhanced local recognition must reserve inference for the full recording at finish")
             precondition(enhanced.recordingPolishEnabled && enhanced.recordingCandidatesEnabled
                          && enhanced.recordingCandidateWait == TimeInterval(min(15, max(2, waitSeconds))))
             precondition(enhanced.recordingModelDirectory == nil, "Online success cannot certify local readiness")
@@ -1127,7 +1123,6 @@ STARTUP_TESTS = r'''
             do {
                 if engine == .qwen {
                     precondition(old.terms == ["Talkless", "\u{5317}\u{4EAC}"])
-                    precondition((old as! QwenTranscriptionSession).livePreview, "Ordinary local dictation keeps live previews enabled")
                 }
                 old.onPartial?("Talkless \u{5317}\u{4EAC} NextSession")
                 precondition(matched(test.hud.model) == ["Talkless", "\u{5317}\u{4EAC}"])

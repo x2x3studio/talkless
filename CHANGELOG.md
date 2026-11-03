@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Changed
+- Offline and enhanced recognition now share the same local inference policy: reprocess cumulative audio during recording, then recognize the full recording on finish. Removed the enhanced-only batch switch; preview display and dual-result fusion remain separate from inference scheduling.
+
+## 2026.1103.39349
+
+### Changed
 - Enhanced recognition now runs the local recognizer once after recording ends, while Doubao continues streaming during speech.
 - Offline dictation previews reprocess the full accumulated recording about every two seconds of new audio, replacing rather than appending the preview. Final recognition always reprocesses the complete recording; long audio retains safe internal 30-second windows without dropping samples. Models remain resident between utterances.
 

@@ -188,22 +188,20 @@ let tests = #"""
         print("PASS cumulative 2/4/6-second previews, lossless 30-second windows, and fresh full-recording final")
 
         await runtime.reset()
-        let batch = QwenTranscriptionSession(modelDirectory: directory, livePreview: false)
-        batch.onPartial = { _ in fatalError("Batch recognition must never publish a preview") }
+        let batch = QwenTranscriptionSession(modelDirectory: directory)
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(all.count))!
         buffer.frameLength = AVAudioFrameCount(all.count)
         all.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: $0.count) }
         batch.feed(buffer)
-        try await wait { await runtime.preparations == 1 }
-        try await Task.sleep(for: .milliseconds(100))
+        try await wait { await runtime.calls.count == 2 }
         let beforeBatchFinish = await runtime.calls
-        precondition(beforeBatchFinish.isEmpty, "livePreview:false must not decode before finish, even beyond 30 seconds")
+        precondition(beforeBatchFinish.flatMap { $0 } == all, "Every session previews the cumulative recording")
         let batchFinal = try await batch.finish(samples: all)
         let batchCalls = await runtime.calls
-        precondition(batchCalls.count == 2 && batchCalls.flatMap { $0 } == all)
+        precondition(batchCalls.count == 4 && batchCalls.suffix(2).flatMap { $0 } == all)
         precondition(batchFinal == "[1..480000] [480001..520000]")
-        print("PASS session batch mode skips all live inference and decodes the complete recording only on finish")
+        print("PASS shared local session previews and finally reprocesses the complete recording")
 
         await runtime.reset()
         let cancelled = QwenCaptureState()

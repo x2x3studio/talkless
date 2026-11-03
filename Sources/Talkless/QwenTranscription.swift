@@ -19,7 +19,6 @@ final class QwenTranscriptionSession: TranscriptionSession, @unchecked Sendable 
         modelDirectory: URL,
         language: String? = nil,
         contextualStrings: [String] = [],
-        livePreview: Bool = true,
         onStatus: @escaping @MainActor @Sendable (String) -> Void = { _ in },
         onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }
     ) {
@@ -31,7 +30,6 @@ final class QwenTranscriptionSession: TranscriptionSession, @unchecked Sendable 
                     modelDirectory: modelDirectory,
                     language: language,
                     context: contextualStrings.joined(separator: ", "),
-                    livePreview: livePreview,
                     onStatus: onStatus
                 )
             } catch {
@@ -407,7 +405,6 @@ private final class QwenCaptureState: @unchecked Sendable {
 
     func run(
         modelDirectory: URL, language: String?, context: String,
-        livePreview: Bool = true,
         onStatus: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> String {
         defer {
@@ -447,7 +444,7 @@ private final class QwenCaptureState: @unchecked Sendable {
             }
 
             // Coalesce arrivals during inference; never queue snapshots every two seconds.
-            if livePreview, audio.count - decodedSamples >= decodeIntervalSamples {
+            if audio.count - decodedSamples >= decodeIntervalSamples {
                 let preview = try await decodeRecording(audio, modelDirectory: modelDirectory, language: language,
                                                         context: context, final: false)
                 try checkCancellation()
