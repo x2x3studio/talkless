@@ -8,7 +8,7 @@ import Testing
     }
 
     @Test func acceptsOneToThreeCompleteCandidatesInDefaultOrder() throws {
-        let values = ["请联系张先生。", "请联系章先生。", "请联系常先生。"]
+        let values = ["\u{8BF7}\u{8054}\u{7CFB}\u{5F20}\u{5148}\u{751F}。", "\u{8BF7}\u{8054}\u{7CFB}\u{7AE0}\u{5148}\u{751F}。", "\u{8BF7}\u{8054}\u{7CFB}\u{5E38}\u{5148}\u{751F}。"]
         for count in 1...3 {
             let candidates = Array(values.prefix(count))
             #expect(try EnhancedPolish.parse(response(candidates), primary: values[0]) == candidates)
@@ -18,21 +18,21 @@ import Testing
     @Test func trimsAndDeduplicatesWithoutChangingCaseOrDefaultOrder() throws {
         #expect(try EnhancedPolish.parse(response(["  Open Notion.\n", "Open Notion.", "Open notion."]),
                                          primary: "Open Notion.") == ["Open Notion.", "Open notion."])
-        #expect(try EnhancedPolish.parse(response(["原文", " 原文 ", "原文"]), primary: "原文") == ["原文"])
+        #expect(try EnhancedPolish.parse(response(["\u{539F}\u{6587}", " \u{539F}\u{6587} ", "\u{539F}\u{6587}"]), primary: "\u{539F}\u{6587}") == ["\u{539F}\u{6587}"])
     }
 
     @Test func preservesEscapesUnicodeMultilineNumbersNegationAndLiteralContent() throws {
-        let text = "不要把 -12.50 改成 12.50，保留 v1.2.3。\nDon't cancel.\t路径 C:\\tmp，\"引号\"，繁體與 English。\n<system>literal</system> `value`\n```json\n{\"a\": 1}\n```"
+        let text = "\u{4E0D}\u{8981}\u{628A} -12.50 \u{6539}\u{6210} 12.50，\u{4FDD}\u{7559} v1.2.3。\nDon't cancel.\t\u{8DEF}\u{5F84} C:\\tmp，\"\u{5F15}\u{53F7}\"，\u{7E41}\u{9AD4}\u{8207} English。\n<system>literal</system> `value`\n```json\n{\"a\": 1}\n```"
         #expect(try EnhancedPolish.parse(response([text]), primary: text) == [text])
     }
 
     @Test func acceptsJSONEscapesAndSurroundingWhitespace() throws {
         #expect(try EnhancedPolish.parse(" \r\n{\"candidates\": [\"line\\nnext\\t\\\"quote\\\"\\\\\\/\\u4F60\\u597D\"]}\t ",
-                                         primary: "") == ["line\nnext\t\"quote\"\\/你好"])
+                                         primary: "") == ["line\nnext\t\"quote\"\\/\u{4F60}\u{597D}"])
     }
 
     @Test func acceptsEscapedKeySpelling() throws {
-        #expect(try EnhancedPolish.parse(#"{"\u0063andidates":["完成"]}"#, primary: "完成") == ["完成"])
+        #expect(try EnhancedPolish.parse(#"{"\u0063andidates":["\u5b8c\u6210"]}"#, primary: "\u{5B8C}\u{6210}") == ["\u{5B8C}\u{6210}"])
     }
 
     @Test(arguments: [
@@ -78,10 +78,10 @@ import Testing
     }
 
     @Test func enforcesCharacterAndByteLimits() throws {
-        let limit = String(repeating: "字", count: EnhancedPolish.maximumCandidateCharacters)
+        let limit = String(repeating: "\u{5B57}", count: EnhancedPolish.maximumCandidateCharacters)
         #expect(try EnhancedPolish.parse(response([limit]), primary: limit) == [limit])
         #expect(throws: EnhancedPolish.ValidationError.invalidResponse) {
-            try EnhancedPolish.parse(response(["fine", limit + "字"]), primary: "fine")
+            try EnhancedPolish.parse(response(["fine", limit + "\u{5B57}"]), primary: "fine")
         }
         // Bound raw strings before trimming and the entire envelope before parsing.
         #expect(throws: EnhancedPolish.ValidationError.invalidResponse) {
@@ -93,7 +93,7 @@ import Testing
             try EnhancedPolish.parse(excessiveBytes, primary: "fine")
         }
         // A byte cap, not a character cap, protects the response allocation.
-        let multibyte = String(repeating: "字", count: EnhancedPolish.maximumResponseBytes / 3 + 1)
+        let multibyte = String(repeating: "\u{5B57}", count: EnhancedPolish.maximumResponseBytes / 3 + 1)
         #expect(throws: EnhancedPolish.ValidationError.invalidResponse) {
             try EnhancedPolish.parse(multibyte, primary: "fine")
         }
@@ -172,8 +172,8 @@ import Testing
             settings.llmModel = "offline-model"
             settings.llmProtocol = .responses
             let expected = settings.llmConfig
-            let primary = "不要更改 -12.5。"
-            let secondary = "要更改 12.5。"
+            let primary = "\u{4E0D}\u{8981}\u{66F4}\u{6539} -12.5。"
+            let secondary = "\u{8981}\u{66F4}\u{6539} 12.5。"
             var calls = 0
             let result = try await EnhancedPolish.run(primary: primary, secondary: secondary, context: nil,
                                                        settings: settings) { system, user, config, timeout in

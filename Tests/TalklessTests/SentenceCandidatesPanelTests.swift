@@ -53,9 +53,9 @@ import Testing
     }
 
     @Test func unicodeDeletionsAndUnchangedText() {
-        let candidates = ["今天去北京 👩🏽‍💻", "明天去上海 👩🏽‍💻", "今天去北京"]
-        #expect(highlighted(candidates, 0) == ["今", "北京", "👩🏽‍💻"])
-        #expect(highlighted(candidates, 1) == ["明", "上海"])
+        let candidates = ["\u{4ECA}\u{5929}\u{53BB}\u{5317}\u{4EAC} 👩🏽‍💻", "\u{660E}\u{5929}\u{53BB}\u{4E0A}\u{6D77} 👩🏽‍💻", "\u{4ECA}\u{5929}\u{53BB}\u{5317}\u{4EAC}"]
+        #expect(highlighted(candidates, 0) == ["\u{4ECA}", "\u{5317}\u{4EAC}", "👩🏽‍💻"])
+        #expect(highlighted(candidates, 1) == ["\u{660E}", "\u{4E0A}\u{6D77}"])
         #expect(highlighted(candidates, 2).isEmpty)
         #expect(highlighted(["Same", "Same"], 0).isEmpty)
         #expect(highlighted(["Same", "Same"], 1).isEmpty)
@@ -138,7 +138,7 @@ import Testing
         for index in 0..<3 {
             let harness = Harness()
             let panel = harness.makePanel()
-            let candidates = ["默认整句。", "第二句\n保留换行。", String(repeating: "完整的长句 👩🏽‍💻 ", count: 300)]
+            let candidates = ["\u{9ED8}\u{8BA4}\u{6574}\u{53E5}。", "\u{7B2C}\u{4E8C}\u{53E5}\n\u{4FDD}\u{7559}\u{6362}\u{884C}。", String(repeating: "\u{5B8C}\u{6574}\u{7684}\u{957F}\u{53E5} 👩🏽‍💻 ", count: 300)]
             let task = Task { await panel.choose(candidates: candidates, timeout: 10) }
             defer { panel.cancel(); harness.wakeAll() }
             try #require(await eventually { harness.shown.count == 1 })
@@ -270,7 +270,7 @@ import Testing
         _ = NSApplication.shared
         let visible = NSRect(x: 0, y: 0, width: 1_280, height: 800)
         let presenter = SentenceCandidatesWindow(presentsOnScreen: false, visibleFrame: { visible })
-        let long = String(repeating: "Synthetic candidate has complete text, not an ellipsis. 测试长句。\n", count: 40)
+        let long = String(repeating: "Synthetic candidate has complete text, not an ellipsis. \u{6D4B}\u{8BD5}\u{957F}\u{53E5}。\n", count: 40)
         let candidates = ["Keep the old sentence.", "Keep the new sentence.", long]
         var clicked: Int?
         presenter.show(candidates, onSelect: { clicked = $0 }, onHover: { _ in
