@@ -10,37 +10,63 @@ final class SentenceCandidatesPanel {
 
     /// A presentation seam keeps async lifecycle tests independent of NSApplication/screens.
     struct Presentation {
-        var show: ([String], @escaping (Int) -> Void, @escaping (Bool) -> Void) -> Void
+        var showPrepared: ([SentenceCandidatesHighlight.Candidate], @escaping (Int) -> Void,
+                           @escaping (Bool) -> Void) -> Void
         var hide: () -> Void
-        var updateCountdown: (TimeInterval, Bool) -> Void = { _, _ in }
+        var updateCountdown: (TimeInterval, Bool) -> Void
+
+        // Keep the text-only seam source-compatible for lifecycle tests and other presenters.
+        init(show: @escaping ([String], @escaping (Int) -> Void, @escaping (Bool) -> Void) -> Void,
+             hide: @escaping () -> Void,
+             updateCountdown: @escaping (TimeInterval, Bool) -> Void = { _, _ in }) {
+            self.init(showPrepared: { candidates, select, hover in
+                show(candidates.map(\.text), select, hover)
+            }, hide: hide, updateCountdown: updateCountdown)
+        }
+
+        init(showPrepared: @escaping ([SentenceCandidatesHighlight.Candidate], @escaping (Int) -> Void,
+                                      @escaping (Bool) -> Void) -> Void,
+             hide: @escaping () -> Void,
+             updateCountdown: @escaping (TimeInterval, Bool) -> Void = { _, _ in }) {
+            self.showPrepared = showPrepared
+            self.hide = hide
+            self.updateCountdown = updateCountdown
+        }
     }
 
     private struct Operation {
         let id: UUID
         let candidates: [String]
         let continuation: CheckedContinuation<Selection?, Never>
-        var countdown: SentenceCandidatesCountdown
+        // Preparation must not consume the user's time to choose or count as visible UI.
+        var countdown: SentenceCandidatesCountdown?
     }
 
     private let presentation: Presentation
     private let now: () -> TimeInterval
     private let sleep: (TimeInterval) async throws -> Void
+    private let prepare: @Sendable ([String]) async -> [SentenceCandidatesHighlight.Candidate]
     private var operation: Operation?
+    private var preparationTask: Task<[SentenceCandidatesHighlight.Candidate], Never>?
     private var timeoutTask: Task<Void, Never>?
     private var timeoutID = UUID()
 
     convenience init() {
         let window = SentenceCandidatesWindow()
-        self.init(presentation: Presentation(show: window.show, hide: window.hide,
+        self.init(presentation: Presentation(showPrepared: window.show, hide: window.hide,
                                              updateCountdown: window.updateCountdown))
     }
 
     init(presentation: Presentation,
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-         sleep: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) {
+         sleep: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+         prepare: @escaping @Sendable ([String]) async -> [SentenceCandidatesHighlight.Candidate] = {
+             SentenceCandidatesHighlight.prepare(candidates: $0)
+         }) {
         self.presentation = presentation
         self.now = now
         self.sleep = sleep
+        self.prepare = prepare
     }
 
     /// A new choice cancels the previous one. Empty input and cancelled tasks return nil.
@@ -50,22 +76,36 @@ final class SentenceCandidatesPanel {
         cancel()
         guard !candidates.isEmpty else { return nil }
         let id = UUID()
+        let prepare = self.prepare
+        // Only immutable text/ranges cross this boundary; AppKit stays on the main actor.
+        let preparation = Task.detached(priority: .userInitiated) {
+            await prepare(candidates)
+        }
         let result: Selection? = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else {
+                    preparation.cancel()
                     continuation.resume(returning: nil)
                     return
                 }
-                operation = Operation(id: id, candidates: candidates, continuation: continuation,
-                                      countdown: SentenceCandidatesCountdown(timeout: timeout, now: now()))
-                presentation.show(candidates, { [weak self] index in
-                    self?.select(index: index, id: id)
-                }, { [weak self] inside in
-                    self?.setPointerInside(inside, id: id)
-                })
-                armTimeout(id: id)
+                operation = Operation(id: id, candidates: candidates, continuation: continuation)
+                preparationTask = preparation
+                Task { @MainActor [weak self] in
+                    let prepared = await preparation.value
+                    guard !preparation.isCancelled, let self, self.operation?.id == id else { return }
+                    self.preparationTask = nil
+                    self.operation?.countdown = SentenceCandidatesCountdown(timeout: timeout, now: self.now())
+                    self.presentation.showPrepared(prepared, { [weak self] index in
+                        self?.select(index: index, id: id)
+                    }, { [weak self] inside in
+                        self?.setPointerInside(inside, id: id)
+                    })
+                    self.armTimeout(id: id)
+                }
             }
         } onCancel: {
+            // Invalidate preparation immediately, even before the main-actor cleanup runs.
+            preparation.cancel()
             Task { @MainActor [weak self] in self?.finish(id: id, selection: nil) }
         }
         // Cancellation can race with a queued click/timer on the main actor.
@@ -78,24 +118,25 @@ final class SentenceCandidatesPanel {
     }
 
     private func select(index: Int, id: UUID) {
-        guard let operation, operation.id == id, operation.candidates.indices.contains(index) else { return }
+        guard let operation, operation.id == id, operation.countdown != nil,
+              operation.candidates.indices.contains(index) else { return }
         finish(id: id, selection: Selection(text: operation.candidates[index], explicit: true))
     }
 
     private func setPointerInside(_ inside: Bool, id: UUID) {
         guard operation?.id == id else { return }
-        operation?.countdown.setPaused(inside, now: now())
+        operation?.countdown?.setPaused(inside, now: now())
         armTimeout(id: id)
     }
 
     private func armTimeout(id: UUID) {
-        guard let operation, operation.id == id else { return }
+        guard let operation, operation.id == id, let countdown = operation.countdown else { return }
         timeoutTask?.cancel()
         timeoutTask = nil
         timeoutID = UUID()
-        let remaining = operation.countdown.remaining(at: now())
-        presentation.updateCountdown(remaining, operation.countdown.isPaused)
-        guard !operation.countdown.isPaused else { return }
+        let remaining = countdown.remaining(at: now())
+        presentation.updateCountdown(remaining, countdown.isPaused)
+        guard !countdown.isPaused else { return }
         let timerID = timeoutID
         // Refresh the visible seconds without animation/frame timers.
         let delay = min(remaining, 1)
@@ -105,8 +146,8 @@ final class SentenceCandidatesPanel {
             do { try await sleep(delay) } catch { return }
             guard !Task.isCancelled, let self,
                   self.timeoutID == timerID, let current = self.operation,
-                  current.id == id, !current.countdown.isPaused else { return }
-            guard current.countdown.remaining(at: self.now()) <= 0 else {
+                  current.id == id, let countdown = current.countdown, !countdown.isPaused else { return }
+            guard countdown.remaining(at: self.now()) <= 0 else {
                 self.armTimeout(id: id)
                 return
             }
@@ -117,10 +158,12 @@ final class SentenceCandidatesPanel {
     private func finish(id: UUID, selection: Selection?) {
         guard let operation, operation.id == id else { return }
         self.operation = nil
+        preparationTask?.cancel()
+        preparationTask = nil
         timeoutID = UUID()
         timeoutTask?.cancel()
         timeoutTask = nil
-        presentation.hide()
+        if operation.countdown != nil { presentation.hide() }
         operation.continuation.resume(returning: selection)
     }
 }
@@ -155,6 +198,17 @@ struct SentenceCandidatesCountdown {
 
 /// Reverse diffs mark the default's own differing words, not just the alternatives.
 enum SentenceCandidatesHighlight {
+    struct Candidate: Sendable {
+        let text: String
+        let ranges: [Range<String.Index>]
+    }
+
+    static func prepare(candidates: [String]) -> [Candidate] {
+        candidates.enumerated().map { index, text in
+            Candidate(text: text, ranges: Task.isCancelled ? [] : ranges(candidates: candidates, index: index))
+        }
+    }
+
     static func ranges(candidates: [String], index: Int) -> [Range<String.Index>] {
         guard candidates.indices.contains(index), let first = candidates.first else { return [] }
         guard index == 0 else {
@@ -201,11 +255,11 @@ final class SentenceCandidatesWindow: NSObject, NSWindowDelegate {
         countdownLabel?.stringValue = paused ? L10n.tr("Paused") : L10n.format("%d seconds · default", seconds)
     }
 
-    func show(_ candidates: [String], onSelect: @escaping (Int) -> Void,
+    func show(_ candidates: [SentenceCandidatesHighlight.Candidate], onSelect: @escaping (Int) -> Void,
               onHover: @escaping (Bool) -> Void) {
         hide()
         let visible = visibleFrame()
-        let width = min(560, max(240, visible.width - 48))
+        let width = min(728, max(240, visible.width - 48))
         let inset: CGFloat = 16
         let headerHeight: CGFloat = 68
         let footerHeight: CGFloat = 34
@@ -213,8 +267,8 @@ final class SentenceCandidatesWindow: NSObject, NSWindowDelegate {
         let document = CandidatesFlippedView()
         var y: CGFloat = 0
         for (index, candidate) in candidates.enumerated() {
-            let row = CandidateSentenceRow(text: candidate,
-                                           ranges: SentenceCandidatesHighlight.ranges(candidates: candidates, index: index),
+            let row = CandidateSentenceRow(text: candidate.text,
+                                           ranges: candidate.ranges,
                                            isDefault: index == 0, width: rowWidth,
                                            onSelect: { onSelect(index) })
             row.setFrameOrigin(NSPoint(x: 0, y: y))

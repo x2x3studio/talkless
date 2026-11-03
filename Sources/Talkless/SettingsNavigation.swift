@@ -4,7 +4,7 @@ import Foundation
 /// and focused tests can route to a page without compiling the whole Settings window.
 enum SettingsSection: String, CaseIterable, Identifiable {
     // Voice input comes first; translation is a secondary tool.
-    case dictation, aiService, formatting, dictionary, overlay, history, translation, system, about
+    case dictation, aiService, formatting, dictionary, overlay, history, translation, system, labs, about
 
     /// Existing speech-setup entry points now open the combined voice-input page.
     static var models: Self { .dictation }
@@ -13,7 +13,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     static let groups: [(title: String, sections: [SettingsSection])] = [
         ("Voice input", [.dictation, .aiService, .formatting, .dictionary, .overlay]),
         ("Tools", [.history, .translation]),
-        ("General", [.system, .about]),
+        ("General", [.system, .labs, .about]),
     ]
 
     var id: Self { self }
@@ -28,6 +28,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: L10n.tr("Overlay")
         case .history: L10n.tr("History")
         case .system: L10n.tr("System")
+        case .labs: L10n.tr("Labs")
         case .about: L10n.tr("About")
         }
     }
@@ -42,6 +43,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: "rectangle.on.rectangle"
         case .history: "clock"
         case .system: "gearshape"
+        case .labs: "flask"
         case .about: "info.circle"
         }
     }
@@ -56,6 +58,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: L10n.tr("Preview and customize recording feedback.")
         case .history: L10n.tr("Your recent dictations, edits, and translations.")
         case .system: L10n.tr("Permissions, language, startup, and troubleshooting.")
+        case .labs: L10n.tr("Experimental features. Enable only what you need.")
         case .about: L10n.tr("Version, updates, and project information.")
         }
     }

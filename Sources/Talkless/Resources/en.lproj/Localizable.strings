@@ -1,6 +1,12 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "The microphone is not responding. Quit and reopen Talkless, then try again.";
 "About" = "About";
+"Labs" = "Labs";
+"Experimental features. Enable only what you need." = "Experimental features. Enable only what you need.";
+"Runs local recognition and Doubao together, then compares both transcripts with AI." = "Runs local recognition and Doubao together, then compares both transcripts with AI.";
+"Requires a local model, Doubao, and an AI service. Uses more memory and may take longer." = "Requires a local model, Doubao, and an AI service. Uses more memory and may take longer.";
+"If one recognizer fails, dictation continues with the other." = "If one recognizer fails, dictation continues with the other.";
+"Requires AI polishing or enhanced recognition, plus an AI service." = "Requires AI polishing or enhanced recognition, plus an AI service.";
 "Enhanced recognition" = "Enhanced recognition";
 "Enhanced recognition could not finish. Check the local model and Doubao connection, then try again." = "Enhanced recognition could not finish. Check the local model and Doubao connection, then try again.";
 "Sentence alternatives" = "Sentence alternatives";

@@ -132,7 +132,7 @@ final class HUDModel: ObservableObject {
         }
     }
 
-    static let maximumWidth: CGFloat = 380
+    static let maximumWidth: CGFloat = 494
     static let maximumHeight: CGFloat = 174
     static let horizontalPadding: CGFloat = 14
     static let verticalPadding: CGFloat = 11
@@ -495,7 +495,7 @@ final class TranslationPanelController {
             return
         }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 240),
+            contentRect: NSRect(x: 0, y: 0, width: 546, height: 240),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -666,7 +666,7 @@ struct TranslationView: View {
             }
         }
         .padding(14)
-        .frame(width: 420)
+        .frame(width: 546)
         .background(RoundedRectangle(cornerRadius: 12).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
         .overlay(alignment: .top) {

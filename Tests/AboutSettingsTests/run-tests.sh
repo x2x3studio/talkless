@@ -42,12 +42,23 @@ ai_page = source.split('case .aiService:', 1)[1].split('case .formatting:', 1)[0
 assert 'AIServiceSettingsView(' in ai_page and 'DictationProcessingSettingsView(' in ai_page
 assert 'TextFormattingSettingsView(settings: settings)' in source
 processing = (root / 'Sources/Talkless/DictationProcessingSettingsView.swift').read_text()
-ai_sections, formatting = processing.split('struct TextFormattingSettingsView:', 1)
+ai_sections, experiments = processing.split('struct LabsSettingsView:', 1)
+labs, formatting = experiments.split('struct TextFormattingSettingsView:', 1)
 assert 'Form {' not in ai_sections and 'ScrollView' not in ai_sections
+labs_page = source.split('case .labs:', 1)[1].split('case .about:', 1)[0]
+assert 'LabsSettingsView(settings: settings)' in labs_page
+assert labs.count('Form {') == 1 and '.formStyle(.grouped)' in labs
 for setting in ['polishEnabled', 'outputLanguage', 'appToneEnabled', 'customInstructions', 'voiceEditEnabled']:
-    assert setting in ai_sections and setting not in formatting
+    assert setting in ai_sections and setting not in formatting and setting not in labs
+for setting in ['enhancedRecognition', 'sentenceCandidates', 'candidateWaitSeconds']:
+    assert setting in labs and setting not in ai_sections and setting not in formatting
+# Each switch binds only to its own existing preference; no implicit changes or migrations.
+assert 'isOn: $settings.enhancedRecognition' in labs
+assert 'isOn: $settings.sentenceCandidates' in labs
+assert '.onChange' not in labs and '.onAppear' not in labs and 'Binding(' not in labs
+assert 'value: $settings.candidateWaitSeconds, in: 2...15' in labs
 for setting in ['punctuationStyle', 'latinSpacing']:
-    assert setting in formatting and setting not in ai_sections
+    assert setting in formatting and setting not in ai_sections and setting not in labs
 service = (root / 'Sources/Talkless/PolishSettingsView.swift').read_text()
 assert service.count('Form {') == 1 and 'ScrollView' not in service
 assert 'if let processingSections { processingSections }' in service

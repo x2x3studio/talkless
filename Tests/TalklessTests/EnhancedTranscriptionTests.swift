@@ -24,6 +24,7 @@ private final class EnhancedFakeSession: TranscriptionSession, @unchecked Sendab
     var snapshots: [[Float]] { lock.withLock { received } }
     var fed: [[Float]] { lock.withLock { buffers } }
     var isCancelled: Bool { lock.withLock { cancellations > 0 } }
+    var cancellationCount: Int { lock.withLock { cancellations } }
 
     init(_ result: Result<String, any Error>? = nil) { self.result = result }
 
@@ -69,6 +70,20 @@ private final class EnhancedFinishProbe: @unchecked Sendable {
     }
 }
 
+private final class EnhancedTimingProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [[String: String]] = []
+    private weak var session: EnhancedTranscriptionSession?
+    var events: [[String: String]] { lock.withLock { recorded } }
+    func bind(_ session: EnhancedTranscriptionSession) { lock.withLock { self.session = session } }
+    func record(_ metadata: [String: String]) {
+        let session = lock.withLock { session }
+        // Reenter the state lock to prove diagnostics are never invoked under it.
+        _ = session?.secondaryTranscript
+        lock.withLock { recorded.append(metadata) }
+    }
+}
+
 private func enhancedEventually(_ condition: () -> Bool) async -> Bool {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while !condition(), ContinuousClock.now < deadline {
@@ -88,6 +103,57 @@ private func enhancedStart(_ session: EnhancedTranscriptionSession, samples: [Fl
 }
 
 @Suite struct EnhancedTranscriptionTests {
+    @Test func diagnosticsIdentifyEachProvidersFinishDurationAndOutcome() async throws {
+        let local = EnhancedFakeSession()
+        let online = EnhancedFakeSession(.failure(EnhancedFakeError.online))
+        defer { local.complete(.success("cleanup")) }
+        let timing = EnhancedTimingProbe()
+        let operationID = UUID().uuidString
+        let session = EnhancedTranscriptionSession(online: online, local: local,
+                                                  operationID: operationID, diagnostics: { timing.record($0) })
+        timing.bind(session)
+        let (probe, _) = enhancedStart(session)
+        try #require(await enhancedEventually {
+            !local.snapshots.isEmpty && timing.events.contains { $0["stage"] == "enhanced_finish_failed" }
+        })
+        try await Task.sleep(for: .milliseconds(30))
+        local.complete(.success("private transcript must not be logged"))
+        #expect(try await probe.value() == "private transcript must not be logged")
+        let events = timing.events
+        #expect(events.count == 4)
+        #expect(Set(events.compactMap { $0["operation_id"] }) == [operationID])
+        for engine in ["qwen", "doubao"] {
+            let route = events.filter { $0["engine"] == engine }
+            #expect(route.map { $0["stage"] } == ["enhanced_finish_started",
+                                                engine == "qwen" ? "enhanced_finish_completed" : "enhanced_finish_failed"])
+            #expect(route.first?["duration_ms"] == "0")
+            let milliseconds = try #require(route.last?["duration_ms"])
+            let duration = try #require(Int(milliseconds))
+            #expect(duration >= (engine == "qwen" ? 25 : 0))
+        }
+        #expect(events.allSatisfy { Set($0.keys) == ["operation_id", "engine", "stage", "duration_ms"] })
+    }
+
+    @Test func diagnosticsSkipRecordingFailureAndMeasureLateProviderReturn() async throws {
+        let local = EnhancedFakeSession()
+        let online = EnhancedFakeSession()
+        defer { local.complete(.success("cleanup")) }
+        let timing = EnhancedTimingProbe()
+        let session = EnhancedTranscriptionSession(online: online, local: local,
+                                                  finishTimeout: .milliseconds(30), diagnostics: { timing.record($0) })
+        session.onlineFailed(EnhancedFakeError.online)
+        let (probe, _) = enhancedStart(session)
+        do { _ = try await probe.value(); Issue.record("Expected timeout") }
+        catch { #expect(error is EnhancedTranscriptionSession.FinishError) }
+        #expect(timing.events.count == 1)
+        #expect(timing.events.first?["engine"] == "qwen")
+        #expect(timing.events.first?["stage"] == "enhanced_finish_started")
+        local.complete(.success("late speech"))
+        try #require(await enhancedEventually { timing.events.count == 2 })
+        #expect(timing.events.last?["stage"] == "enhanced_finish_completed")
+        #expect(session.secondaryTranscript == nil)
+    }
+
     @Test func feedsBothAndFinishesConcurrentlyWithOnlinePrimary() async throws {
         let local = EnhancedFakeSession()
         let online = EnhancedFakeSession()
@@ -118,6 +184,126 @@ private func enhancedStart(_ session: EnhancedTranscriptionSession, samples: [Fl
         let session = EnhancedTranscriptionSession(online: online, local: local)
         #expect(try await session.finish(samples: []) == (onlineFails ? "local" : "online"))
         #expect(session.secondaryTranscript == nil)
+    }
+
+    @MainActor @Test(arguments: [true, false])
+    func recordingFailureImmediatelyStopsOnlyThatRoute(onlineFails: Bool) async throws {
+        let local = EnhancedFakeSession(.success("local"))
+        let online = EnhancedFakeSession(.success("online"))
+        let session = EnhancedTranscriptionSession(online: online, local: local)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+                                               channels: 1, interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1))
+        buffer.frameLength = 1
+        buffer.floatChannelData![0][0] = 0.5
+        var previews: [String] = []
+        session.onPartial = { previews.append($0) }
+        let queued = online.onPartial
+        queued?("before failure")
+        session.feed(buffer)
+        if onlineFails { session.onlineFailed(URLError(.timedOut)) }
+        else { session.localFailed(EnhancedFakeError.local) }
+        let failed = onlineFails ? online : local
+        let surviving = onlineFails ? local : online
+        #expect(failed.cancellationCount == 1)
+        #expect(!surviving.isCancelled)
+        session.feed(buffer)
+        queued?("after failure")
+        #expect(failed.fed == [[0.5]])
+        #expect(surviving.fed == [[0.5], [0.5]])
+        #expect(previews == (onlineFails ? ["before failure"] : ["before failure", "after failure"]))
+        #expect(try await session.finish(samples: [0.5, 0.5]) == (onlineFails ? "local" : "online"))
+        #expect(failed.snapshots.isEmpty, "Do not finish or re-upload to a failed provider")
+        #expect(surviving.snapshots == [[0.5, 0.5]])
+        #expect(session.secondaryTranscript == nil)
+    }
+
+    @Test func bothRecordingFailuresFinishImmediatelyAndKeepOriginalErrors() async throws {
+        let local = EnhancedFakeSession()
+        let online = EnhancedFakeSession()
+        let session = EnhancedTranscriptionSession(online: online, local: local)
+        session.onlineFailed(URLError(.timedOut))
+        session.onlineFailed(CancellationError())
+        session.localFailed(EnhancedFakeError.local)
+        #expect(online.cancellationCount == 1 && local.cancellationCount == 1)
+        let (probe, _) = enhancedStart(session)
+        do { _ = try await probe.value(); Issue.record("Expected both failures") }
+        catch EnhancedTranscriptionSession.FinishError.bothFailed(let localError, let onlineError) {
+            #expect(localError as? EnhancedFakeError == .local)
+            #expect((onlineError as? URLError)?.code == .timedOut)
+        }
+        #expect(local.snapshots.isEmpty && online.snapshots.isEmpty)
+    }
+
+    @Test(arguments: [true, false])
+    func failureDuringFinishDoesNotJoinFailedProviderOrAcceptItsLateSuccess(onlineFails: Bool) async throws {
+        let local = EnhancedFakeSession()
+        let online = EnhancedFakeSession()
+        defer { local.complete(.success("cleanup")); online.complete(.success("cleanup")) }
+        let session = EnhancedTranscriptionSession(online: online, local: local)
+        let (probe, _) = enhancedStart(session)
+        try #require(await enhancedEventually { !local.snapshots.isEmpty && !online.snapshots.isEmpty })
+        if onlineFails { session.onlineFailed(EnhancedFakeError.online) }
+        else { session.localFailed(EnhancedFakeError.local) }
+        let failed = onlineFails ? online : local
+        let surviving = onlineFails ? local : online
+        #expect(failed.isCancelled && !surviving.isCancelled)
+        failed.complete(.success("late failed-provider speech"))
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(!probe.isDone)
+        surviving.complete(.success("survived"))
+        #expect(try await probe.value() == "survived")
+        #expect(session.secondaryTranscript == nil)
+        #expect(failed.cancellationCount == 1)
+    }
+
+    @Test func recordingFailureStillBoundsHungSurvivorAtFinishDeadline() async throws {
+        let local = EnhancedFakeSession()
+        let online = EnhancedFakeSession()
+        defer { local.complete(.success("cleanup")) }
+        let session = EnhancedTranscriptionSession(online: online, local: local, finishTimeout: .milliseconds(60))
+        session.onlineFailed(EnhancedFakeError.online)
+        let (probe, _) = enhancedStart(session)
+        do { _ = try await probe.value(); Issue.record("Expected survivor timeout") }
+        catch EnhancedTranscriptionSession.FinishError.bothFailed(let localError, let onlineError) {
+            guard case EnhancedTranscriptionSession.FinishError.timeout = localError else {
+                Issue.record("Pending local provider should time out"); return
+            }
+            #expect(onlineError as? EnhancedFakeError == .online)
+        }
+        #expect(local.isCancelled && online.isCancelled)
+        #expect(online.snapshots.isEmpty)
+    }
+
+    @Test func longRecordingAloneDoesNotFailEitherRouteOrStartFinishDeadline() async throws {
+        let local = EnhancedFakeSession(.success("local"))
+        let online = EnhancedFakeSession(.success("online"))
+        let session = EnhancedTranscriptionSession(online: online, local: local, finishTimeout: .milliseconds(30))
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+                                               channels: 1, interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        buffer.frameLength = 16_000
+        buffer.floatChannelData![0].update(repeating: 0.5, count: 16_000)
+        // More than 15 seconds of captured audio, without a real provider error.
+        for _ in 0..<16 { session.feed(buffer) }
+        // The injected finish budget must not tick during recording.
+        try await Task.sleep(for: .milliseconds(60))
+        session.feed(buffer)
+        #expect(local.fed.count == 17 && online.fed.count == 17)
+        #expect(!local.isCancelled && !online.isCancelled)
+        #expect(try await session.finish(samples: []) == "online")
+        #expect(session.secondaryTranscript == "local")
+    }
+
+    @Test func lateFailureAfterCompletionDoesNotCancelSuccessfulProviders() async throws {
+        let local = EnhancedFakeSession(.success("local"))
+        let online = EnhancedFakeSession(.success("online"))
+        let session = EnhancedTranscriptionSession(online: online, local: local)
+        #expect(try await session.finish(samples: []) == "online")
+        session.onlineFailed(EnhancedFakeError.online)
+        session.localFailed(EnhancedFakeError.local)
+        #expect(!local.isCancelled && !online.isCancelled)
+        #expect(session.secondaryTranscript == "local")
     }
 
     @Test func bothFailuresArePreserved() async throws {

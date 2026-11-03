@@ -458,9 +458,22 @@ final class DictationController: ObservableObject {
         var usesLocalSession = localSelected
         if enhanced, let qwenDirectory {
             do {
-                let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig)
-                let local = QwenTranscriptionSession(modelDirectory: qwenDirectory, language: nil, contextualStrings: dictionaryTerms)
-                session = EnhancedTranscriptionSession(online: online, local: local)
+                let relay = EnhancedFailureRelay()
+                let online = try DoubaoTranscriptionSession(config: settings.doubaoConfig, onError: { [weak self] message in
+                    relay.session?.onlineFailed(TalklessError.message(message))
+                    guard let self, self.isCurrentRecognition(generation) else { return }
+                    self.diagnosticOperation?.record("recognition_fallback", ["engine": "qwen", "reason": "recognition_error"])
+                })
+                let local = QwenTranscriptionSession(modelDirectory: qwenDirectory, language: nil, contextualStrings: dictionaryTerms,
+                    onError: { [weak self] message in
+                        relay.session?.localFailed(TalklessError.message(message))
+                        guard let self, self.isCurrentRecognition(generation) else { return }
+                        self.diagnosticOperation?.record("recognition_fallback", ["engine": "doubao", "reason": "recognition_error"])
+                    })
+                let combined = EnhancedTranscriptionSession(online: online, local: local, operationID: operation.id.uuidString,
+                    diagnostics: { Diagnostics.shared.recordAsync(event: "asr_timing", metadata: $0) })
+                relay.session = combined
+                session = combined
                 // A successful online result does not prove that the local model loaded.
                 usesLocalSession = false
             } catch {
@@ -707,18 +720,22 @@ final class DictationController: ObservableObject {
                         if showCandidates || session is EnhancedTranscriptionSession {
                             let secondary = (session as? EnhancedTranscriptionSession)?.secondaryTranscript
                             let choices = try await EnhancedPolish.run(primary: raw, secondary: secondary,
-                                                                       context: context, settings: self.settings)
+                                                                       context: context, settings: self.settings, alternatives: showCandidates)
                             guard generation == self.generation, !Task.isCancelled else { return }
+                            operation?.record("polish_response", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "count": String(choices.count)])
                             output = choices[0]
                             if showCandidates, choices.count > 1 {
                                 candidateReviewUsed = true
                                 self.hud.show(.hidden)
+                                let choiceStarted = DispatchTime.now().uptimeNanoseconds
+                                operation?.record("candidate_wait_start", ["count": String(choices.count)])
                                 guard let selection = await self.sentencePanel.choose(candidates: choices, timeout: candidateWait) else {
                                     throw CancellationError()
                                 }
                                 guard generation == self.generation, !Task.isCancelled else { return }
                                 output = selection.text
                                 explicitlyChosen = selection.explicit
+                                operation?.record("candidate_wait_complete", ["duration_ms": DictationOperation.milliseconds(since: choiceStarted), "explicit_choice": String(selection.explicit)])
                             }
                         } else {
                             output = try await LLMClient.complete(

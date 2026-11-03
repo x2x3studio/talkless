@@ -97,6 +97,8 @@ struct SettingsView: View {
                                                 onConfigureAI: { selection = .aiService })
                     case .system:
                         SystemSettingsTab(controller: controller)
+                    case .labs:
+                        LabsSettingsView(settings: settings)
                     case .about:
                         AboutSettingsTab(controller: controller, updateController: updateController)
                     case .overlay:

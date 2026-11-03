@@ -42,8 +42,10 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
             assertions += 1
             precondition(condition(), message)
         }
-        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "aiService", "formatting", "dictionary", "overlay", "history", "translation", "system", "about"],
-              "Voice input, AI polishing, and local formatting each have one page")
+        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "aiService", "formatting", "dictionary", "overlay", "history", "translation", "system", "labs", "about"],
+              "Voice input, AI polishing, local formatting, and experiments each have one page")
+        check(SettingsSection.groups.last?.sections == [.system, .labs, .about], "Labs sits between System and About")
+        check(SettingsSection.labs.symbol == "flask", "Labs uses a native experiment symbol")
         check(SettingsSection.models == .dictation, "Legacy speech-setup routes open voice input")
         check(SettingsSection.groups.flatMap(\.sections) == SettingsSection.allCases, "Each page occurs once in sidebar order")
         check(SettingsSection.about.symbol == "info.circle", "About uses a native information symbol")

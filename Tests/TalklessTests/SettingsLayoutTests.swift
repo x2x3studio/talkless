@@ -14,6 +14,10 @@ import Testing
         #expect(SettingsSection.dictation.title == L10n.tr("Voice input"))
         #expect(SettingsSection.aiService.title == L10n.tr("AI polishing"))
         #expect(SettingsSection.formatting.title == L10n.tr("Text formatting"))
+        #expect(SettingsSection.groups.last?.sections == [.system, .labs, .about])
+        #expect(SettingsSection.labs.title == L10n.tr("Labs"))
+        #expect(SettingsSection.labs.subtitle == L10n.tr("Experimental features. Enable only what you need."))
+        #expect(SettingsSection.labs.symbol == "flask")
         #expect(grouped.firstIndex(of: .translation)! > grouped.firstIndex(of: .aiService)!,
                 "Translation follows the voice-input pages")
     }
@@ -51,7 +55,7 @@ import Testing
         for language in [InterfaceLanguage.english, .simplifiedChinese] {
             localization.interfaceLanguage = language
             let suffix = language == .english ? "en" : "zh"
-            let sidebar = render(SettingsSidebar(selection: .constant(.dictation)), size: NSSize(width: 196, height: 470))
+            let sidebar = render(SettingsSidebar(selection: .constant(.labs)), size: NSSize(width: 196, height: 580))
             let page = render(HistoryView(history: history, activity: activity), size: NSSize(width: 704, height: 900))
             let narrow = render(HistoryView(history: history, activity: activity), size: NSSize(width: 604, height: 900))
             #expect(sidebar.count > 2_000 && page.count > 2_000)
@@ -217,6 +221,53 @@ import Testing
         #expect(settings.punctuationStyle == .spaces && settings.latinSpacing == .spaced)
         #expect(settings.customInstructions == "Keep my existing writing instructions.")
         #expect(settings.audioInputDeviceUID == "test-mic", "Reorganized pages preserve existing preferences")
+    }
+
+    @Test func rendersLabsWithoutChangingIndependentPreferences() throws {
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Sources/Talkless/Resources").standardizedFileURL
+        L10n.useCatalog(LocalizationCatalog(bundle: Bundle(url: resources)))
+        let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
+        defer { localization.interfaceLanguage = .english; withExtendedLifetime(localization) {} }
+        let suite = "talkless-labs-layout-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let output = ProcessInfo.processInfo.environment["TALKLESS_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0) }
+
+        for (polish, enhanced, candidates) in [(false, false, false), (false, true, false),
+                                                (false, true, true), (true, false, true)] {
+            // Start from persisted values, as when an existing installation opens the new page.
+            defaults.set(polish, forKey: "polishEnabled")
+            defaults.set(enhanced, forKey: "enhancedRecognition")
+            defaults.set(candidates, forKey: "sentenceCandidates")
+            defaults.set(8, forKey: "candidateWaitSeconds")
+            let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
+            settings.voiceEditEnabled = false
+            settings.onlineLocalFallback = false
+            for language in [InterfaceLanguage.english, .simplifiedChinese] {
+                localization.interfaceLanguage = language
+                for dark in [false, true] {
+                    let png = render(LabsSettingsView(settings: settings), size: NSSize(width: 604, height: 480), dark: dark)
+                    #expect(png.count > 2_000)
+                    if let output {
+                        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                        let name = "labs-\(polish)-\(enhanced)-\(candidates)-\(language.rawValue)-\(dark ? "dark" : "light").png"
+                        try png.write(to: output.appendingPathComponent(name))
+                    }
+                }
+            }
+            #expect(settings.polishEnabled == polish && settings.enhancedRecognition == enhanced)
+            #expect(settings.sentenceCandidates == candidates && settings.candidateWaitSeconds == 8)
+            #expect(defaults.bool(forKey: "enhancedRecognition") == enhanced)
+            #expect(defaults.bool(forKey: "sentenceCandidates") == candidates)
+            #expect(defaults.integer(forKey: "candidateWaitSeconds") == 8)
+
+            settings.enhancedRecognition.toggle()
+            #expect(settings.polishEnabled == polish && settings.sentenceCandidates == candidates,
+                    "Changing enhanced recognition does not enable AI polishing or sentence alternatives")
+            #expect(!settings.voiceEditEnabled && !settings.onlineLocalFallback)
+            #expect(settings.candidateWaitSeconds == 8)
+        }
     }
 
     @Test func rendersDisconnectedMicrophoneWithoutResettingSelection() {

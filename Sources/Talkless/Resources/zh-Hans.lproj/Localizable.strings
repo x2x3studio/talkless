@@ -1,6 +1,12 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "麦克风没有响应。请退出并重新打开 Talkless 后重试。";
 "About" = "关于";
+"Labs" = "实验室";
+"Experimental features. Enable only what you need." = "实验性功能，按需开启。";
+"Runs local recognition and Doubao together, then compares both transcripts with AI." = "同时运行本地识别和豆包，再由 AI 比较两份转写。";
+"Requires a local model, Doubao, and an AI service. Uses more memory and may take longer." = "需要本地模型、豆包和 AI 服务，会占用更多内存，也可能更慢。";
+"If one recognizer fails, dictation continues with the other." = "一路识别失败时，继续使用另一路结果。";
+"Requires AI polishing or enhanced recognition, plus an AI service." = "需开启 AI 润色或增强识别，并配置 AI 服务。";
 "Enhanced recognition" = "增强识别";
 "Enhanced recognition could not finish. Check the local model and Doubao connection, then try again." = "增强识别未能完成，请检查本地模型及豆包连接后重试。";
 "Sentence alternatives" = "整句备选";

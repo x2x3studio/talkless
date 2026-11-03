@@ -676,7 +676,7 @@ struct HUDTests {
                 size: CGSize(width: 550, height: 214), name: "preview-\(stage.rawValue)")
         }
         preview.phase = .listening(handsFree: true)
-        preview.preview = HUDPreviewSample.long.text
+        preview.preview = String(repeating: HUDPreviewSample.long.text + " ", count: 2)
         precondition(preview.textSize.height > HUDModel.maximumHeight, "Long sample exercises latest-line clipping")
         try snapshot(preview, name: "sample-long")
         try snapshotView(OverlaySettingsView(appearance: .constant(HUDAppearance(animationsEnabled: false))),

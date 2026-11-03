@@ -165,6 +165,18 @@ import Testing
         }
     }
 
+    @MainActor @Test func disabledAlternativesRequestsOnlyOneCandidate() async throws {
+        try await withSettings { settings in
+            let result = try await EnhancedPolish.run(primary: "Call Jordan.", secondary: "Call Jordon.", context: nil,
+                                                       settings: settings, alternatives: false) { system, _, _, _ in
+                #expect(system.contains("Return exactly one candidate, even when ambiguity remains"))
+                #expect(system.contains("array must contain 1 to 1"))
+                return #"{"candidates":["Call Jordan.","Call Jordon."]}"#
+            }
+            #expect(result == ["Call Jordan."])
+        }
+    }
+
     @MainActor @Test func runUsesCurrentConfigurationAndReturnsParsedSingleCandidateWithoutUI() async throws {
         try await withSettings { settings in
             settings.llmBaseURL = "http://localhost:12345/v1"

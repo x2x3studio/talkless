@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+- Enhanced recognition and sentence alternatives now live in Labs, separate from everyday AI polishing settings.
+- Dictation, translation and sentence-choice windows are about 30% wider, with screen bounds retained for the chooser.
+- Disabling sentence alternatives requests only one AI result. Enhanced prompt additions are shorter; JSON validation and candidate diffs run off the main thread. Separate timing events distinguish local/online recognition, AI response and candidate waiting.
+
+### Fixed
+- Enhanced recognition stops feeding a recognizer as soon as its error callback reports failure, cancels that route and continues with the other. Recording longer than 15 seconds is not itself a failure.
+
+## 2026.1103.34686
+
 ### Fixed
 - MLX Metal shaders now explicitly target the app's minimum macOS 26 version instead of the build machine's macOS 27 default. This fixes the unsupported metallib deployment target that terminated local-model loading on macOS 26. Shader caches now include the deployment flags, and release tests verify the target and cache invalidation.
 

@@ -66,6 +66,28 @@ import Testing
 
 /// No NSApplication, accessibility queries, selection reads, key events or real clocks.
 @MainActor @Suite struct SentenceCandidatesPanelTests {
+    private actor Preparation {
+        private var pending: [String: CheckedContinuation<Void, Never>] = [:]
+        private(set) var completed: Set<String> = []
+
+        nonisolated static func compute(_ candidates: [String]) -> [SentenceCandidatesHighlight.Candidate] {
+            #expect(!Thread.isMainThread, "Pure diff preparation must not run on the main thread")
+            return SentenceCandidatesHighlight.prepare(candidates: candidates)
+        }
+
+        func run(_ candidates: [String]) async -> [SentenceCandidatesHighlight.Candidate] {
+            let key = candidates[0]
+            // Deliberately ignore cancellation until released to exercise stale completions.
+            await withCheckedContinuation { pending[key] = $0 }
+            let result = Self.compute(candidates)
+            completed.insert(key)
+            return result
+        }
+
+        func isWaiting(_ key: String) -> Bool { pending[key] != nil }
+        func release(_ key: String) { pending.removeValue(forKey: key)?.resume() }
+    }
+
     @MainActor private final class Harness {
         struct Shown {
             let candidates: [String]
@@ -83,7 +105,11 @@ import Testing
         var initiallyHovered = false
         var countdownUpdates: [(remaining: TimeInterval, paused: Bool)] = []
 
-        func makePanel() -> SentenceCandidatesPanel {
+        func makePanel(
+            prepare: @escaping @Sendable ([String]) async -> [SentenceCandidatesHighlight.Candidate] = {
+                Preparation.compute($0)
+            }
+        ) -> SentenceCandidatesPanel {
             SentenceCandidatesPanel(presentation: .init(show: { [self] candidates, select, hover in
                 shown.append(Shown(candidates: candidates, select: select, hover: hover))
                 if initiallyHovered { hover(true) }
@@ -95,7 +121,7 @@ import Testing
                 try await withCheckedThrowingContinuation { continuation in
                     sleepers.append(Sleeper(delay: delay, continuation: continuation))
                 }
-            })
+            }, prepare: prepare)
         }
 
         func wakeAll(at time: TimeInterval? = nil) {
@@ -106,12 +132,12 @@ import Testing
         }
     }
 
-    private func eventually(_ predicate: () -> Bool) async -> Bool {
-        for _ in 0..<1_000 {
-            if predicate() { return true }
+    private func eventually(_ predicate: () async -> Bool) async -> Bool {
+        for _ in 0..<10_000 {
+            if await predicate() { return true }
             await Task.yield()
         }
-        return predicate()
+        return await predicate()
     }
 
     @Test func timeoutSelectsFirstWithoutExplicitConsent() async throws {
@@ -264,7 +290,85 @@ import Testing
         #expect(harness.hides == 0)
     }
 
-    @Test func nativeOffscreenPanelRendersFullSentencesAndCountdown() throws {
+    @Test func preparationDoesNotConsumeTimeoutAndRunsOffMainThread() async throws {
+        let harness = Harness()
+        let preparation = Preparation()
+        let panel = harness.makePanel(prepare: { await preparation.run($0) })
+        let task = Task { await panel.choose(candidates: ["first", "second"], timeout: 5) }
+        defer { panel.cancel(); harness.wakeAll() }
+        try #require(await eventually { await preparation.isWaiting("first") })
+        #expect(harness.shown.isEmpty)
+        #expect(harness.sleepers.isEmpty && harness.countdownUpdates.isEmpty)
+        harness.now = 1_000
+        await preparation.release("first")
+        try #require(await eventually { harness.sleepers.count == 1 })
+        #expect(harness.countdownUpdates.last?.remaining == 5)
+        harness.wakeAll(at: 1_005)
+        #expect(await task.value == .init(text: "first", explicit: false))
+    }
+
+    @Test func cancelDuringPreparationReturnsWithoutShowingEvenWhenPreparationFinishesLate() async throws {
+        for cancelTask in [false, true] {
+            let harness = Harness()
+            let preparation = Preparation()
+            let panel = harness.makePanel(prepare: { await preparation.run($0) })
+            let task = Task { await panel.choose(candidates: ["old", "alternative"], timeout: 5) }
+            defer { panel.cancel(); harness.wakeAll() }
+            try #require(await eventually { await preparation.isWaiting("old") })
+            if cancelTask { task.cancel() } else { panel.cancel() }
+            // Cancellation must resolve choose without awaiting the detached work.
+            #expect(await task.value == nil)
+            #expect(harness.shown.isEmpty && harness.hides == 0)
+            await preparation.release("old")
+            try #require(await eventually { await preparation.completed.contains("old") })
+            for _ in 0..<20 { await Task.yield() }
+            #expect(harness.shown.isEmpty && harness.hides == 0)
+            #expect(harness.sleepers.isEmpty && harness.countdownUpdates.isEmpty)
+        }
+    }
+
+    @Test func stalePreparationCannotReplaceNewChoice() async throws {
+        let harness = Harness()
+        let preparation = Preparation()
+        let panel = harness.makePanel(prepare: { await preparation.run($0) })
+        let first = Task { await panel.choose(candidates: ["old", "old alternative"], timeout: 5) }
+        defer { panel.cancel(); harness.wakeAll() }
+        try #require(await eventually { await preparation.isWaiting("old") })
+        let second = Task { await panel.choose(candidates: ["new", "new alternative"], timeout: 20) }
+        try #require(await eventually { await preparation.isWaiting("new") })
+        #expect(await first.value == nil)
+        await preparation.release("new")
+        try #require(await eventually { harness.shown.count == 1 })
+        first.cancel()
+        await preparation.release("old")
+        try #require(await eventually { await preparation.completed.contains("old") })
+        for _ in 0..<20 { await Task.yield() }
+        #expect(harness.shown.count == 1 && harness.hides == 0)
+        #expect(harness.shown[0].candidates == ["new", "new alternative"])
+        harness.shown[0].select(1)
+        #expect(await second.value == .init(text: "new alternative", explicit: true))
+        #expect(harness.hides == 1)
+    }
+
+    @Test func preparedPresentationReceivesDiffsOnMainActor() async throws {
+        let candidates = ["Keep old text", "Keep new text", "Keep old words"]
+        var shown: [SentenceCandidatesHighlight.Candidate] = []
+        let panel = SentenceCandidatesPanel(presentation: .init(showPrepared: { prepared, _, _ in
+            #expect(Thread.isMainThread)
+            shown = prepared
+        }, hide: {}))
+        let task = Task { await panel.choose(candidates: candidates, timeout: 5) }
+        defer { panel.cancel() }
+        try #require(await eventually { shown.count == candidates.count })
+        #expect(shown.map(\.text) == candidates)
+        #expect(shown[0].ranges.map { String(shown[0].text[$0]) } == ["old", "text"])
+        #expect(shown[1].ranges.map { String(shown[1].text[$0]) } == ["new"])
+        #expect(shown[2].ranges.map { String(shown[2].text[$0]) } == ["words"])
+        panel.cancel()
+        #expect(await task.value == nil)
+    }
+
+    @Test func nativeOffscreenPanelRendersFullSentencesAndCountdown() async throws {
         // Construct AppKit without activating it or ordering a window onscreen. The screen,
         // content and clicks below are synthetic; no global mouse/keyboard events are sent.
         _ = NSApplication.shared
@@ -273,7 +377,8 @@ import Testing
         let long = String(repeating: "Synthetic candidate has complete text, not an ellipsis. \u{6D4B}\u{8BD5}\u{957F}\u{53E5}。\n", count: 40)
         let candidates = ["Keep the old sentence.", "Keep the new sentence.", long]
         var clicked: Int?
-        presenter.show(candidates, onSelect: { clicked = $0 }, onHover: { _ in
+        let prepared = await Task.detached { Preparation.compute(candidates) }.value
+        presenter.show(prepared, onSelect: { clicked = $0 }, onHover: { _ in
             Issue.record("Offscreen rendering must not sample the global pointer")
         })
         defer { presenter.hide() }
@@ -286,6 +391,7 @@ import Testing
         #expect(!panel.ignoresMouseEvents)
         #expect(visible.contains(panel.frame))
         #expect(panel.frame.midX == visible.midX)
+        #expect(panel.frame.width == 728)
 
         func descendants(_ view: NSView) -> [NSView] {
             [view] + view.subviews.flatMap { descendants($0) }

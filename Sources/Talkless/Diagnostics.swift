@@ -36,7 +36,7 @@ final class Diagnostics: @unchecked Sendable {
         "recording_blocked", "recording_stopped", "recording_empty", "permission_blocked",
         "processing_start", "processing_complete", "processing_error", "processing_cancelled",
         "recognition_error", "recognition_empty", "recognition_fallback", "polish_start", "polish_complete", "polish_error",
-        "edit_start", "edit_complete", "edit_error",
+        "edit_start", "edit_complete", "edit_error", "polish_response", "candidate_wait_start", "candidate_wait_complete",
         "audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
         "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
         "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused",
@@ -52,7 +52,7 @@ final class Diagnostics: @unchecked Sendable {
     ]
     private static let booleanKeys: Set<String> = [
         "include_crash_reports", "streaming", "cold_start", "hands_free", "polish_enabled", "opposite_finish",
-        "completed", "model_loaded", "model_busy", "selected_model", "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
+        "explicit_choice", "completed", "model_loaded", "model_busy", "selected_model", "empty", "fallback", "explicit_device", "engine_running", "before_engine_running", "interleaved",
         "before_interleaved", "device_changed", "device_available", "format_changed", "audio_delivered", "recovered",
         "input_method", "resolved_device_available", "route_matches_requested", "formats_compatible", "selected_device_changed", "actual_device_changed",
     ]
@@ -62,7 +62,7 @@ final class Diagnostics: @unchecked Sendable {
         "engine": ["qwen", "doubao"],
         "model_id": ["Qwen3-ASR-0.6B-4bit", "Qwen3-ASR-1.7B-4bit", "custom"],
         "error_domain": ["NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSOSStatusErrorDomain", "NSURLErrorDomain", "AVFoundationErrorDomain", "kAFAssistantErrorDomain", "Talkless.TalklessError", "Talkless.ModelManagementError", "unknown"],
-        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear", "configuration_sent", "websocket_open", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received"],
+        "stage": ["startup", "recording", "recognition", "model_load", "generation", "polish", "edit", "insertion", "shutdown", "processing", "cleanup", "stop", "requested", "started", "coordination", "coordinated", "filesystem", "completed", "failed", "cancelled", "rejected", "validate", "remove_installed", "remove_staging", "shown", "dismissed", "confirmed", "acquired", "released", "cache_clear", "configuration_sent", "websocket_open", "first_response", "audio_ended", "final_send_started", "final_sent", "final_received", "enhanced_finish_started", "enhanced_finish_completed", "enhanced_finish_failed"],
         "reason": [
             "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",

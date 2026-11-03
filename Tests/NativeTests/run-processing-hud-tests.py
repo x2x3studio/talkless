@@ -92,9 +92,15 @@ final class Diagnostics: @unchecked Sendable {
         return result
     }
 }
+enum TalklessError: Error { case message(String) }
+@MainActor final class EnhancedFailureRelay { weak var session: EnhancedTranscriptionSession? }
 @MainActor final class EnhancedTranscriptionSession: FakeSession {
+    func onlineFailed(_ error: Error) { online.cancel() }
+    func localFailed(_ error: Error) { local.cancel() }
     var secondaryTranscript: String?
-    init(online: FakeSession, local: FakeSession) { super.init() }
+    let online: FakeSession
+    let local: FakeSession
+    init(online: FakeSession, local: FakeSession) { self.online = online; self.local = local; super.init() }
 }
 enum OutputLanguage { case original, english }
 struct Settings {
@@ -134,7 +140,7 @@ enum Prompts {
 @MainActor enum EnhancedPolish {
     static var choices = ["processed transcript"]
     static var inputs: [(primary: String, secondary: String?)] = []
-    static func run(primary: String, secondary: String?, context: Context?, settings: Settings) async throws -> [String] {
+    static func run(primary: String, secondary: String?, context: Context?, settings: Settings, alternatives: Bool = true) async throws -> [String] {
         inputs.append((primary, secondary))
         await Task.yield()
         return choices
@@ -717,6 +723,7 @@ enum L10n {
 final class Diagnostics: @unchecked Sendable {
     static let shared = Diagnostics()
     func record(event: String, metadata: [String: String] = [:]) {}
+    func recordAsync(event: String, metadata: [String: String] = [:]) {}
 }
 @MainActor enum LLMAPITransport {
     static var preconnects: [String] = []
@@ -808,11 +815,15 @@ enum AVCaptureDevice {
         super.init()
     }
 }
+enum TalklessError: Error { case message(String) }
+@MainActor final class EnhancedFailureRelay { weak var session: EnhancedTranscriptionSession? }
 @MainActor final class EnhancedTranscriptionSession: FakeSession {
+    func onlineFailed(_ error: Error) { online.cancel() }
+    func localFailed(_ error: Error) { local.cancel() }
     var secondaryTranscript: String?
     let online: any TranscriptionSession
     let local: any TranscriptionSession
-    init(online: any TranscriptionSession, local: any TranscriptionSession) {
+    init(online: any TranscriptionSession, local: any TranscriptionSession, operationID: String = "", diagnostics: @escaping ([String: String]) -> Void = { _ in }) {
         self.online = online; self.local = local
         super.init()
     }
@@ -1048,6 +1059,9 @@ STARTUP_TESTS = r'''
             precondition(enhanced.recordingPolishEnabled && enhanced.recordingCandidatesEnabled
                          && enhanced.recordingCandidateWait == TimeInterval(min(15, max(2, waitSeconds))))
             precondition(enhanced.recordingModelDirectory == nil, "Online success cannot certify local readiness")
+            (session.online as! DoubaoTranscriptionSession).onError?("Synthetic online timeout")
+            precondition((session.online as! FakeSession).cancelled && !(session.local as! FakeSession).cancelled
+                         && enhanced.state == .recording, "Online timeout cancels only the failed route")
             enhanced.settings.sentenceCandidates = false
             enhanced.settings.candidateWaitSeconds = 3
             precondition(enhanced.recordingCandidatesEnabled
