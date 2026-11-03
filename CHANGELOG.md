@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Changed
+- AI polishing requests, including enhanced comparison and sentence alternatives, now have a five-second deadline. Timeout silently uses the recognized transcript without a polishing error notice or late replacement. Candidate selection time is separate; translation and voice-edit requests are unchanged.
+
+## 2026.1103.40849
+
+### Changed
 - Offline and enhanced recognition now share the same local inference policy: reprocess cumulative audio during recording, then recognize the full recording on finish. Removed the enhanced-only batch switch; preview display and dual-result fusion remain separate from inference scheduling.
 
 ## 2026.1103.39349

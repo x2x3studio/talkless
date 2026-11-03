@@ -694,6 +694,7 @@ final class DictationController: ObservableObject {
                 var output = raw
                 var kind = HistoryEntry.Kind.dictation
                 var polishError: String?
+                var polishFallback = false
                 var polished = false
                 var candidateReviewUsed = false
                 var explicitlyChosen = false
@@ -742,7 +743,7 @@ final class DictationController: ObservableObject {
                                 system: Prompts.polish(context: context, settings: self.settings),
                                 user: Prompts.polishInput(raw),
                                 config: self.settings.llmConfig,
-                                timeout: 15
+                                timeout: 5
                             )
                         }
                         let emptyOutput = output.isEmpty
@@ -758,7 +759,10 @@ final class DictationController: ObservableObject {
                             "duration_ms": DictationOperation.milliseconds(since: stageStarted), "fallback": "true"])
                         // A cleanup failure must not lose the user's words; fall back to the raw transcript.
                         output = raw
-                        polishError = L10n.tr("Polishing failed; using the original transcript.")
+                        polishFallback = true
+                        if (error as? LLMClient.ClientError) != .timedOut {
+                            polishError = L10n.tr("Polishing failed; using the original transcript.")
+                        }
                     }
                 }
                 guard generation == self.generation, !Task.isCancelled else { return }
@@ -781,7 +785,7 @@ final class DictationController: ObservableObject {
                         kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                     ))
                     operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
-                        "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
+                        "fallback": String(polishFallback), "empty": String(output.isEmpty)])
                     self.finish(.error(blocker.message))
                     return
                 }
@@ -811,7 +815,7 @@ final class DictationController: ObservableObject {
                     kind: kind, app: context?.name ?? "", raw: raw, output: output, duration: duration
                 ))
                 operation?.record("processing_complete", ["duration_ms": DictationOperation.milliseconds(since: processingStarted),
-                    "fallback": String(polishError != nil), "empty": String(output.isEmpty)])
+                    "fallback": String(polishFallback), "empty": String(output.isEmpty)])
                 self.finish(polishError.map { .error($0) } ?? .completed)
             } catch is CancellationError {
                 operation?.record("processing_cancelled", ["stage": stage, "reason": "cancelled",

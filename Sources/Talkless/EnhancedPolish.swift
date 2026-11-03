@@ -38,7 +38,7 @@ enum EnhancedPolish {
             systemPrompt(context: context, settings: settings, alternatives: alternatives),
             input(primary: primary, secondary: secondary),
             settings.llmConfig,
-            15
+            5
         )
         try Task.checkCancellation()
         let parsed = try await Task.detached(priority: .userInitiated) {

@@ -125,6 +125,8 @@ enum Prompts {
     static func polishInput(_ raw: String) -> String { raw }
 }
 @MainActor enum LLMClient {
+    enum ClientError: Error { case timedOut }
+    static var timedOut = false
     static var fail = false
     static var calls = 0
     static var onComplete: () -> Void = {}
@@ -133,6 +135,7 @@ enum Prompts {
         calls += 1
         await Task.yield()
         onComplete()
+        if timedOut { throw ClientError.timedOut }
         if fail { throw NSError(domain: "Synthetic polish failure", code: 1) }
         return "processed transcript"
     }
@@ -143,6 +146,7 @@ enum Prompts {
     static func run(primary: String, secondary: String?, context: Context?, settings: Settings, alternatives: Bool = true) async throws -> [String] {
         inputs.append((primary, secondary))
         await Task.yield()
+        if LLMClient.timedOut { throw LLMClient.ClientError.timedOut }
         return choices
     }
 }
@@ -689,6 +693,19 @@ TESTS = r'''
         }
         EnhancedPolish.choices = ["processed transcript"]
         print("PASS panel dismissal and controller cancellation never insert, learn, or save an unchosen candidate")
+        for candidates in [false, true] {
+            let timed = ProcessingHarness()
+            timed.recordingCandidatesEnabled = candidates
+            LLMClient.timedOut = true
+            LLMClient.fail = false
+            TextIO.inserted = []
+            timed.stopAndProcess()
+            await timed.processingTask?.value
+            precondition(TextIO.inserted == ["raw transcript"], "Timeout inserts the original transcript")
+            precondition(timed.hud.model.phase == .completed && timed.state == .idle, "Timeout is silent, not an error notice")
+            precondition(timed.sentencePanel.requests.isEmpty, "Timed-out AI cannot show stale alternatives")
+        }
+        LLMClient.timedOut = false
         await check("configured polish", phases: [.recognizing, .polishing, .inserting, .completed])
         await check("disabled polish", enabled: false, phases: [.recognizing, .inserting, .completed])
         await check("unconfigured polish", configured: false, phases: [.recognizing, .inserting, .completed])

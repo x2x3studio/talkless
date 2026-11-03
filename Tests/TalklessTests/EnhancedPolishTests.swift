@@ -195,7 +195,7 @@ import Testing
                 #expect(config.baseURL == expected.baseURL && config.apiKey == expected.apiKey)
                 #expect(config.model == expected.model && config.apiProtocol == expected.apiProtocol)
                 #expect(config.authMode == expected.authMode && config.thinking == expected.thinking)
-                #expect(config.maxOutputTokens == expected.maxOutputTokens && timeout == 15)
+                #expect(config.maxOutputTokens == expected.maxOutputTokens && timeout == 5)
                 return try response([primary, " " + primary])
             }
             #expect(calls == 1)
