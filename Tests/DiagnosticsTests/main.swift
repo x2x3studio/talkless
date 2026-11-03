@@ -134,7 +134,7 @@ let schemaEvents = try events(schemaLogs)
 require(schemaEvents[0]["metadata"] as? [String: String] == technicalFields, "Technical schema lost allowed fields or retained private ones")
 let cancellationReasons = ["escape", "combo", "user", "recorder_interruption", "recognition_error", "stop_interruption", "startup_release", "startup_failed", "stop_failed"]
 let audioReasons = ["unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped",
-                   "no_audio_timeout", "audio_stalled_timeout", "conversion_failed", "start_failed", "recovery_exhausted", "invalid_format",
+                   "no_audio_timeout", "audio_stalled_timeout", "capture_queue_overflow", "capture_buffer_too_large", "capture_overlapping_callback", "conversion_failed", "start_failed", "recovery_exhausted", "invalid_format",
                    "unavailable", "configuration_race", "configuration_change", "user", "route_mismatch", "route_unavailable", "native_operation_timeout"]
 for reason in cancellationReasons + audioReasons {
     schema.recordAsync(event: "dictation_cancel", metadata: ["reason": reason])

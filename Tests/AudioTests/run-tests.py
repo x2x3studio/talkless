@@ -187,13 +187,13 @@ private final class TestAudioNode: @unchecked Sendable {
         callback = block
     }
     func removeTap(onBus: Int) { precondition(!Thread.isMainThread, "HAL must not run on main"); oldCallback = callback; callback = nil }
-    func deliver(stale: Bool = false, wrongFormat: Bool = false, silent: Bool = false) {
+    func deliver(stale: Bool = false, wrongFormat: Bool = false, silent: Bool = false, frames: AVAudioFrameCount = 4800) {
         precondition(!Thread.isMainThread, "Native callback must run off main actor")
         let selected = wrongFormat ? format(32_000, 1) : installedFormat!
-        let buffer = AVAudioPCMBuffer(pcmFormat: selected, frameCapacity: 4_800)!
-        buffer.frameLength = 4_800
+        let buffer = AVAudioPCMBuffer(pcmFormat: selected, frameCapacity: frames)!
+        buffer.frameLength = frames
         for channel in 0..<Int(selected.channelCount) {
-            for index in 0..<4_800 { buffer.floatChannelData![channel][index] = silent ? 0 : 0.25 }
+            for index in 0..<Int(frames) { buffer.floatChannelData![channel][index] = silent ? 0 : 0.25 }
         }
         Thread.current.threadDictionary["audioCallback"] = true
         defer { Thread.current.threadDictionary["audioCallback"] = false }
@@ -241,21 +241,21 @@ private final class TestAudioEngine: NSObject, @unchecked Sendable {
                      "Native callback must not wait on main actor or deadlock during teardown")
     }
     func notify() { native { [self] in NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: self) } }
-    func deliver(stale: Bool = false, wrongFormat: Bool = false, silent: Bool = false) {
-        native { [self] in inputNode.deliver(stale: stale, wrongFormat: wrongFormat, silent: silent) }
+    func deliver(stale: Bool = false, wrongFormat: Bool = false, silent: Bool = false, frames: AVAudioFrameCount = 4800) {
+        native { [self] in inputNode.deliver(stale: stale, wrongFormat: wrongFormat, silent: silent, frames: frames) }
     }
 }
 private final class Observations: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
     func buffer(_ buffer: AVAudioPCMBuffer) {
-        precondition(!Thread.isMainThread)
+        precondition(!Thread.isMainThread && !TestContext.inCallback, "Feed must run on processing queue, not tap")
         precondition(buffer.format.sampleRate == 16_000 && buffer.format.channelCount == 1)
         precondition(buffer.frameLength > 0)
         lock.withLock { count += 1 }
     }
     func level(_ level: Float) {
-        precondition(!Thread.isMainThread)
+        precondition(!Thread.isMainThread && !TestContext.inCallback, "Levels must run on processing queue, not tap")
         precondition(level.isFinite && (0...1).contains(level))
     }
     var buffers: Int { lock.withLock { count } }
@@ -274,6 +274,12 @@ extension AudioRecorder {
     }
     @MainActor fileprivate func testDrain() async throws {
         try await operations.run(timeout: 1, onTimeout: {}) {}
+    }
+    @MainActor fileprivate func testProcessPending() async throws {
+        try await operations.run(timeout: 1, onTimeout: {}) { [native] in
+            let capture = native.lock.withLock { native.capture }
+            capture?.processing.sync { capture?.drain() }
+        }
     }
     @MainActor fileprivate func testStopMonitor() {
         monitorTask?.cancel()
@@ -316,6 +322,63 @@ extension AudioRecorder {
         }
         fatalError("Native operation did not enter blocking stub")
     }
+    static func testQueueFormats() async throws {
+        for interleaved in [false, true] {
+            for common: AVAudioCommonFormat in [.pcmFormatFloat32, .pcmFormatInt16] {
+                let input = AVAudioFormat(commonFormat: common, sampleRate: 48_000, channels: 2, interleaved: interleaved)!
+                let converter = AVAudioConverter(from: input, to: AudioRecorder.format)!
+                let count = Observations()
+                let queue = try AudioCaptureQueue(format: input, converter: converter) { buffer, _ in
+                    precondition(!Thread.isMainThread && !TestContext.inCallback)
+                    let planes = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: buffer.audioBufferList))
+                    precondition(planes.count == (interleaved ? 1 : 2))
+                    for channel in 0..<2 {
+                        for frame in 0..<Int(buffer.frameLength) {
+                            let plane = planes[interleaved ? 0 : channel]
+                            let index = interleaved ? frame * 2 + channel : frame
+                            if common == .pcmFormatFloat32 {
+                                precondition(plane.mData!.assumingMemoryBound(to: Float.self)[index] == Float(channel + 1) / 8)
+                            } else {
+                                precondition(plane.mData!.assumingMemoryBound(to: Int16.self)[index] == Int16((channel + 1) * 1000))
+                            }
+                        }
+                    }
+                    // Also exercise the real converter with the copied multi-channel layout.
+                    let out = AVAudioPCMBuffer(pcmFormat: AudioRecorder.format, frameCapacity: 2800)!
+                    var consumed = false
+                    var error: NSError?
+                    converter.convert(to: out, error: &error) { _, status in
+                        if consumed { status.pointee = .noDataNow; return nil }
+                        consumed = true; status.pointee = .haveData; return buffer
+                    }
+                    precondition(error == nil)
+                    count.buffer(out)
+                }
+                for turn in 0..<220 {
+                    let buffer = AVAudioPCMBuffer(pcmFormat: input, frameCapacity: 8192)!
+                    buffer.frameLength = 8192
+                    let planes = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+                    for channel in 0..<2 {
+                        for frame in 0..<8192 {
+                            let plane = planes[interleaved ? 0 : channel]
+                            let index = interleaved ? frame * 2 + channel : frame
+                            if common == .pcmFormatFloat32 {
+                                plane.mData!.assumingMemoryBound(to: Float.self)[index] = Float(channel + 1) / 8
+                            } else {
+                                plane.mData!.assumingMemoryBound(to: Int16.self)[index] = Int16((channel + 1) * 1000)
+                            }
+                        }
+                    }
+                    queue.enqueue(buffer)
+                    if turn % 32 == 31 { queue.processing.sync { queue.drain() } }
+                }
+                queue.drainAndWait()
+                precondition(queue.failureReason == nil && count.buffers == 220)
+                queue.cancel()
+            }
+        }
+        print("PASS preallocated planar/interleaved stereo Float32/Int16 slots wrap repeatedly, preserve every channel and convert off tap")
+    }
     @MainActor static func main() async throws {
         let observations = Observations()
         let recorder = AudioRecorder()
@@ -344,6 +407,7 @@ extension AudioRecorder {
                 if turn > 0 { engine.deliver(stale: true) }
                 engine.deliver()
             }
+            try await recorder.testProcessPending()
             precondition(observations.buffers == before + 1, "Stale tap from previous turn must be rejected")
             let samples = try await recorder.stop()
             precondition(!samples.isEmpty && samples.count < 2000, "Each utterance has isolated samples/converter")
@@ -518,6 +582,7 @@ extension AudioRecorder {
         precondition(!recorder.beginFinalization(), "Idle finalization must not affect the next session")
         try await recorder.start()
         try await recorder.testNative { $0.deliver() }
+        try await recorder.testProcessPending()
         let captured = recorder.duration
         let delivered = observations.buffers
         precondition(recorder.beginFinalization() && recorder.beginFinalization())
@@ -626,6 +691,92 @@ extension AudioRecorder {
         let afterCallback = try await callbackBlocked.stop(); precondition(!afterCallback.isEmpty)
         callbackBlocked.cancel(); try await callbackBlocked.testDrain()
         print("PASS blocked callback cannot stall MainActor finalization/cancellation; stale delivery rejected and next turn works")
+
+        // Block the single consumer, not the tap. Fill all remaining slots while
+        // MainActor stays responsive; overflow must fail rather than drop words.
+        let bounded = AudioRecorder()
+        bounded.onLevel = { _ in TestHardware.checkpoint("bounded-consumer") }
+        bounded.onBuffer = { observations.buffer($0) }
+        try await bounded.start()
+        bounded.testStopMonitor()
+        TestHardware.block = "bounded-consumer"
+        try await bounded.testNative { $0.deliver() }
+        try await waitForNative()
+        let beforeOverflow = observations.buffers
+        var heartbeat = 0
+        for _ in 0..<8 { await Task.yield(); heartbeat += 1 }
+        precondition(heartbeat == 8)
+        TestClock.now += 3.1
+        try await bounded.testNative { $0.deliver() }
+        let pendingHealthy = try await bounded.testMonitor()
+        precondition(pendingHealthy && bounded.interruptionError == nil,
+                     "Recent queued input must not look like silence while consumer is blocked")
+        try await bounded.testNative { engine in
+            for _ in 0..<95 { engine.deliver() }
+        }
+        precondition(bounded.beginFinalization())
+        let overflowStop = Task { @MainActor in try await bounded.stop() }
+        await drain()
+        TestHardware.block = nil; TestHardware.release.signal()
+        await expectFailure("interrupted") { _ = try await overflowStop.value }
+        precondition(bounded.duration == 0 && observations.buffers == beforeOverflow,
+                     "Full queue fails the entire recording and suppresses queued/stale feeds")
+        precondition(Diagnostics.shared.snapshot().contains { $0.1["reason"] == "capture_queue_overflow" })
+        bounded.cancel(); try await bounded.testDrain()
+        print("PASS bounded 96-slot overflow fails explicitly, blocked consumer leaves tap/MainActor responsive, receive watchdog ignores backlog")
+
+        // Multiple admitted tail buffers must drain after finalization, not just
+        // the one already converting when the key is released.
+        let queuedTail = AudioRecorder()
+        queuedTail.onLevel = { _ in TestHardware.checkpoint("queued-tail") }
+        queuedTail.onBuffer = { observations.buffer($0) }
+        try await queuedTail.start(); queuedTail.testStopMonitor()
+        TestHardware.block = "queued-tail"
+        let beforeQueuedTail = observations.buffers
+        try await queuedTail.testNative { $0.deliver() }
+        try await waitForNative()
+        try await queuedTail.testNative { engine in for _ in 0..<4 { engine.deliver() } }
+        precondition(queuedTail.beginFinalization())
+        try await queuedTail.testNative { $0.deliver() }
+        let finishQueuedTail = Task { @MainActor in try await queuedTail.stop() }
+        await drain()
+        TestHardware.block = nil; TestHardware.release.signal()
+        let queuedSamples = try await finishQueuedTail.value
+        precondition(observations.buffers == beforeQueuedTail + 5 && queuedSamples.count > 7000,
+                     "Finalization must drain all accepted slots and feed the last one")
+        queuedTail.cancel(); try await queuedTail.testDrain()
+        print("PASS finalization drains all queued tail buffers and rejects input after closure")
+
+        let queuedCancel = AudioRecorder()
+        queuedCancel.onLevel = { _ in TestHardware.checkpoint("queued-cancel") }
+        queuedCancel.onBuffer = { observations.buffer($0) }
+        try await queuedCancel.start(); queuedCancel.testStopMonitor()
+        TestHardware.block = "queued-cancel"
+        let beforeQueuedCancel = observations.buffers
+        try await queuedCancel.testNative { $0.deliver() }
+        try await waitForNative()
+        try await queuedCancel.testNative { engine in for _ in 0..<20 { engine.deliver() } }
+        queuedCancel.cancel()
+        precondition(queuedCancel.duration == 0 && !queuedCancel.isRunning)
+        let nextQueuedTurn = Task { @MainActor in try await queuedCancel.start() }
+        await drain()
+        TestHardware.block = nil; TestHardware.release.signal()
+        try await nextQueuedTurn.value
+        precondition(observations.buffers == beforeQueuedCancel)
+        try await queuedCancel.testNative { $0.deliver(stale: true); $0.deliver() }
+        let nextQueuedSamples = try await queuedCancel.stop()
+        precondition(observations.buffers == beforeQueuedCancel + 1 && nextQueuedSamples.count < 2000)
+        queuedCancel.cancel(); try await queuedCancel.testDrain()
+        print("PASS cancellation discards queued generation even across immediate restart")
+
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver(frames: 8193) }
+        await expectFailure("interrupted") { _ = try await recorder.stop() }
+        precondition(Diagnostics.shared.snapshot().contains { $0.1["reason"] == "capture_buffer_too_large" })
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS oversized input fails explicitly instead of truncation or tap allocation")
+
+        try await testQueueFormats()
 
         let oldTimeout = AudioRecorder()
         try await oldTimeout.testOldTimeoutCannotInvalidateNewSession()
@@ -759,6 +910,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
     run("xcrun", "swiftc", "-swift-version", "6", "-O", "-emit-sil", str(production), "-o", str(sil))
     closures = re.findall(r"^// closure #\d+ in NativeAudioRecorder\.installAndStart\(session:\)\n.*?^} // end sil function[^\n]*", sil.read_text(), re.M | re.S)
     taps = [body for body in closures if "AVAudioPCMBuffer" in body.split("\nbb0(", 1)[0]]
+    taps = [body for body in taps if "AudioCaptureQueue.enqueue" in body]
     assert len(taps) == 1 and "// Isolation: nonisolated" in taps[0]
     assert "swift_task_isCurrentExecutor" not in taps[0]
     assert "swift_task_reportUnexpectedExecutor" not in taps[0]
@@ -770,9 +922,10 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
                          ("AudioUnitGetProperty", "TestGetProperty")]:
         stubbed = stubbed.replace(native, test)
     stubbed = stubbed.replace("ProcessInfo.processInfo.systemUptime", "TestClock.now")
-    conversion = "            converter.convert(to: out, error: &error) { _, status in"
+    stubbed = stubbed.replace("clock_gettime_nsec_np(CLOCK_UPTIME_RAW)", "UInt64(TestClock.now * 1_000_000_000)")
+    conversion = "        converter.convert(to: out, error: &error) { _, status in"
     assert conversion in stubbed
-    stubbed = stubbed.replace(conversion, '            TestHardware.checkpoint("conversion")\n' + conversion)
+    stubbed = stubbed.replace(conversion, '        TestHardware.checkpoint("conversion")\n' + conversion)
     # Same independent timer path, shortened only for deterministic blocked-HAL tests.
     stubbed = stubbed.replace(".now() + seconds", ".now() + min(seconds, 0.2)")
     freeze = "                    let result = lock.withLock { () -> (Bool, String?) in"
@@ -782,6 +935,8 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
                         TestAudioEngine.latest!.notify()
                     }
 """ + freeze)
+    stubbed = stubbed.replace("private let processing", "fileprivate let processing").replace("private func drain()", "fileprivate func drain()")
+    stubbed = stubbed.replace("private let lock", "fileprivate let lock").replace("private var capture:", "fileprivate var capture:")
     runtime = directory / "runtime.swift"
     runtime.write_text(stubbed + HARNESS)
     executable = directory / "audio-tests"

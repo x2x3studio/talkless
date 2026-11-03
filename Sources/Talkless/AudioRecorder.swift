@@ -2,6 +2,168 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+import Synchronization
+
+/// Per-attempt SPSC storage. Only the tap writes slots; only `processing` reads them.
+/// Gate CAS also rejects overlapping producers rather than blocking a realtime thread.
+private final class AudioCaptureQueue: @unchecked Sendable {
+    static let slotCount = 96
+    // A 1024-frame tap request can deliver 4800 frames at 48 kHz. Leave bounded
+    // headroom instead of treating that normal AVAudioEngine batching as failure.
+    static let frameCapacity: AVAudioFrameCount = 8192
+    private static let closed: UInt = 1
+    private static let writing: UInt = 2
+    private static let cancelled: UInt = 4
+
+    enum Failure: Int {
+        case overflow = 1, oversized, formatChanged, overlappingCallback, conversion
+        var reason: String {
+            switch self {
+            case .overflow: "capture_queue_overflow"
+            case .oversized: "capture_buffer_too_large"
+            case .formatChanged: "format_changed"
+            case .overlappingCallback: "capture_overlapping_callback"
+            case .conversion: "conversion_failed"
+            }
+        }
+    }
+
+    let converter: AVAudioConverter
+    // Confined to processing; never read, cleared or grown under the facade state lock.
+    var samples: [Float] = []
+    private let slots: [AVAudioPCMBuffer]
+    private let description: AudioStreamBasicDescription
+    private let gate = Atomic<UInt>(0)
+    private let written = Atomic<UInt>(0)
+    private let read = Atomic<UInt>(0)
+    private let failure = Atomic<Int>(0)
+    private let firstReceived = Atomic<UInt64>(0)
+    private let lastReceived = Atomic<UInt64>(0)
+    private let processing = DispatchQueue(label: "talkless.audio.processing", qos: .userInitiated)
+    private let wake: DispatchSourceUserDataAdd
+    private let consume: @Sendable (AVAudioPCMBuffer, AudioCaptureQueue) -> Void
+
+    init(format: AVAudioFormat, converter: AVAudioConverter,
+         consume: @escaping @Sendable (AVAudioPCMBuffer, AudioCaptureQueue) -> Void) throws {
+        self.converter = converter
+        self.consume = consume
+        description = format.streamDescription.pointee
+        var storage: [AVAudioPCMBuffer] = []
+        storage.reserveCapacity(Self.slotCount)
+        for _ in 0..<Self.slotCount {
+            guard let slot = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: Self.frameCapacity) else {
+                throw TalklessError.message(L10n.tr("Cannot convert the microphone audio format"))
+            }
+            // Touch backing memory before installing the tap, not on first capture.
+            slot.frameLength = Self.frameCapacity
+            for plane in UnsafeMutableAudioBufferListPointer(slot.mutableAudioBufferList) {
+                if let data = plane.mData { memset(data, 0, Int(plane.mDataByteSize)) }
+            }
+            slot.frameLength = 0
+            storage.append(slot)
+        }
+        slots = storage
+        wake = DispatchSource.makeUserDataAddSource(queue: processing)
+        wake.setEventHandler { [weak self] in self?.drain() }
+        wake.resume()
+    }
+
+    deinit { wake.cancel() }
+
+    var failureReason: String? { Failure(rawValue: failure.load(ordering: .acquiring))?.reason }
+    var firstBufferTime: TimeInterval? { time(firstReceived.load(ordering: .acquiring)) }
+    var lastBufferTime: TimeInterval? { time(lastReceived.load(ordering: .acquiring)) }
+    private func time(_ value: UInt64) -> TimeInterval? { value == 0 ? nil : Double(value) / 1_000_000_000 }
+
+    func close() { gate.bitwiseOr(Self.closed, ordering: .acquiringAndReleasing) }
+    func cancel() { gate.bitwiseOr(Self.closed | Self.cancelled, ordering: .acquiringAndReleasing) }
+
+    func fail(_ reason: Failure) {
+        _ = failure.compareExchange(expected: 0, desired: reason.rawValue, ordering: .acquiringAndReleasing)
+        close()
+        wake.add(data: 1)
+    }
+
+    /// An in-flight copy gets another monitor tick. Queued/processing audio never
+    /// moves the reception timestamp. Once closed, this attempt never reopens.
+    func closeIfStale(now: TimeInterval, startedAt: TimeInterval) -> Bool {
+        let state = gate.load(ordering: .acquiring)
+        guard state & (Self.closed | Self.writing | Self.cancelled) == 0, now - (lastBufferTime ?? startedAt) >= 3 else { return false }
+        return gate.compareExchange(expected: state, desired: state | Self.closed, ordering: .acquiringAndReleasing).exchanged
+    }
+
+    /// Realtime path: no allocation, native state lock, conversion, or client callback.
+    /// The dispatch source merges wakeups; it never creates one queued task per buffer.
+    func enqueue(_ buffer: AVAudioPCMBuffer) {
+        let state = gate.load(ordering: .acquiring)
+        guard state & Self.closed == 0 else { return }
+        guard state & Self.writing == 0,
+              gate.compareExchange(expected: state, desired: state | Self.writing, ordering: .acquiringAndReleasing).exchanged else {
+            if gate.load(ordering: .acquiring) & Self.closed == 0 { fail(.overlappingCallback) }
+            return
+        }
+        defer {
+            // Advance a version as well as releasing the writer bit. A watchdog
+            // cannot close from a stale timestamp after a complete intervening copy.
+            gate.wrappingAdd(16, ordering: .relaxed)
+            gate.bitwiseAnd(~Self.writing, ordering: .releasing)
+            wake.add(data: 1)
+        }
+        let frames = buffer.frameLength
+        guard frames > 0 else { return }
+        guard frames <= Self.frameCapacity else { fail(.oversized); return }
+        let actual = buffer.format.streamDescription.pointee
+        guard actual.mSampleRate == description.mSampleRate,
+              actual.mFormatID == description.mFormatID, actual.mFormatFlags == description.mFormatFlags,
+              actual.mBytesPerPacket == description.mBytesPerPacket, actual.mFramesPerPacket == description.mFramesPerPacket,
+              actual.mBytesPerFrame == description.mBytesPerFrame, actual.mChannelsPerFrame == description.mChannelsPerFrame,
+              actual.mBitsPerChannel == description.mBitsPerChannel else { fail(.formatChanged); return }
+        let next = written.load(ordering: .relaxed)
+        guard next &- read.load(ordering: .acquiring) < UInt(Self.slotCount) else { fail(.overflow); return }
+        let slot = slots[Int(next % UInt(Self.slotCount))]
+        let input = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: buffer.audioBufferList))
+        let output = UnsafeMutableAudioBufferListPointer(slot.mutableAudioBufferList)
+        let bytes = Int(frames) * Int(description.mBytesPerFrame)
+        guard input.count == output.count, bytes > 0 else { fail(.formatChanged); return }
+        // ASBD bytes-per-frame includes all channels for interleaved PCM and one
+        // channel for planar PCM. Copy every ABL plane, including integer formats.
+        for index in 0..<input.count {
+            guard input[index].mNumberChannels == output[index].mNumberChannels,
+                  Int(input[index].mDataByteSize) >= bytes,
+                  input[index].mData != nil, output[index].mData != nil else { fail(.formatChanged); return }
+        }
+        slot.frameLength = frames
+        for index in 0..<input.count { memcpy(output[index].mData!, input[index].mData!, bytes) }
+        let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        if firstReceived.load(ordering: .relaxed) == 0 { firstReceived.store(now, ordering: .releasing) }
+        lastReceived.store(now, ordering: .releasing)
+        written.store(next &+ 1, ordering: .releasing)
+    }
+
+    private func drain() {
+        for _ in 0..<Self.slotCount {
+            let next = read.load(ordering: .relaxed)
+            guard next != written.load(ordering: .acquiring) else { return }
+            if gate.load(ordering: .acquiring) & Self.cancelled == 0, failure.load(ordering: .acquiring) == 0 {
+                consume(slots[Int(next % UInt(Self.slotCount))], self)
+            }
+            // A consumer owns the slot through conversion and feed, so an overflow
+            // cannot overwrite even the buffer whose callback is currently blocked.
+            read.store(next &+ 1, ordering: .releasing)
+        }
+        if read.load(ordering: .relaxed) != written.load(ordering: .acquiring) { wake.add(data: 1) }
+    }
+
+    /// Native lifecycle worker ONLY, never MainActor or processing. Closing admission
+    /// precedes this fence; wait for an admitted copy, then include its final wakeup.
+    func drainAndWait() {
+        close()
+        while gate.load(ordering: .acquiring) & Self.writing != 0 { Thread.sleep(forTimeInterval: 0.001) }
+        processing.sync { drain() }
+    }
+
+    func collectedSamples() -> [Float] { processing.sync { samples } }
+}
 
 /// Main-actor-facing lifecycle; no native engine/HAL operation happens on this actor.
 final class AudioRecorder: @unchecked Sendable {
@@ -84,7 +246,7 @@ final class AudioRecorder: @unchecked Sendable {
             if let error = interruptionError { throw TalklessError.message(error) }
             return []
         }
-        // Closing capture is lock-only; final HAL validation precedes engine.stop.
+        // Closing capture never waits for processing; final HAL validation precedes engine.stop.
         beginFinalization()
         do {
             let samples = try await perform(timeout: 3, stage: "shutdown", session: session, operation: operationID) {
@@ -178,7 +340,7 @@ final class AudioRecorder: @unchecked Sendable {
 
 /// Capture audio from the chosen microphone and convert it to 16 kHz mono Float32.
 /// Engine inspection/teardown is confined to AudioOperationQueue. Native callbacks
-/// only touch locked capture state; neither callback logs or tears down native objects.
+/// enqueue into bounded storage; neither callback logs or tears down native objects.
 private final class NativeAudioRecorder: @unchecked Sendable {
     static let sampleRate: Double = 16_000
     static let format = AVAudioFormat(
@@ -200,30 +362,26 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     /// Call stop() before inspecting this when finalizing a streaming transcript.
     var interruptionError: String? { lock.withLock { recordingError } }
     var isRunning: Bool { lock.withLock { sessionID != nil && recordingError == nil } }
-    var duration: TimeInterval { lock.withLock { Double(samples.count) / Self.sampleRate } }
+    var duration: TimeInterval { lock.withLock { Double(frameCount) / Self.sampleRate } }
 
     private let lock = NSLock()
-    // Native conversion/callback work must never hold the MainActor-facing state lock.
-    private let conversionLock = NSLock()
-    private var converter: AVAudioConverter?
-    private var tapFormat: AVAudioFormat?
-    private var accepting = false
+    // Only short metadata operations hold this MainActor-facing lock.
+    private var capture: AudioCaptureQueue?
     private var finalizing = false
-    private var samples: [Float] = []
     private var bufferCallback: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private var levelCallback: (@Sendable (Float) -> Void)?
     private var errorCallback: (@MainActor @Sendable (String) -> Void)?
     private var sessionID: UUID?
     private var attemptID: UUID?
     private var recordingError: String?
-    private var captureFailure: String?
+    private var captureFailure: String? { capture?.failureReason }
     private var configurationRevision = 0
     private var validationScheduled = false
     private var bufferCount = 0
     private var inputFrameCount = 0
     private var frameCount = 0
-    private var firstBufferTime: TimeInterval?
-    private var lastBufferTime: TimeInterval?
+    private var firstBufferTime: TimeInterval? { capture?.firstBufferTime }
+    private var lastBufferTime: TimeInterval? { capture?.lastBufferTime }
 
     fileprivate var engine: AVAudioEngine?
     private var configurationObserver: NSObjectProtocol?
@@ -283,21 +441,22 @@ private final class NativeAudioRecorder: @unchecked Sendable {
 
     private static let interrupted = "Microphone recording was interrupted because the audio device changed or disconnected. Check your microphone and start again."
     private static let noAudio = "The microphone did not deliver audio. Check your microphone and try again."
+    private static var now: TimeInterval { Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1_000_000_000 }
 
     /// Only the facade reserves/invalidates a session. A cancelled queued startup
     /// must never recreate it when the native worker eventually returns.
     func beginFinalization() {
-        lock.withLock { accepting = false; finalizing = true }
+        lock.withLock { finalizing = true; capture?.close() }
     }
 
     func reserveSession() -> UUID {
         let session = UUID()
         lock.withLock {
+            capture?.cancel()
             sessionID = session
             finalizing = false
-            accepting = false
             recordingError = nil
-            samples.removeAll(keepingCapacity: true)
+            frameCount = 0
         }
         return session
     }
@@ -310,11 +469,11 @@ private final class NativeAudioRecorder: @unchecked Sendable {
             // deadline before the MainActor has delivered that original failure.
             if message != nil, recordingError != nil { return false }
             let wasHealthy = recordingError == nil
-            accepting = false
+            capture?.cancel()
             sessionID = nil
             attemptID = nil
             if wasHealthy, let message { recordingError = message }
-            samples.removeAll(keepingCapacity: true)
+            frameCount = 0
             return wasHealthy
         }
     }
@@ -327,15 +486,12 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         try checkSession(session)
         self.deviceUID = deviceUID
         self.operationID = operationID
-        startedAt = ProcessInfo.processInfo.systemUptime
+        startedAt = Self.now
         firstBufferLogged = false
         lock.withLock {
-            captureFailure = nil
             bufferCount = 0
             frameCount = 0
             inputFrameCount = 0
-            firstBufferTime = nil
-            lastBufferTime = nil
             configurationRevision = 0
             validationScheduled = false
         }
@@ -352,7 +508,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         } catch {
             log("audio_start_failed", fields: ["reason": "start_failed"])
             lock.withLock {
-                if sessionID == session { recordingError = error.localizedDescription; accepting = false }
+                if sessionID == session { recordingError = error.localizedDescription; capture?.cancel() }
             }
             tearDownAttempt()
             throw error
@@ -422,18 +578,21 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         if reused { log("audio_engine_reused", configuration: configuration, fields: ["stage": "startup"]) }
         try checkSession(session)
         let attempt = UUID()
-        conversionLock.withLock {
-            self.converter = converter
-            tapFormat = format
+        let capture = try AudioCaptureQueue(format: format, converter: converter) { [weak self] buffer, capture in
+            self?.process(buffer, capture: capture, session: session, attempt: attempt)
         }
+        // Releasing the previous recording can free a large sample array. Retain
+        // it across the swap so destruction cannot happen under the state lock.
+        let previousCapture = lock.withLock { self.capture }
         lock.withLock {
-            guard sessionID == session else { return }
+            guard sessionID == session else { capture.cancel(); return }
+            self.capture = capture
             attemptID = attempt
-            captureFailure = nil
             // Pending startup must not reopen capture after the key-release boundary.
-            accepting = !finalizing
+            if finalizing { capture.close() }
             validationScheduled = false
         }
+        withExtendedLifetime(previousCapture) {}
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
         ) { @Sendable [weak self] _ in
@@ -453,8 +612,8 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         }
         // AVAudioNodeTapBlock is non-Sendable: explicitly opt out of inherited MainActor isolation.
         try checkSession(session)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
-            self?.process(buffer, session: session, attempt: attempt)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
+            capture.enqueue(buffer)
         }
         tapInstalled = true
         try checkSession(session)
@@ -462,7 +621,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         try checkSession(session)
         try engine.start()
         try checkSession(session)
-        attemptStartedAt = ProcessInfo.processInfo.systemUptime
+        attemptStartedAt = Self.now
     }
 
     private func startupError(reason: String) -> TalklessError {
@@ -571,7 +730,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
             }
         }
         let lastBuffer = lock.withLock { lastBufferTime }
-        if ProcessInfo.processInfo.systemUptime - (lastBuffer ?? attemptStartedAt) >= 3 {
+        if Self.now - (lastBuffer ?? attemptStartedAt) >= 3 {
             return !interrupt(session: session, reason: lastBuffer == nil ? "no_audio_timeout" : "audio_stalled_timeout",
                               message: L10n.tr(Self.noAudio), audioTimeout: true)
         }
@@ -583,12 +742,14 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         let current = lock.withLock {
             guard sessionID == session, !finalizing, recordingError == nil else { return false }
             // A buffer may have arrived after monitor's snapshot. Commit the timeout
-            // only if capture is still stale under the same lock that accepts audio.
-            if audioTimeout && ProcessInfo.processInfo.systemUptime - (lastBufferTime ?? attemptStartedAt) < 3 { return false }
+            // only if the atomic admission version still matches its receive time.
+            if audioTimeout {
+                guard capture?.closeIfStale(now: Self.now, startedAt: attemptStartedAt) == true else { return false }
+            }
             recordingError = message
-            accepting = false
+            capture?.cancel()
             attemptID = nil
-            samples.removeAll(keepingCapacity: true)
+            frameCount = 0
             return true
         }
         guard current else { return false }
@@ -608,13 +769,14 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         let active = lock.withLock {
             // Close the admission gate immediately; native teardown later drains any
             // in-flight conversion/callback without holding this state lock.
-            accepting = false
+            capture?.close()
             return sessionID != nil
         }
         if active {
             // A buffer admitted before key release owns its final conversion and
             // feed callback. Drain it on the worker before freezing the sample list.
-            conversionLock.withLock {}
+            let capture = lock.withLock { self.capture }
+            capture?.drainAndWait()
             try checkSession(session)
             // A key release may beat the queued configuration handler. Inspect native
             // state now, before normal teardown itself stops the engine and notifies.
@@ -642,7 +804,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
             lock.withLock {
                 guard sessionID == session || sessionID == nil else { return }
                 sessionID = nil
-                if recordingError != nil { samples.removeAll(keepingCapacity: true) }
+                if recordingError != nil { frameCount = 0 }
             }
             logFirstBuffer()
             log("audio_recording_summary", fields: ["stage": "shutdown"], asynchronous: true)
@@ -651,23 +813,28 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         if failed != nil { tearDownAttempt() }
         else { finishCapture() }
         if let failed { throw TalklessError.message(failed) }
-        return lock.withLock { samples }
+        return lock.withLock { capture }?.collectedSamples() ?? []
     }
 
     /// Stop the microphone between turns, but preserve the negotiated engine route.
     /// The converter and tap are per-recording, so neither resampler state nor late
     /// callbacks can contaminate a new utterance on this reused engine.
     private func finishCapture() {
-        lock.withLock { accepting = false; attemptID = nil; validationScheduled = false }
-        // Drain an in-flight conversion/callback only on the audio worker.
-        conversionLock.withLock {}
+        let capture = lock.withLock {
+            attemptID = nil; validationScheduled = false
+            self.capture?.cancel()
+            return self.capture
+        }
+        // Only the native worker waits; never hold the state lock across a drain.
+        capture?.drainAndWait()
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
         }
         engine?.stop()
         if tapInstalled { engine?.inputNode.removeTap(onBus: 0); tapInstalled = false }
-        conversionLock.withLock { converter = nil; tapFormat = nil }
+        // The per-attempt queue remains alive through any stale tap closure. Its gate
+        // stays cancelled; the next attempt gets new slots and a new converter.
     }
 
     fileprivate func tearDownAttempt() {
@@ -677,61 +844,47 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         configuredUID = nil
     }
 
-    private func process(_ buffer: AVAudioPCMBuffer, session: UUID, attempt: UUID) {
-        conversionLock.withLock {
-            func captureIsCurrent() -> Bool {
-                sessionID == session && attemptID == attempt && recordingError == nil && captureFailure == nil
-            }
-            func fail(_ reason: String) {
-                lock.withLock {
-                    guard captureIsCurrent() else { return }
-                    captureFailure = reason
-                    accepting = false
-                }
-            }
-            // Finalization closes admission, not an already admitted tail buffer.
-            // Cancellation/failure invalidates its session/attempt even mid-convert.
-            guard lock.withLock({ accepting && !finalizing && captureIsCurrent() }), let converter else { return }
-            // The converter must never see a newly negotiated, incompatible format.
-            guard buffer.format == tapFormat else { fail("format_changed"); return }
-            guard buffer.frameLength > 0 else { return }
-            let ratio = Self.sampleRate / buffer.format.sampleRate
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
-            guard let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: capacity) else {
-                fail("conversion_failed"); return
-            }
-            var consumed = false
-            var error: NSError?
-            converter.convert(to: out, error: &error) { _, status in
-                if consumed { status.pointee = .noDataNow; return nil }
-                consumed = true
-                status.pointee = .haveData
-                return buffer
-            }
-            guard error == nil else { fail("conversion_failed"); return }
-            guard out.frameLength > 0, let data = out.floatChannelData?[0] else { return }
-            let chunk = UnsafeBufferPointer(start: data, count: Int(out.frameLength))
-            let sum = chunk.reduce(Float(0)) { $0 + $1 * $1 }
-            let db = 20 * log10(max(sqrt(sum / Float(chunk.count)), 1e-6))
-            let committed = lock.withLock {
-                guard captureIsCurrent() else { return false }
-                let now = ProcessInfo.processInfo.systemUptime
-                if firstBufferTime == nil { firstBufferTime = now }
-                lastBufferTime = now
-                inputFrameCount += Int(buffer.frameLength)
-                bufferCount += 1
-                frameCount += Int(out.frameLength)
-                samples.append(contentsOf: chunk)
-                return true
-            }
-            guard committed else { return }
-            // A callback already in progress may finish after cancellation, but it
-            // never blocks the state gate or permits the next callback/session.
-            let level = lock.withLock { captureIsCurrent() ? levelCallback : nil }
-            level?(max(0, min(1, (db + 50) / 40)))
-            let callback = lock.withLock { captureIsCurrent() ? bufferCallback : nil }
-            callback?(out)
+    private func process(_ buffer: AVAudioPCMBuffer, capture: AudioCaptureQueue, session: UUID, attempt: UUID) {
+        func captureIsCurrent() -> Bool {
+            sessionID == session && attemptID == attempt && recordingError == nil && capture.failureReason == nil
         }
+        // Admission was decided on the tap. Finalization preserves every queued tail
+        // buffer; cancellation invalidates even the currently converting generation.
+        guard lock.withLock({ captureIsCurrent() }) else { return }
+        let ratio = Self.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+        guard let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: capacity) else {
+            capture.fail(.conversion); return
+        }
+        var consumed = false
+        var error: NSError?
+        let converter = capture.converter
+        converter.convert(to: out, error: &error) { _, status in
+            if consumed { status.pointee = .noDataNow; return nil }
+            consumed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        guard error == nil else { capture.fail(.conversion); return }
+        guard out.frameLength > 0, let data = out.floatChannelData?[0] else { return }
+        let chunk = UnsafeBufferPointer(start: data, count: Int(out.frameLength))
+        let sum = chunk.reduce(Float(0)) { $0 + $1 * $1 }
+        let db = 20 * log10(max(sqrt(sum / Float(chunk.count)), 1e-6))
+        // Growing a full-recording sample array can allocate/copy. Keep that work
+        // entirely off the metadata lock used by MainActor cancellation and meters.
+        capture.samples.append(contentsOf: chunk)
+        let committed = lock.withLock {
+            guard captureIsCurrent() else { return false }
+            inputFrameCount += Int(buffer.frameLength)
+            bufferCount += 1
+            frameCount += Int(out.frameLength)
+            return true
+        }
+        guard committed else { return }
+        let level = lock.withLock { captureIsCurrent() ? levelCallback : nil }
+        level?(max(0, min(1, (db + 50) / 40)))
+        let callback = lock.withLock { captureIsCurrent() ? bufferCallback : nil }
+        callback?(out)
     }
 
     private func logFirstBuffer() {
@@ -741,7 +894,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     }
 
     private func milliseconds(since time: TimeInterval) -> String {
-        String(Int(max(0, ProcessInfo.processInfo.systemUptime - time) * 1_000))
+        String(Int(max(0, Self.now - time) * 1_000))
     }
 
     private func log(_ event: String, configuration: Configuration? = nil,

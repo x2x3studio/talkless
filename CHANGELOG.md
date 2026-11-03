@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+- Audio capture copies into preallocated bounded buffers and coalesces worker wakeups. Conversion, metering and recognizer callbacks run on a separate processing queue rather than the capture callback.
+- Normal stop drains accepted audio before final recognition; cancellation invalidates queued audio without making the UI wait. Queue/format failures end the current capture instead of delivering a partial transcript.
+
+## 2026.1103.51337
+
 ### Fixed
 - Audio capture now detects both a missing first buffer and a stream that stops delivering buffers for three seconds. Capture startup, interruption and stop failures cancel the utterance quietly, without retries or partial text insertion. Silent buffers remain valid audio.
 - Conversion and callback work no longer hold the state lock used by main-thread stop/cancel. Deadline completion no longer waits for cleanup, and stale session timeouts cannot invalidate a newer capture.
