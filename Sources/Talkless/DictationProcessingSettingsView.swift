@@ -15,21 +15,19 @@ struct DictationProcessingSettingsView: View {
     var body: some View {
         Section {
             Toggle(isOn: $settings.polishEnabled) {
-                Text(L10n.tr("Smart text cleanup"))
-                Text(L10n.tr("Automatically fix spelling and punctuation after you speak."))
+                Text(L10n.tr("AI polishing"))
+                Text(L10n.tr("Requires a separately configured AI service. After recognition finishes, the transcript is sent to it for correction and polishing."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            if settings.polishEnabled, !settings.llmConfigured {
-                HStack {
-                    Text(L10n.tr("Set up an AI service to use text cleanup.")).settingsNote()
-                    Spacer()
-                    Button(L10n.tr("Set up…"), action: onConfigureAI)
-                }
+            AIServiceStatusView(settings: settings, onConfigureAI: onConfigureAI)
+            if !settings.llmConfigured {
+                Text(L10n.tr("Set up an AI service to use AI polishing. Until then, dictation skips AI polishing."))
+                    .settingsNote()
             }
 
-            DisclosureGroup(L10n.tr("Cleanup preferences")) {
+            DisclosureGroup(L10n.tr("AI polishing preferences")) {
                 VStack(alignment: .leading, spacing: 6) {
                     Picker(L10n.tr("Output language"), selection: $settings.outputLanguage) {
                         ForEach(OutputLanguage.allCases) { Text($0.title).tag($0) }
@@ -68,8 +66,10 @@ struct DictationProcessingSettingsView: View {
                 ForEach(LatinSpacing.allCases) { Text($0.title).tag($0) }
             }
             .id("spacing-\(localization.locale.identifier)")
+        } header: {
+            Text(L10n.tr("Text formatting"))
         } footer: {
-            Text(L10n.tr("Applied on this Mac to every dictation, with or without smart text cleanup."))
+            Text(L10n.tr("Text formatting runs on this Mac for every dictation, independently of AI polishing. No AI service is needed."))
                 .settingsNote()
         }
 

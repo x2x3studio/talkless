@@ -50,7 +50,7 @@ struct DictionaryView: View {
             .sorted { $0.lastSeen > $1.lastSeen }
     }
 
-    /// Learning reads what smart cleanup changed; without it there is nothing to learn from.
+    /// Learning reads what AI polishing changed; without it there is nothing to learn from.
     private var learningBlocked: Bool { !settings.polishEnabled || !settings.llmConfigured }
 
     private var manualTerms: [String] {
@@ -81,7 +81,7 @@ struct DictionaryView: View {
             if settings.dictionaryLearningEnabled, learningBlocked {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle").foregroundStyle(.orange)
-                    Text(L10n.tr("Learning needs smart text cleanup: Talkless learns from the words it corrects."))
+                    Text(L10n.tr("Learning needs AI polishing: Talkless learns from the words it corrects."))
                         .font(.caption).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 4)
                     Button(L10n.tr("Turn on…")) {
@@ -257,7 +257,7 @@ struct DictionaryView: View {
         let (symbol, color, title): (String, Color, String) = switch event.kind {
         case .learned: ("sparkles", .accentColor, L10n.tr("Learned"))
         case .retired: ("moon.zzz", .secondary, L10n.tr("Retired, not needed for 30 days"))
-        case .undone: ("arrow.uturn.backward", .orange, L10n.tr("Retired, cleanup changed it back"))
+        case .undone: ("arrow.uturn.backward", .orange, L10n.tr("Retired, AI polishing changed it back"))
         }
         return HStack(spacing: 8) {
             Image(systemName: symbol).foregroundStyle(color).frame(width: 16)

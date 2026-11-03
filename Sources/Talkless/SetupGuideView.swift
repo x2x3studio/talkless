@@ -88,7 +88,7 @@ enum SetupGuideStep: Int, CaseIterable {
         case .microphone: L10n.tr("Microphone")
         case .accessibility: L10n.tr("Accessibility")
         case .speech: L10n.tr("Speech recognition")
-        case .ai: L10n.tr("Smart text cleanup · optional")
+        case .ai: L10n.tr("AI polishing · optional")
         case .login: L10n.tr("Launch at login · optional")
         case .done: L10n.tr("Setup summary")
         }
@@ -270,10 +270,11 @@ struct SetupGuideView: View {
             }
             explanation("This guide stays open. Return here after choosing or downloading a model, or continue and finish later.", small: true)
         case .ai where aiSetup != nil:
-            explanation("After you speak, AI can lay out, correct and polish the text. It is optional and uses your own provider, which may charge for use.")
+            explanation("AI polishing is optional and requires a separately configured AI service. After recognition finishes, the transcript is sent to that service, which may charge for use.")
             aiSetup
+            explanation("Text formatting runs on this Mac for every dictation, independently of AI polishing. No AI service is needed.", small: true)
         case .ai:
-            explanation("AI can clean up your transcript. It is not required for dictation, and your provider may charge for use.")
+            explanation("AI polishing is optional and requires a separately configured AI service. After recognition finishes, the transcript is sent to that service, which may charge for use.")
             SetupGuideRow(symbol: snapshot.polishEnabled && snapshot.aiConfigured ? "checkmark.circle.fill" : "slider.horizontal.3",
                           title: snapshot.polishEnabled && snapshot.aiConfigured ? L10n.tr("AI polishing is enabled") : L10n.tr("AI polishing is optional"),
                           detail: snapshot.aiConfigured ? L10n.tr("Service configured. No connection test has been run by this guide.") : L10n.tr("Configure a service before enabling polishing."),
@@ -289,6 +290,7 @@ struct SetupGuideView: View {
                 Button(L10n.tr("Check again"), action: actions.refresh)
             }
             explanation("Continue without changing anything, or explicitly enable polishing above. No audio or text is sent by this guide.", small: true)
+            explanation("Text formatting runs on this Mac for every dictation, independently of AI polishing. No AI service is needed.", small: true)
         case .login:
             VStack(alignment: .leading, spacing: 12) {
                 LaunchAtLoginControls(
@@ -310,7 +312,7 @@ struct SetupGuideView: View {
                 summaryRow("Dictation shortcuts", ready: snapshot.shortcutsReady)
                 summaryRow("Speech recognition", ready: snapshot.speechReady)
                 HStack {
-                    Text(L10n.tr("Smart text cleanup · optional"))
+                    Text(L10n.tr("AI polishing · optional"))
                     Spacer()
                     Text(snapshot.polishEnabled && snapshot.aiConfigured ? L10n.tr("Enabled") : L10n.tr("Not enabled"))
                         .foregroundStyle(.secondary)

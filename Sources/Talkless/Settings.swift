@@ -184,7 +184,13 @@ final class AppSettings: ObservableObject {
     @Published var doubaoInputLanguage: DoubaoInputLanguage {
         didSet { save(doubaoInputLanguage.rawValue, "doubaoInputLanguage") }
     }
-    var doubaoConfig: DoubaoConfig { .init(apiKey: doubaoAPIKey, resource: doubaoResource, inputLanguage: doubaoInputLanguage) }
+    @Published var doubaoSpokenCleanup: Bool {
+        didSet { save(doubaoSpokenCleanup, "doubaoSpokenCleanup") }
+    }
+    var doubaoConfig: DoubaoConfig {
+        .init(apiKey: doubaoAPIKey, resource: doubaoResource, inputLanguage: doubaoInputLanguage,
+              spokenCleanup: doubaoSpokenCleanup)
+    }
     var doubaoConfigured: Bool { doubaoConfig.isConfigured }
     @Published var onlineLocalFallback: Bool { didSet { save(onlineLocalFallback, "onlineLocalFallback") } }
     var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback }
@@ -292,6 +298,7 @@ final class AppSettings: ObservableObject {
         onlineLocalFallback = d.bool(forKey: "onlineLocalFallback")
         doubaoResource = DoubaoResource(rawValue: d.string(forKey: "doubaoResource") ?? "") ?? .duration
         doubaoInputLanguage = DoubaoInputLanguage(rawValue: d.string(forKey: "doubaoInputLanguage") ?? "") ?? .automatic
+        doubaoSpokenCleanup = d.bool(forKey: "doubaoSpokenCleanup")
         polishEnabled = d.object(forKey: "polishEnabled") as? Bool ?? false
         outputLanguage = OutputLanguage(rawValue: d.string(forKey: "outputLanguage") ?? "") ?? .original
         punctuationStyle = PunctuationStyle(rawValue: d.string(forKey: "punctuationStyle") ?? "") ?? .keepAll

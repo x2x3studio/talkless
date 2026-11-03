@@ -45,11 +45,10 @@ struct SetupSpeechSetup: View {
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
                 }
             } else {
-                // The same Doubao section as Settings: key, Test, fallback and plan.
+                // Leave room for recognition options, including spoken cleanup.
                 Form { DoubaoSettingsSection(settings: settings, localModelStatus: controller.modelPreparationStatus) }
                     .formStyle(.grouped)
-                    .scrollDisabled(true)
-                    .frame(height: 300)
+                    .frame(height: 380)
                     .disabled(controller.state != .idle)
             }
         }
@@ -85,32 +84,35 @@ struct SetupSpeechSetup: View {
     }
 }
 
-/// The guide's smart-cleanup step: turn it on and configure the AI service in place.
+/// The guide's optional AI-polishing step, separate from recognition and local formatting.
 struct SetupAISetup: View {
     @ObservedObject private var settings = AppSettings.shared
+    @State private var showsAIService = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.tr("Smart text cleanup")).font(.body.weight(.medium))
-                    Text(L10n.tr("Automatically fix spelling and punctuation after you speak.")).settingsNote()
+                    Text(L10n.tr("AI polishing")).font(.body.weight(.medium))
+                    Text(L10n.tr("Requires a separately configured AI service. After recognition finishes, the transcript is sent to it for correction and polishing.")).settingsNote()
                 }
                 Spacer(minLength: 8)
-                Toggle(L10n.tr("Smart text cleanup"), isOn: $settings.polishEnabled)
+                Toggle(L10n.tr("AI polishing"), isOn: $settings.polishEnabled)
                     .toggleStyle(.switch).labelsHidden()
             }
             .padding(14)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            if settings.polishEnabled {
-                if !settings.llmConfigured {
-                    Text(L10n.tr("Choose a provider and paste its API key below. Until then, dictation is typed without cleanup."))
-                        .font(.caption).foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            AIServiceStatusView(settings: settings) { showsAIService = true }
+            if !settings.llmConfigured {
+                Text(L10n.tr("Set up an AI service to use AI polishing. Until then, dictation skips AI polishing."))
+                    .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if settings.polishEnabled || showsAIService {
                 AIServiceSettingsView(settings: settings)
                     .frame(height: 360)
-            } else {
+            }
+            if !settings.polishEnabled {
                 Text(L10n.tr("You can turn it on later in Settings › Dictation."))
                     .settingsNote()
             }

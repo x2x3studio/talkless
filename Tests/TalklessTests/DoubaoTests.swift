@@ -176,6 +176,28 @@ private actor ValidationGate {
         }
     }
 
+    @Test func spokenCleanupReachesRecognitionAndConnectionCheck() async throws {
+        #expect(!DoubaoConfig(apiKey: "synthetic").spokenCleanup)
+        for enabled in [false, true] {
+            for language in [DoubaoInputLanguage.automatic, .mandarin] {
+                let config = DoubaoConfig(apiKey: "synthetic", inputLanguage: language, spokenCleanup: enabled)
+                let checkSocket = ScriptedDoubaoSocket()
+                try await DoubaoTranscriptionSession.validateConnection(config: config, socket: checkSocket)
+                let socket = ScriptedDoubaoSocket()
+                let session = try DoubaoTranscriptionSession(config: config, socket: socket, timeout: 60)
+                #expect(try await session.finish(samples: []) == "Final words")
+                for frame in [try #require(checkSocket.sent.first), try #require(socket.sent.first)] {
+                    let body = try DoubaoProtocol.gzip(Data(frame.dropFirst(8)), decompress: true)
+                    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                    let request = try #require(json["request"] as? [String: Any])
+                    #expect(request["enable_ddc"] as? Bool == enabled)
+                    #expect(request["enable_itn"] as? Bool == true)
+                    #expect(request["enable_punc"] as? Bool == true)
+                }
+            }
+        }
+    }
+
     @Test func compressedAndPlainResponses() throws {
         for compressed in [false, true] {
             for sequence in [false, true] {

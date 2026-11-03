@@ -64,6 +64,7 @@ struct DoubaoConfig: Sendable, Equatable {
     var apiKey: String
     var resource: DoubaoResource = .duration
     var inputLanguage: DoubaoInputLanguage = .automatic
+    var spokenCleanup = false
 
     var isConfigured: Bool { (try? request()) != nil }
 
@@ -106,7 +107,7 @@ enum DoubaoProtocol {
         let isFinal: Bool
     }
 
-    static func configuration(inputLanguage: DoubaoInputLanguage = .automatic) throws -> Data {
+    static func configuration(inputLanguage: DoubaoInputLanguage = .automatic, spokenCleanup: Bool = false) throws -> Data {
         var audio: [String: Any] = ["format": "pcm", "codec": "raw", "rate": 16000, "bits": 16, "channel": 1]
         if let code = inputLanguage.code { audio["language"] = code }
         let payload = try JSONSerialization.data(withJSONObject: [
@@ -114,7 +115,7 @@ enum DoubaoProtocol {
             "user": ["uid": UUID().uuidString],
             "audio": audio,
             "request": ["model_name": "bigmodel", "result_type": "full", "enable_itn": true,
-                        "enable_punc": true, "enable_ddc": false, "show_utterances": true],
+                        "enable_punc": true, "enable_ddc": spokenCleanup, "show_utterances": true],
         ])
         return try frame(type: 1, flags: 0, serialization: 1, payload: payload)
     }

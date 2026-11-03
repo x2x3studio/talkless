@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- Doubao online has a separate Spoken cleanup switch that sends enable_ddc to the recognizer. It defaults off and does not enable AI polishing.
+
+### Changed
+- Smart text cleanup is now named AI polishing, with its separate AI-service requirement, configured provider/model and setup entry visible even when switched off. Setup Guide and dictionary wording match; local Text formatting remains independent.
+
+## 2026.1103.8364
+
 ### Changed
 - Doubao recognition and connection checks reuse a long-lived URLSession instead of creating and invalidating one per utterance. Each recognition still uses its own WebSocket, credentials and request ID; ending one stream does not cancel others.
 - ASR timing logs now record WebSocket handshake completion separately from the first recognition response. No idle ASR connections or empty-audio keepalives are created.

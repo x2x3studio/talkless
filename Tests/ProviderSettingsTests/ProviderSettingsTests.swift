@@ -406,6 +406,14 @@ struct ProviderSettingsTests {
         check(speechDefaults.string(forKey: "doubaoAPIKey") == nil, "Doubao key never enters preferences")
         check(settings(speechDefaults, speechStore).doubaoAPIKey == "synthetic-doubao-key", "Doubao key reloads")
         check(online.doubaoInputLanguage == .automatic, "Existing settings keep automatic Doubao recognition")
+        check(!online.doubaoSpokenCleanup && !online.doubaoConfig.spokenCleanup, "Spoken cleanup defaults off")
+        online.polishEnabled = false
+        online.doubaoSpokenCleanup = true
+        check(online.doubaoConfig.spokenCleanup && !online.polishEnabled, "Doubao cleanup does not enable AI polishing")
+        check(settings(speechDefaults, speechStore).doubaoSpokenCleanup, "Doubao cleanup persists")
+        online.polishEnabled = true
+        online.doubaoSpokenCleanup = false
+        check(online.polishEnabled && !online.doubaoConfig.spokenCleanup, "AI polishing remains independent")
         let outputLanguage = online.outputLanguage
         online.doubaoInputLanguage = .japanese
         check(online.doubaoConfig.inputLanguage == .japanese, "Input language reaches Doubao configuration")

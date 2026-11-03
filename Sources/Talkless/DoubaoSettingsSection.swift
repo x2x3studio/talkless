@@ -49,6 +49,12 @@ struct DoubaoSettingsSection: View {
                 }
             }
 
+            Toggle(isOn: $settings.doubaoSpokenCleanup) {
+                Text(L10n.tr("Spoken cleanup"))
+                Text(L10n.tr("Doubao removes fillers and accidental repetition during recognition. No separate AI service is needed."))
+                    .settingsNote()
+            }
+
             Toggle(isOn: $settings.onlineLocalFallback) {
                 Text(L10n.tr("Allow falling back to offline recognition"))
                 Text(L10n.tr("When Doubao fails or is not set up, this recording uses the offline model instead. Needs the offline model downloaded."))
