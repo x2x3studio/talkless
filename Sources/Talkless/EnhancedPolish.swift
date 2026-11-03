@@ -30,16 +30,22 @@ enum EnhancedPolish {
     @MainActor
     static func run(primary: String, secondary: String?, context: AppContext?, settings: AppSettings,
                     alternatives: Bool = true, complete: Completion) async throws -> [String] {
+        try await run(primary: primary, secondary: secondary,
+                      system: systemPrompt(context: context, settings: settings, alternatives: alternatives),
+                      config: settings.llmConfig, alternatives: alternatives, complete: complete)
+    }
+
+    /// Uses the caller's recording snapshot rather than reading Settings after recognition.
+    @MainActor
+    static func run(primary: String, secondary: String?, system: String, config: LLMClient.Config,
+                    alternatives: Bool = true, complete: Completion = { system, user, config, timeout in
+                        try await LLMClient.complete(system: system, user: user, config: config, timeout: timeout)
+                    }) async throws -> [String] {
         try Task.checkCancellation()
         guard !primary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ValidationError.invalidResponse
         }
-        let response = try await complete(
-            systemPrompt(context: context, settings: settings, alternatives: alternatives),
-            input(primary: primary, secondary: secondary),
-            settings.llmConfig,
-            5
-        )
+        let response = try await complete(system, input(primary: primary, secondary: secondary), config, 5)
         try Task.checkCancellation()
         let parsed = try await Task.detached(priority: .userInitiated) {
             try parse(response, primary: primary)

@@ -110,7 +110,13 @@ struct Settings {
     var doubaoConfigured = true
     var polishEnabled = true
     var llmConfigured = true
-    var llmConfig = 0
+    var voiceEditEnabled = true
+    var llmBaseURL = "https://synthetic.invalid"
+    var llmProtocol = "responses"
+    var llmConfig: LLMClient.Config { .init(baseURL: llmBaseURL, apiProtocol: llmProtocol, apiKey: llmAPIKey, model: llmModel) }
+    var llmAPIKey = "initial-key"
+    var llmModel = "initial-model"
+    var promptRevision = "initial"
     var outputLanguage = OutputLanguage.original
     var punctuationStyle = PunctuationStyle.keepAll
     var latinSpacing = LatinSpacing.none
@@ -119,31 +125,45 @@ struct Settings {
 }
 struct Context { var name = "Fake app" }
 enum Prompts {
-    static func voiceEdit(settings: Settings) -> String { "edit" }
+    @MainActor static func voiceEdit(settings: Settings) -> String { "edit-" + settings.promptRevision }
     static func voiceEditInput(selection: String, instruction: String) -> String { instruction }
-    static func polish(context: Context?, settings: Settings) -> String { "polish" }
+    @MainActor static func polish(context: Context?, settings: Settings) -> String { "polish-\(settings.promptRevision)-\(settings.outputLanguage)-\(context?.name ?? "")" }
     static func polishInput(_ raw: String) -> String { raw }
 }
 @MainActor enum LLMClient {
+    struct Config: Equatable {
+        var baseURL: String
+        var apiProtocol: String
+        var apiKey: String
+        var model: String
+    }
     enum ClientError: Error { case timedOut }
     static var timedOut = false
     static var fail = false
     static var calls = 0
     static var onComplete: () -> Void = {}
-    static func complete(system: String, user: String, config: Int,
+    static var requests: [(system: String, config: Config)] = []
+    static var output = "processed transcript"
+    static func complete(system: String, user: String, config: Config,
                          timeout: Int = 60) async throws -> String {
         calls += 1
+        requests.append((system, config))
         await Task.yield()
         onComplete()
         if timedOut { throw ClientError.timedOut }
         if fail { throw NSError(domain: "Synthetic polish failure", code: 1) }
-        return "processed transcript"
+        return output
     }
 }
 @MainActor enum EnhancedPolish {
     static var choices = ["processed transcript"]
     static var inputs: [(primary: String, secondary: String?)] = []
-    static func run(primary: String, secondary: String?, context: Context?, settings: Settings, alternatives: Bool = true) async throws -> [String] {
+    static func systemPrompt(context: Context?, settings: Settings, alternatives: Bool = true) -> String {
+        Prompts.polish(context: context, settings: settings) + "-enhanced-\(alternatives)"
+    }
+    static var requests: [(system: String, config: LLMClient.Config)] = []
+    static func run(primary: String, secondary: String?, system: String, config: LLMClient.Config, alternatives: Bool = true) async throws -> [String] {
+        requests.append((system, config))
         inputs.append((primary, secondary))
         await Task.yield()
         if LLMClient.timedOut { throw LLMClient.ClientError.timedOut }
@@ -222,10 +242,16 @@ struct HistoryEntry {
     enum ModelPreparationState { case unprepared, preparing, ready, failed }
     private var diagnosticOperation: DictationOperation? = DictationOperation(generation: 0, engine: "qwen", recordingMode: "hold", handsFree: false)
     var pressedAt: UInt64? = 123
+    var recordingConfiguration: DictationConfiguration?
     var recordingPolishEnabled = true
     var recordingCandidatesEnabled = false
     var recordingCandidateWait: TimeInterval = 5
     let sentencePanel = SentenceCandidatesPanel()
+    func captureConfiguration() {
+        recordingConfiguration = DictationConfiguration(settings: settings, context: context,
+            polishEnabled: recordingPolishEnabled, enhanced: session is EnhancedTranscriptionSession,
+            alternatives: recordingCandidatesEnabled)
+    }
     let hotkeys = FakeHotkeys()
     func updateTriggerKey() {}
     var editSelection: String?
@@ -320,6 +346,7 @@ TESTS = r'''
             precondition(dictionary == (editing ? "" : "transcript"))
         }
         TextIO.inserted = []
+        test.captureConfiguration()
         test.stopAndProcess()
         precondition(test.state == .processing && test.hud.phases == [.recognizing])
         precondition(test.hud.model.phase.accessibilityLabel == dictatingLabel,
@@ -379,6 +406,7 @@ TESTS = r'''
         TextIO.inserted = []
         LLMClient.calls = 0
         let interruptedSession = interrupted.session!
+        interrupted.captureConfiguration()
         interrupted.stopAndProcess()
         precondition(interrupted.state == .processing && interrupted.recorder.stops == 0)
         await interrupted.processingTask?.value
@@ -394,6 +422,7 @@ TESTS = r'''
             test.hud.model.preview = "partial words"
             TextIO.inserted = []
             LLMClient.calls = 0
+            test.captureConfiguration()
             test.stopAndProcess()
             let task = test.processingTask!
             precondition(test.state == .processing && test.recorder.stops == 0)
@@ -408,6 +437,7 @@ TESTS = r'''
                 try? await Task.sleep(for: .milliseconds(1))
             }
             precondition(test.recorder.pendingStop != nil)
+            test.captureConfiguration()
             test.stopAndProcess()
             precondition(test.recorder.stops == 1, "Only one stop may own teardown")
             if outcome != "timeout" {
@@ -442,6 +472,7 @@ TESTS = r'''
             test.session!.result = ""
             test.session!.failure = failure
             TextIO.inserted = []
+            test.captureConfiguration()
             test.stopAndProcess()
             await test.processingTask?.value
             let logs = Diagnostics.shared.events
@@ -471,6 +502,7 @@ TESTS = r'''
                 if cancelStage == "polishing" || cancelStage == "editing" { test.cancel() }
             }
             TextIO.onInsert = { _ in if cancelStage == "insertion" { test.cancel() } }
+            test.captureConfiguration()
             test.stopAndProcess()
             let task = test.processingTask!
             await task.value
@@ -486,6 +518,7 @@ TESTS = r'''
         failedEdit.hud.model.preview = "partial edit instruction"
         LLMClient.fail = true
         TextIO.inserted = []
+        failedEdit.captureConfiguration()
         failedEdit.stopAndProcess()
         await failedEdit.processingTask?.value
         if case .error(let message) = failedEdit.hud.model.phase {
@@ -501,6 +534,7 @@ TESTS = r'''
             switched.accessibilityMissing = missingAccessibility
             TextIO.inserted = []
             TextIO.copied = []
+            switched.captureConfiguration()
             switched.stopAndProcess()
             await switched.processingTask?.value
             precondition(TextIO.inserted.isEmpty, "A changed frontmost app must never receive the paste")
@@ -519,6 +553,7 @@ TESTS = r'''
             TextIO.outcome = outcome
             TextIO.copied = []
             Diagnostics.shared.events = []
+            failedPaste.captureConfiguration()
             failedPaste.stopAndProcess()
             await failedPaste.processingTask?.value
             precondition(failedPaste.state == .idle && failedPaste.history.entries.count == 1)
@@ -539,6 +574,7 @@ TESTS = r'''
             fixedTest.recordingPolishEnabled = polish
             fixedTest.recordingReplacements = [DictionaryReplacement(heard: "TRANSCRIPT", term: "Transcript™")]
             TextIO.inserted = []
+            fixedTest.captureConfiguration()
             fixedTest.stopAndProcess()
             await fixedTest.processingTask?.value
             let expected = polish ? "processed transcript" : "raw Transcript™"
@@ -561,6 +597,7 @@ TESTS = r'''
             }
         }
         LLMClient.calls = 0
+        late.captureConfiguration()
         late.stopAndProcess()
         precondition(late.recorder.finalizing && late.recorder.stops == 0)
         while selectionReady == nil { await Task.yield() }
@@ -591,6 +628,7 @@ TESTS = r'''
                 }
             }
             precondition(test.modelPreparationState(for: modelA) == .failed)
+            test.captureConfiguration()
             test.stopAndProcess()
             await test.processingTask?.value
             if outcome == "success" || outcome == "empty" {
@@ -621,6 +659,7 @@ TESTS = r'''
                 test.sentencePanel.selection = .init(text: selected, explicit: explicit)
                 TextIO.inserted = []
                 LLMClient.calls = 0
+                test.captureConfiguration()
                 test.stopAndProcess()
                 // Mid-processing preferences affect only the next recording.
                 test.settings.sentenceCandidates = false
@@ -655,6 +694,7 @@ TESTS = r'''
             EnhancedPolish.inputs = []
             TextIO.inserted = []
             LLMClient.calls = 0
+            test.captureConfiguration()
             test.stopAndProcess()
             await test.processingTask?.value
             let expected = EnhancedPolish.choices[0]
@@ -673,6 +713,7 @@ TESTS = r'''
             EnhancedPolish.choices = ["first candidate", "second candidate"]
             TextIO.inserted = []
             Diagnostics.shared.events = []
+            test.captureConfiguration()
             test.stopAndProcess()
             let task = test.processingTask!
             if controllerCancel {
@@ -699,6 +740,7 @@ TESTS = r'''
             LLMClient.timedOut = true
             LLMClient.fail = false
             TextIO.inserted = []
+            timed.captureConfiguration()
             timed.stopAndProcess()
             await timed.processingTask?.value
             precondition(TextIO.inserted == ["raw transcript"], "Timeout inserts the original transcript")
@@ -755,7 +797,10 @@ final class Diagnostics: @unchecked Sendable {
     var doubaoConfigured = true
     var audioInputDeviceUID: String?
     var polishEnabled = true
-    var llmConfig = 0
+    var llmConfig: LLMClient.Config { .init(baseURL: llmBaseURL, apiProtocol: llmProtocol, apiKey: llmAPIKey, model: llmModel) }
+    var llmAPIKey = "initial-key"
+    var llmModel = "initial-model"
+    var promptRevision = "initial"
     var llmBaseURL = "https://synthetic.invalid"
     var llmProtocol = "responses"
     var recordingGestureMode = StartupHarness.Gesture.hold
@@ -771,7 +816,8 @@ final class Diagnostics: @unchecked Sendable {
     var outputLanguage = Language.original
     var punctuationStyle = PunctuationStyle.keepAll
     var latinSpacing = LatinSpacing.none
-    func learnFromDictation(raw: String, output: String, fired: Set<String>) {}
+    var learned: [(raw: String, output: String)] = []
+    func learnFromDictation(raw: String, output: String, fired: Set<String>) { learned.append((raw, output)) }
     var doubaoConfig = "synthetic-config"
     var onlineLocalFallback = false
     var needsLocalModel: Bool { asrEngine == .qwen || onlineLocalFallback || enhancedRecognition }
@@ -941,6 +987,7 @@ typealias AudioRecorder = FakeRecorder
     var startupTask: Task<Void, Never>?
     var processingTask: Task<Void, Never>?
     var onModelSetupRequested: (() -> Void)?
+    var recordingConfiguration: DictationConfiguration?
     var recordingPolishEnabled = true
     var recordingCandidatesEnabled = false
     var recordingCandidateWait: TimeInterval = 5
@@ -970,6 +1017,77 @@ STARTUP_TESTS = r'''
         preconditionFailure("Timed out waiting for fake lifecycle")
     }
     @MainActor static func main() async {
+        // Real start/selection/stop paths share one value snapshot, including requests
+        // made after asynchronous selection/recognition and settings changes.
+        for mode in ["polish", "enhanced", "edit"] {
+            let test = StartupHarness()
+            test.settings.voiceEditEnabled = true
+            test.settings.polishEnabled = mode != "edit"
+            test.settings.enhancedRecognition = mode == "enhanced"
+            LLMClient.requests = []
+            EnhancedPolish.requests = []
+            LLMAPITransport.preconnects = []
+            LLMClient.output = "\u{4E2D}\u{6587}Notion。"
+            EnhancedPolish.choices = [LLMClient.output]
+            test.startRecording()
+            await test.startupTask?.value
+            let initial = test.recordingConfiguration!
+            test.settings.llmBaseURL = "https://next.invalid"
+            test.settings.llmProtocol = "chat"
+            test.settings.llmAPIKey = "next-key"
+            test.settings.llmModel = "next-model"
+            test.settings.promptRevision = "next"
+            test.settings.outputLanguage = .english
+            test.settings.punctuationStyle = .noTrailing
+            test.settings.latinSpacing = .spaced
+            test.settings.voiceEditEnabled = false
+            if mode == "edit" {
+                test.editModifierPressed()
+                precondition(test.selectionTask != nil, "Recording's voice edit toggle survives changes")
+            }
+            test.stopAndProcess()
+            await test.processingTask?.value
+            let requests = mode == "enhanced" ? EnhancedPolish.requests : LLMClient.requests
+            precondition(requests.count == 1 && requests[0].config == initial.llmConfig)
+            precondition(requests[0].system == (mode == "edit" ? initial.voiceEditPrompt : mode == "enhanced" ? initial.enhancedPrompt : initial.polishPrompt))
+            precondition(LLMAPITransport.preconnects.allSatisfy { $0 == initial.llmConfig.baseURL })
+            precondition(test.lastTranscript == "\u{4E2D}\u{6587}Notion。", "Final formatting uses initial preferences")
+            precondition(test.recordingConfiguration == nil, "Finish releases prompts and credentials")
+            if mode != "edit" { precondition(test.settings.learned.last?.output == "\u{4E2D}\u{6587}Notion。") }
+
+            test.editIntent = false
+            test.settings.polishEnabled = true
+            test.startRecording()
+            await test.startupTask?.value
+            let next = test.recordingConfiguration!
+            precondition(next.llmConfig == test.settings.llmConfig && !next.originalLanguage && !next.voiceEditEnabled)
+            test.stopAndProcess()
+            await test.processingTask?.value
+            let latest = mode == "enhanced" ? EnhancedPolish.requests.last! : LLMClient.requests.last!
+            precondition(latest.config == next.llmConfig && latest.system == (next.enhancedPrompt ?? next.polishPrompt))
+            precondition(test.lastTranscript == "\u{4E2D}\u{6587} Notion", "Next recording uses new formatting")
+            precondition(test.settings.learned.last?.output == "raw transcript", "Translated output cannot teach same-language corrections")
+        }
+        LLMClient.output = "processed transcript"
+        EnhancedPolish.choices = ["processed transcript"]
+        for initiallyConfigured in [false, true] {
+            let test = StartupHarness()
+            test.settings.llmConfigured = initiallyConfigured
+            test.settings.voiceEditEnabled = true
+            test.startRecording()
+            await test.startupTask?.value
+            test.settings.llmConfigured = !initiallyConfigured
+            LLMClient.requests = []
+            test.stopAndProcess()
+            await test.processingTask?.value
+            precondition(LLMClient.requests.count == (initiallyConfigured ? 1 : 0))
+            test.startRecording()
+            await test.startupTask?.value
+            precondition(test.recordingConfiguration?.llmConfigured == !initiallyConfigured)
+            test.cancel()
+            precondition(test.recordingConfiguration == nil, "Cancel releases the snapshot")
+        }
+        print("PASS recording-owned service, prompts, selection/preconnect, language/learning and formatting; next recording adopts new settings and completion/cancel releases snapshot")
         do {
             let fixing = StartupHarness()
             fixing.settings.recognitionReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
@@ -1479,9 +1597,11 @@ enum TalklessError: Error { case message(String) }
 }
 '''
 
+snapshot = controller.split("struct DictationConfiguration {", 1)[1].split("/// Immutable correlation context", 1)[0]
+snapshot = "struct DictationConfiguration {" + snapshot
 operation = controller.split("private struct DictationOperation", 1)[1].split("/// Core dictation flow", 1)[0]
 overlay_model = (ROOT / "Sources/Talkless/Overlay.swift").read_text().split("/// A nonactivating", 1)[0]
-source = overlay_model + "\nprivate struct DictationOperation" + operation + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
+source = overlay_model + "\nprivate struct DictationOperation" + operation + "\ntypealias AppSettings = Settings\ntypealias AppContext = Context\n" + snapshot + STUBS + "\n".join(method(name) for name in ("stopAndProcess", "finish", "markModelReadyAfterRecognition", "modelPreparationState")) + TESTS
 with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as directory:
     path = Path(directory)
     swift = path / "ProcessingHUDTests.swift"
@@ -1512,7 +1632,7 @@ with tempfile.TemporaryDirectory(prefix="talkless-processing-hud-tests-") as dir
         func close() { isVisible = false }
     }
     '''
-    startup = overlay_model + "\nprivate struct DictationOperation" + operation + shared_processing + STARTUP_STUBS
+    startup = overlay_model + "\nprivate struct DictationOperation" + operation + "\ntypealias AppSettings = FakeSettings\n" + snapshot + shared_processing + STARTUP_STUBS
     startup += "\n".join(method(name).replace("NSWorkspace", "FakeWorkspace") for name in
                          ("prepareSelectedModel", "startRecording", "isCurrentRecognition", "adoptEditSelection", "captureEditSelection", "editModifierPressed", "stopAndProcess", "finish", "cancel", "triggerPressed", "triggerReleased",
                           "comboKeyPressed", "escapePressed", "toggleFromMenu")) + STARTUP_TESTS

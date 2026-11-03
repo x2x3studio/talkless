@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Each dictation now keeps a snapshot of its AI service, prompts, output language and local formatting. Changing Settings during recording or processing applies to the next utterance instead of mixing configurations within the current one. Voice-edit selection and preconnection use the same snapshot.
+
+## 2026.1103.60164
+
 ### Changed
 - Accessibility selection reads and Copy-menu discovery run on a bounded serial worker rather than the main thread. Requests have time and traversal budgets; cancellation and original-app checks prevent stale selection results from being used.
 - The final Copy action remains a single 25 ms-bounded operation next to clipboard ownership checks; clipboard transaction and audio-capture behavior are unchanged.

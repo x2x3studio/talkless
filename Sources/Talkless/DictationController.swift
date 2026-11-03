@@ -2,6 +2,37 @@ import AppKit
 import AVFoundation
 import Combine
 
+/// Values owned by one recording, never a live settings object. Build only the prompts
+/// that recording can use (voice editing may still be requested after capture starts).
+struct DictationConfiguration {
+    let llmConfig: LLMClient.Config
+    let llmConfigured: Bool
+    let voiceEditEnabled: Bool
+    let originalLanguage: Bool
+    let punctuationStyle: PunctuationStyle
+    let latinSpacing: LatinSpacing
+    let polishPrompt: String?
+    let enhancedPrompt: String?
+    let voiceEditPrompt: String?
+
+    @MainActor
+    init(settings: AppSettings, context: AppContext?, polishEnabled: Bool,
+         enhanced: Bool, alternatives: Bool) {
+        llmConfig = settings.llmConfig
+        llmConfigured = settings.llmConfigured
+        voiceEditEnabled = settings.voiceEditEnabled
+        originalLanguage = settings.outputLanguage == .original
+        punctuationStyle = settings.punctuationStyle
+        latinSpacing = settings.latinSpacing
+        let usesPolish = polishEnabled && llmConfigured
+        let usesEnhanced = usesPolish && (enhanced || alternatives)
+        polishPrompt = usesPolish && !usesEnhanced ? Prompts.polish(context: context, settings: settings) : nil
+        enhancedPrompt = usesEnhanced
+            ? EnhancedPolish.systemPrompt(context: context, settings: settings, alternatives: alternatives) : nil
+        voiceEditPrompt = voiceEditEnabled && llmConfigured ? Prompts.voiceEdit(settings: settings) : nil
+    }
+}
+
 /// Immutable correlation context captured by asynchronous work so stale completions cannot
 /// be attributed to a newer recording. Contains technical metadata only, never user content.
 private struct DictationOperation {
@@ -72,6 +103,7 @@ final class DictationController: ObservableObject {
     private var recordingGestureMode: RecordingGestureMode = .hold
     /// Per-recording default; changing Settings never changes an in-flight dictation.
     private var recordingPolishEnabled = false
+    private var recordingConfiguration: DictationConfiguration?
     private var recordingCandidatesEnabled = false
     private var recordingCandidateWait: TimeInterval = 5
     private let sentencePanel = SentenceCandidatesPanel()
@@ -554,9 +586,13 @@ final class DictationController: ObservableObject {
         recordingPolishEnabled = settings.polishEnabled || enhanced
         recordingCandidatesEnabled = settings.sentenceCandidates
         recordingCandidateWait = TimeInterval(min(15, max(2, settings.candidateWaitSeconds)))
+        let configuration = DictationConfiguration(settings: settings, context: context,
+                                                  polishEnabled: recordingPolishEnabled, enhanced: enhanced,
+                                                  alternatives: recordingCandidatesEnabled)
+        recordingConfiguration = configuration
         // Overlap the AI service handshake with speech instead of paying it after recognition.
-        if editSelection != nil || (recordingPolishEnabled && settings.llmConfigured) {
-            LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
+        if recordingPolishEnabled && configuration.llmConfigured {
+            LLMAPITransport.preconnect(baseURL: configuration.llmConfig.baseURL, apiProtocol: configuration.llmConfig.apiProtocol)
         }
         hud.model.isEditMode = editSelection != nil
         hud.model.preview = ""
@@ -585,7 +621,8 @@ final class DictationController: ObservableObject {
     /// Read the selection for voice editing: Accessibility first, then the app's Copy in the
     /// background when the app cannot report it. Without a selection, the words are dictated.
     private func captureEditSelection() {
-        guard settings.voiceEditEnabled, settings.llmConfigured, editSelection == nil, selectionTask == nil,
+        guard let configuration = recordingConfiguration,
+              configuration.voiceEditEnabled, configuration.llmConfigured, editSelection == nil, selectionTask == nil,
               !acquiringTranslationSelection,
               let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
         let generation = self.generation
@@ -615,12 +652,14 @@ final class DictationController: ObservableObject {
 
     /// A selection found for an edit gesture switches this recording to voice editing.
     private func adoptEditSelection(_ selection: String) {
+        guard let configuration = recordingConfiguration,
+              configuration.voiceEditEnabled, configuration.llmConfigured else { return }
         editSelection = selection
         diagnosticOperation?.mode = "edit"
         hud.model.isEditMode = true
         hud.model.setDictionaryTerms([])
         if state == .recording { hud.show(.listening(handsFree: handsFree)) }
-        LLMAPITransport.preconnect(baseURL: settings.llmBaseURL, apiProtocol: settings.llmProtocol)
+        LLMAPITransport.preconnect(baseURL: configuration.llmConfig.baseURL, apiProtocol: configuration.llmConfig.apiProtocol)
     }
 
     /// Recognizer callbacks arrive asynchronously; only the active recording may touch the HUD.
@@ -629,7 +668,7 @@ final class DictationController: ObservableObject {
     }
 
     private func stopAndProcess() {
-        guard state == .recording, let session else { return }
+        guard state == .recording, let session, let configuration = recordingConfiguration else { return }
         // Freeze audio before diagnostics, HUD work, or any startup/selection await.
         guard recorder.beginFinalization() else {
             // Startup has not run yet; do not let it open capture after finish.
@@ -704,7 +743,7 @@ final class DictationController: ObservableObject {
                 var polished = false
                 var candidateReviewUsed = false
                 var explicitlyChosen = false
-                if let selection = editSelection {
+                if let selection = editSelection, let prompt = configuration.voiceEditPrompt {
                     kind = .edit
                     stage = "edit"
                     stageStarted = DispatchTime.now().uptimeNanoseconds
@@ -712,22 +751,23 @@ final class DictationController: ObservableObject {
                     self.aiInProgress = true
                     self.hud.show(.editing)
                     output = try await LLMClient.complete(
-                        system: Prompts.voiceEdit(settings: self.settings),
+                        system: prompt,
                         user: Prompts.voiceEditInput(selection: selection, instruction: raw),
-                        config: self.settings.llmConfig
+                        config: configuration.llmConfig
                     )
                     operation?.record("edit_complete", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "empty": String(output.isEmpty)])
-                } else if shouldPolish, self.settings.llmConfigured {
+                } else if shouldPolish, configuration.llmConfigured {
                     stage = "polish"
                     stageStarted = DispatchTime.now().uptimeNanoseconds
                     operation?.record("polish_start", ["stage": stage])
                     self.aiInProgress = true
                     self.hud.show(.polishing)
                     do {
-                        if showCandidates || session is EnhancedTranscriptionSession {
+                        if let prompt = configuration.enhancedPrompt {
                             let secondary = (session as? EnhancedTranscriptionSession)?.secondaryTranscript
                             let choices = try await EnhancedPolish.run(primary: raw, secondary: secondary,
-                                                                       context: context, settings: self.settings, alternatives: showCandidates)
+                                                                       system: prompt, config: configuration.llmConfig,
+                                                                       alternatives: showCandidates)
                             guard generation == self.generation, !Task.isCancelled else { return }
                             operation?.record("polish_response", ["duration_ms": DictationOperation.milliseconds(since: stageStarted), "count": String(choices.count)])
                             output = choices[0]
@@ -744,11 +784,11 @@ final class DictationController: ObservableObject {
                                 explicitlyChosen = selection.explicit
                                 operation?.record("candidate_wait_complete", ["duration_ms": DictationOperation.milliseconds(since: choiceStarted), "explicit_choice": String(selection.explicit)])
                             }
-                        } else {
+                        } else if let prompt = configuration.polishPrompt {
                             output = try await LLMClient.complete(
-                                system: Prompts.polish(context: context, settings: self.settings),
+                                system: prompt,
                                 user: Prompts.polishInput(raw),
-                                config: self.settings.llmConfig,
+                                config: configuration.llmConfig,
                                 timeout: 5
                             )
                         }
@@ -774,12 +814,12 @@ final class DictationController: ObservableObject {
                 guard generation == self.generation, !Task.isCancelled else { return }
                 if kind == .dictation {
                     // Same-language polish is evidence of how the recognizer mishears this user.
-                    let sameLanguage = polished && self.settings.outputLanguage == .original
+                    let sameLanguage = polished && configuration.originalLanguage
                         && (!candidateReviewUsed || explicitlyChosen)
                     self.settings.learnFromDictation(raw: raw, output: sameLanguage ? output : raw, fired: fixed.fired)
                     // The user's punctuation and spacing choices apply last, to every dictation.
-                    output = TextFormatting.apply(output, punctuation: self.settings.punctuationStyle,
-                                                  spacing: self.settings.latinSpacing)
+                    output = TextFormatting.apply(output, punctuation: configuration.punctuationStyle,
+                                                  spacing: configuration.latinSpacing)
                 }
 
                 self.lastTranscript = output
@@ -855,6 +895,7 @@ final class DictationController: ObservableObject {
         aiInProgress = false
         selectionTask = nil
         recordingModelDirectory = nil
+        recordingConfiguration = nil
         diagnosticOperation = nil
         state = .idle
         session = nil
@@ -881,6 +922,7 @@ final class DictationController: ObservableObject {
         }
         diagnosticOperation = nil
         recordingModelDirectory = nil
+        recordingConfiguration = nil
         pressedAt = nil
         generation += 1
         startupTask?.cancel()

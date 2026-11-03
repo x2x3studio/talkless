@@ -203,6 +203,79 @@ import Testing
         }
     }
 
+    @MainActor @Test func recordingSnapshotPreservesConfigurationAndPromptsUntilNextRecording() async throws {
+        try await withSettings { settings in
+            settings.llmBaseURL = "http://localhost:12345/v1"
+            settings.llmAPIKey = "initial-key"
+            settings.llmModel = "initial-model"
+            settings.llmProtocol = .responses
+            settings.voiceEditEnabled = true
+            settings.outputLanguage = .original
+            settings.dictionary = "InitialTerm"
+            settings.customInstructions = "Initial preference"
+            settings.appToneEnabled = true
+            let context = AppContext(name: "Xcode", bundleID: "com.apple.dt.Xcode")
+            let before = settings.llmConfig
+            let snapshot = DictationConfiguration(settings: settings, context: context, polishEnabled: true,
+                                                   enhanced: true, alternatives: false)
+            let ordinary = DictationConfiguration(settings: settings, context: context, polishEnabled: true,
+                                                   enhanced: false, alternatives: false)
+            #expect(snapshot.llmConfigured && snapshot.originalLanguage && snapshot.voiceEditEnabled)
+            #expect(snapshot.polishPrompt == nil && ordinary.enhancedPrompt == nil)
+            #expect(ordinary.polishPrompt == Prompts.polish(context: context, settings: settings))
+            #expect(snapshot.voiceEditPrompt == Prompts.voiceEdit(settings: settings))
+            let prompt = try #require(snapshot.enhancedPrompt)
+            #expect(prompt.contains(context.toneInstruction) && prompt.contains("InitialTerm") && prompt.contains("Initial preference"))
+
+            settings.llmBaseURL = "http://localhost:23456/v1"
+            settings.llmAPIKey = "next-key"
+            settings.llmModel = "next-model"
+            settings.llmProtocol = .chatCompletions
+            settings.llmAuthMode = .apiKey
+            settings.voiceEditEnabled = false
+            settings.outputLanguage = .english
+            settings.punctuationStyle = .noTrailing
+            settings.latinSpacing = .spaced
+            settings.dictionary = "NextTerm"
+            settings.customInstructions = "Next preference"
+            settings.appToneEnabled = false
+            let next = DictationConfiguration(settings: settings, context: context, polishEnabled: true,
+                                               enhanced: true, alternatives: false)
+            for value in [snapshot, next] {
+                let expected = value.originalLanguage ? before : settings.llmConfig
+                let result = try await EnhancedPolish.run(primary: "Original", secondary: nil,
+                    system: try #require(value.enhancedPrompt), config: value.llmConfig, alternatives: false) { system, _, config, timeout in
+                    #expect(system == value.enhancedPrompt)
+                    #expect(config.baseURL == expected.baseURL && config.apiKey == expected.apiKey)
+                    #expect(config.model == expected.model && config.apiProtocol == expected.apiProtocol)
+                    #expect(config.authMode == expected.authMode && config.thinking == expected.thinking)
+                    #expect(config.maxOutputTokens == expected.maxOutputTokens && timeout == 5)
+                    return try response(["Original", "Alternative"])
+                }
+                #expect(result == ["Original"])
+            }
+            #expect(!next.originalLanguage && !next.voiceEditEnabled && next.voiceEditPrompt == nil)
+            #expect(next.enhancedPrompt?.contains("TRANSLATE the final result into English") == true)
+            #expect(next.enhancedPrompt?.contains("NextTerm") == true && next.enhancedPrompt?.contains("InitialTerm") == false)
+            #expect(next.enhancedPrompt?.contains(context.toneInstruction) == false)
+            #expect(snapshot.punctuationStyle == .keepAll && snapshot.latinSpacing == .none)
+            #expect(next.punctuationStyle == .noTrailing && next.latinSpacing == .spaced)
+
+            let unused = DictationConfiguration(settings: settings, context: context, polishEnabled: false,
+                                                 enhanced: false, alternatives: true)
+            #expect(unused.polishPrompt == nil && unused.enhancedPrompt == nil && unused.voiceEditPrompt == nil)
+            settings.voiceEditEnabled = true
+            let editOnly = DictationConfiguration(settings: settings, context: context, polishEnabled: false,
+                                                   enhanced: false, alternatives: false)
+            #expect(editOnly.voiceEditPrompt != nil && editOnly.polishPrompt == nil && editOnly.enhancedPrompt == nil)
+            settings.llmBaseURL = ""
+            let unconfigured = DictationConfiguration(settings: settings, context: context, polishEnabled: true,
+                                                       enhanced: true, alternatives: true)
+            #expect(!unconfigured.llmConfigured)
+            #expect(unconfigured.polishPrompt == nil && unconfigured.enhancedPrompt == nil && unconfigured.voiceEditPrompt == nil)
+        }
+    }
+
     @MainActor @Test func runPropagatesFailuresAndCancellationRatherThanReturningFallback() async throws {
         try await withSettings { settings in
             await #expect(throws: LLMClient.ClientError.timedOut) {

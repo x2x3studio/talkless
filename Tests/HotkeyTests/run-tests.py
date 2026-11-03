@@ -133,6 +133,7 @@ final class Diagnostics: @unchecked Sendable {
     var acceptsRecognitionHUDUpdates = false
     private var diagnosticOperation: DictationOperation?
     var recordingModelDirectory: URL?
+    var recordingConfiguration: Int? // Gestures only clear the recording-owned snapshot.
     let hud = FakeHUD()
     let translationPanel = FakeTranslationPanel()
     let sentencePanel = FakeSession()
