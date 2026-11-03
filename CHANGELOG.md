@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- MLX Metal shaders now explicitly target the app's minimum macOS 26 version instead of the build machine's macOS 27 default. This fixes the unsupported metallib deployment target that terminated local-model loading on macOS 26. Shader caches now include the deployment flags, and release tests verify the target and cache invalidation.
+
+## 2026.1103.32866
+
 ### Added
 - Optional Enhanced recognition runs local ASR and Doubao on the same recording and asks the configured AI service to compare their transcripts. After the first nonempty result, it waits at most two seconds for the other; one recognizer failing does not discard the other result.
 - Optional Sentence alternatives shows up to three complete AI-polished versions only when ambiguity remains, with differing words highlighted. Click a sentence to use it; hovering pauses the countdown, leaving resumes it, and timeout uses the default. Wait time defaults to five seconds and is adjustable from two to fifteen.

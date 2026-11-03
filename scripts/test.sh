@@ -40,6 +40,7 @@ SUITES=(
   "diagnostics|bash '$ROOT/Tests/DiagnosticsTests/run-tests.sh'"
   "release-tool|swift test --build-system native --package-path '$ROOT/Tools/ReleaseTool'"
   "bundle|python3 -I '$ROOT/Tests/BundleTests/run-tests.py'"
+  "metal-target|python3 -I '$ROOT/Tests/BundleTests/metal-target-tests.py'"
 )
 
 # With no filter words every suite runs; otherwise a suite runs if its name contains one.
