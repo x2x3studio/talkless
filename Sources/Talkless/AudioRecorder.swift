@@ -57,9 +57,9 @@ final class AudioRecorder: @unchecked Sendable {
             }
         } catch {
             if self.session == session {
-                native.invalidate(message: error is CancellationError ? nil : error.localizedDescription)
+                native.invalidate(session: session, message: error is CancellationError ? nil : error.localizedDescription)
                 self.session = nil
-                queueCleanup(operation: operation)
+                queueCleanup(session: session, operation: operation)
             }
             throw error
         }
@@ -95,9 +95,9 @@ final class AudioRecorder: @unchecked Sendable {
             return samples
         } catch {
             if self.session == session {
-                native.invalidate(message: error is CancellationError ? nil : error.localizedDescription)
+                native.invalidate(session: session, message: error is CancellationError ? nil : error.localizedDescription)
                 self.session = nil
-                queueCleanup(operation: operationID)
+                queueCleanup(session: session, operation: operationID)
             }
             throw error
         }
@@ -107,9 +107,10 @@ final class AudioRecorder: @unchecked Sendable {
     func cancel() {
         monitorTask?.cancel()
         monitorTask = nil
+        let cancelledSession = session
         session = nil
         native.invalidate()
-        queueCleanup(operation: operationID)
+        queueCleanup(session: cancelledSession, operation: operationID)
     }
 
     @MainActor
@@ -118,8 +119,9 @@ final class AudioRecorder: @unchecked Sendable {
         let native = native
         return try await withTaskCancellationHandler {
             try await operations.run(timeout: timeout, onTimeout: { [weak self] in
-                native.invalidate(message: L10n.tr(AudioOperationQueue.unresponsive))
+                let shouldNotify = native.invalidate(session: session, message: L10n.tr(AudioOperationQueue.unresponsive))
                 Self.logTimeout(stage: stage, operation: operation)
+                guard shouldNotify else { return }
                 Task { @MainActor in
                     guard let self, self.session == session else { return }
                     if stage == "recording" { self.onError?(L10n.tr(AudioOperationQueue.unresponsive)) }
@@ -130,10 +132,12 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    private func queueCleanup(operation: UUID) {
+    private func queueCleanup(session: UUID?, operation: UUID) {
         let native = native
         operations.cancel(cleanup: { native.tearDownAttempt() }, onTimeout: {
-            native.invalidate(message: L10n.tr(AudioOperationQueue.unresponsive))
+            // A cancelled operation can time out after the next turn is reserved.
+            // Its deadline poisons the worker, but must not mutate that new capture.
+            if let session { native.invalidate(session: session, message: L10n.tr(AudioOperationQueue.unresponsive)) }
             Self.logTimeout(stage: "cleanup", operation: operation)
         })
     }
@@ -199,6 +203,8 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     var duration: TimeInterval { lock.withLock { Double(samples.count) / Self.sampleRate } }
 
     private let lock = NSLock()
+    // Native conversion/callback work must never hold the MainActor-facing state lock.
+    private let conversionLock = NSLock()
     private var converter: AVAudioConverter?
     private var tapFormat: AVAudioFormat?
     private var accepting = false
@@ -217,6 +223,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     private var inputFrameCount = 0
     private var frameCount = 0
     private var firstBufferTime: TimeInterval?
+    private var lastBufferTime: TimeInterval?
 
     fileprivate var engine: AVAudioEngine?
     private var configurationObserver: NSObjectProtocol?
@@ -225,7 +232,6 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     private var operationID = UUID()
     private var startedAt: TimeInterval = 0
     private var attemptStartedAt: TimeInterval = 0
-    private var recoveryCount = 0
     private var configuredUID: String?
     private var tapInstalled = false
     private var firstBufferLogged = false
@@ -296,14 +302,20 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         return session
     }
 
-    func invalidate(session: UUID? = nil, message: String? = nil) {
+    @discardableResult
+    func invalidate(session: UUID? = nil, message: String? = nil) -> Bool {
         lock.withLock {
-            if let session, sessionID != session { return }
+            if let session, sessionID != session { return false }
+            // Preserve a pending interruption notification if cleanup hits its own
+            // deadline before the MainActor has delivered that original failure.
+            if message != nil, recordingError != nil { return false }
+            let wasHealthy = recordingError == nil
             accepting = false
             sessionID = nil
             attemptID = nil
-            if let message { recordingError = message }
+            if wasHealthy, let message { recordingError = message }
             samples.removeAll(keepingCapacity: true)
+            return wasHealthy
         }
     }
 
@@ -316,7 +328,6 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         self.deviceUID = deviceUID
         self.operationID = operationID
         startedAt = ProcessInfo.processInfo.systemUptime
-        recoveryCount = 0
         firstBufferLogged = false
         lock.withLock {
             captureFailure = nil
@@ -324,6 +335,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
             frameCount = 0
             inputFrameCount = 0
             firstBufferTime = nil
+            lastBufferTime = nil
             configurationRevision = 0
             validationScheduled = false
         }
@@ -331,7 +343,10 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         do {
             try installAndStart(session: session)
             try checkSession(session)
-            try validateOrRecover(session: session, stage: "startup")
+            if let reason = validationFailure(session: session, stage: "startup") {
+                log("audio_interruption", fields: ["reason": reason, "stage": "startup"])
+                throw TalklessError.message(L10n.tr(Self.interrupted))
+            }
             try checkSession(session)
             log("audio_engine_started", fields: ["startup_ms": milliseconds(since: startedAt)])
         } catch {
@@ -356,8 +371,12 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         try checkSession(session)
         if let engine, let baseline {
             let current = snapshot(engine: engine)
-            if configuredUID != deviceUID || current.startupFailure(requested: device, previous: baseline) != nil {
+            if configuredUID != deviceUID {
+                // A user-selected input change starts a fresh route, never a fallback.
                 tearDownAttempt()
+            } else if let reason = current.startupFailure(requested: device, previous: baseline) {
+                log("audio_start_failed", configuration: current, fields: ["reason": reason])
+                throw startupError(reason: reason)
             }
         }
         let reused = self.engine != nil
@@ -387,16 +406,10 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         // Default input keeps the original node output format. Explicit selection uses
         // hardware input format because the node's client output can still be cached.
         // Derive the converter and tap from ONE coherent snapshot, not an earlier read.
-        // Bounded reacquisition handles negotiation between reads without a time delay.
-        var configuration = snapshot(engine: engine)
-        var startupReason: String?
-        for _ in 0..<3 {
-            let next = snapshot(engine: engine)
-            startupReason = next.startupFailure(requested: device, previous: configuration)
-            configuration = next
-            if startupReason == nil { break }
-        }
-        if let startupReason {
+        // A changing route fails this attempt; only the user starts another one.
+        let previous = snapshot(engine: engine)
+        let configuration = snapshot(engine: engine)
+        if let startupReason = configuration.startupFailure(requested: device, previous: previous) {
             log("audio_start_failed", configuration: configuration, fields: ["reason": startupReason])
             throw startupError(reason: startupReason)
         }
@@ -409,14 +422,15 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         if reused { log("audio_engine_reused", configuration: configuration, fields: ["stage": "startup"]) }
         try checkSession(session)
         let attempt = UUID()
-        lock.withLock {
-            guard sessionID == session else { return }
+        conversionLock.withLock {
             self.converter = converter
             tapFormat = format
+        }
+        lock.withLock {
+            guard sessionID == session else { return }
             attemptID = attempt
             captureFailure = nil
-            // Finalization may race a recovery already executing on the native
-            // queue. Never reopen its sample gate after the key-release boundary.
+            // Pending startup must not reopen capture after the key-release boundary.
             accepting = !finalizing
             validationScheduled = false
         }
@@ -527,49 +541,23 @@ private final class NativeAudioRecorder: @unchecked Sendable {
             let revision = lock.withLock { configurationRevision }
             configuration = snapshot(engine: engine)
             let reason = failure(for: configuration)
-            if lock.withLock({ configurationRevision == revision }) { return (configuration, reason, revision) }
+            if reason != nil || lock.withLock({ configurationRevision == revision }) { return (configuration, reason, revision) }
         }
         return (configuration, "configuration_race", lock.withLock { configurationRevision })
     }
 
-    private func validateOrRecover(session: UUID, stage: String) throws {
-        guard lock.withLock({ sessionID == session }), engine != nil else { return }
+    private func validationFailure(session: UUID, stage: String) -> String? {
+        guard lock.withLock({ sessionID == session }), engine != nil else { return nil }
         let (configuration, reason, revision) = assessment()
         log("audio_engine_configuration_change", configuration: configuration, fields: [
             "stage": stage, "reason": reason ?? "unchanged",
         ])
-        guard let reason else {
-            baseline = configuration
+        if reason == nil {
             lock.withLock {
-                if configurationRevision == revision { validationScheduled = false }
+                if sessionID == session && configurationRevision == revision { validationScheduled = false }
             }
-            return
         }
-        // Never stitch a replacement route onto audio already sent to recognition.
-        // Closing the gate under the conversion lock makes this decision atomic.
-        let canRecover = lock.withLock {
-            guard sessionID == session else { return false }
-            accepting = false
-            return !finalizing && bufferCount == 0 && recoveryCount == 0 && reason != "conversion_failed"
-        }
-        guard canRecover else {
-            log("audio_interruption", configuration: configuration, fields: ["reason": reason, "stage": stage])
-            throw TalklessError.message(L10n.tr(Self.interrupted))
-        }
-        recoveryCount += 1
-        log("audio_recovery", configuration: configuration, fields: ["reason": reason, "recovered": "false"])
-        tearDownAttempt()
-        try installAndStart(session: session)
-        let (after, afterReason, afterRevision) = assessment()
-        guard afterReason == nil else {
-            log("audio_interruption", configuration: after, fields: ["reason": "recovery_exhausted", "stage": stage])
-            throw TalklessError.message(L10n.tr(Self.interrupted))
-        }
-        log("audio_recovery", configuration: after, fields: ["reason": "unchanged", "recovered": "true"])
-        baseline = after
-        lock.withLock {
-            if configurationRevision == afterRevision { validationScheduled = false }
-        }
+        return reason
     }
 
     fileprivate func monitor(session: UUID) -> Bool {
@@ -577,41 +565,57 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         logFirstBuffer()
         let state = lock.withLock { (captureFailure, validationScheduled) }
         if state.0 != nil || state.1 || engine?.isRunning == false {
-            do { try validateOrRecover(session: session, stage: "recording") }
-            catch { interrupt(session: session, reason: state.0 ?? "engine_stopped", message: error.localizedDescription); return false }
+            if let reason = validationFailure(session: session, stage: "recording") {
+                interrupt(session: session, reason: reason, message: L10n.tr(Self.interrupted))
+                return false
+            }
         }
-        if lock.withLock({ firstBufferTime == nil }) && ProcessInfo.processInfo.systemUptime - attemptStartedAt >= 3 {
-            interrupt(session: session, reason: "no_audio_timeout", message: L10n.tr(Self.noAudio))
-            return false
+        let lastBuffer = lock.withLock { lastBufferTime }
+        if ProcessInfo.processInfo.systemUptime - (lastBuffer ?? attemptStartedAt) >= 3 {
+            return !interrupt(session: session, reason: lastBuffer == nil ? "no_audio_timeout" : "audio_stalled_timeout",
+                              message: L10n.tr(Self.noAudio), audioTimeout: true)
         }
         return true
     }
 
-    private func interrupt(session: UUID, reason: String, message: String) {
+    @discardableResult
+    private func interrupt(session: UUID, reason: String, message: String, audioTimeout: Bool = false) -> Bool {
         let current = lock.withLock {
-            guard sessionID == session, recordingError == nil else { return false }
+            guard sessionID == session, !finalizing, recordingError == nil else { return false }
+            // A buffer may have arrived after monitor's snapshot. Commit the timeout
+            // only if capture is still stale under the same lock that accepts audio.
+            if audioTimeout && ProcessInfo.processInfo.systemUptime - (lastBufferTime ?? attemptStartedAt) < 3 { return false }
             recordingError = message
             accepting = false
+            attemptID = nil
             samples.removeAll(keepingCapacity: true)
             return true
         }
-        guard current else { return }
-        log("audio_interruption", fields: ["reason": reason, "stage": "recording"])
-        tearDownAttempt()
+        guard current else { return false }
+        // Notify before any HAL teardown: engine.stop/removeTap can hang. The
+        // owning operation keeps its independent deadline while cleanup runs here.
         Task { @MainActor [weak self] in
             guard let self, self.lock.withLock({ self.sessionID == session && self.recordingError == message }) else { return }
             self.onError?(message)
         }
+        log("audio_interruption", fields: ["reason": reason, "stage": "recording"])
+        tearDownAttempt()
+        return true
     }
 
     func stop(session: UUID) throws -> [Float] {
         try checkSession(session)
         let active = lock.withLock {
-            // Wait for any conversion/callback before freezing the final sample list.
+            // Close the admission gate immediately; native teardown later drains any
+            // in-flight conversion/callback without holding this state lock.
             accepting = false
             return sessionID != nil
         }
         if active {
+            // A buffer admitted before key release owns its final conversion and
+            // feed callback. Drain it on the worker before freezing the sample list.
+            conversionLock.withLock {}
+            try checkSession(session)
             // A key release may beat the queued configuration handler. Inspect native
             // state now, before normal teardown itself stops the engine and notifies.
             if engine != nil, lock.withLock({ recordingError == nil }) {
@@ -655,13 +659,15 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     /// callbacks can contaminate a new utterance on this reused engine.
     private func finishCapture() {
         lock.withLock { accepting = false; attemptID = nil; validationScheduled = false }
+        // Drain an in-flight conversion/callback only on the audio worker.
+        conversionLock.withLock {}
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
         }
         engine?.stop()
         if tapInstalled { engine?.inputNode.removeTap(onBus: 0); tapInstalled = false }
-        lock.withLock { converter = nil; tapFormat = nil }
+        conversionLock.withLock { converter = nil; tapFormat = nil }
     }
 
     fileprivate func tearDownAttempt() {
@@ -672,18 +678,27 @@ private final class NativeAudioRecorder: @unchecked Sendable {
     }
 
     private func process(_ buffer: AVAudioPCMBuffer, session: UUID, attempt: UUID) {
-        lock.withLock {
-            guard accepting, !finalizing, sessionID == session, attemptID == attempt, let converter else { return }
-            // The converter must never see a newly negotiated, incompatible format.
-            guard buffer.format == tapFormat else {
-                captureFailure = "format_changed"; accepting = false; return
+        conversionLock.withLock {
+            func captureIsCurrent() -> Bool {
+                sessionID == session && attemptID == attempt && recordingError == nil && captureFailure == nil
             }
+            func fail(_ reason: String) {
+                lock.withLock {
+                    guard captureIsCurrent() else { return }
+                    captureFailure = reason
+                    accepting = false
+                }
+            }
+            // Finalization closes admission, not an already admitted tail buffer.
+            // Cancellation/failure invalidates its session/attempt even mid-convert.
+            guard lock.withLock({ accepting && !finalizing && captureIsCurrent() }), let converter else { return }
+            // The converter must never see a newly negotiated, incompatible format.
+            guard buffer.format == tapFormat else { fail("format_changed"); return }
             guard buffer.frameLength > 0 else { return }
-            inputFrameCount += Int(buffer.frameLength)
             let ratio = Self.sampleRate / buffer.format.sampleRate
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
             guard let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: capacity) else {
-                captureFailure = "conversion_failed"; accepting = false; return
+                fail("conversion_failed"); return
             }
             var consumed = false
             var error: NSError?
@@ -693,17 +708,29 @@ private final class NativeAudioRecorder: @unchecked Sendable {
                 status.pointee = .haveData
                 return buffer
             }
-            guard error == nil else { captureFailure = "conversion_failed"; accepting = false; return }
+            guard error == nil else { fail("conversion_failed"); return }
             guard out.frameLength > 0, let data = out.floatChannelData?[0] else { return }
-            if firstBufferTime == nil { firstBufferTime = ProcessInfo.processInfo.systemUptime }
-            bufferCount += 1
-            frameCount += Int(out.frameLength)
             let chunk = UnsafeBufferPointer(start: data, count: Int(out.frameLength))
-            samples.append(contentsOf: chunk)
             let sum = chunk.reduce(Float(0)) { $0 + $1 * $1 }
             let db = 20 * log10(max(sqrt(sum / Float(chunk.count)), 1e-6))
-            levelCallback?(max(0, min(1, (db + 50) / 40)))
-            bufferCallback?(out)
+            let committed = lock.withLock {
+                guard captureIsCurrent() else { return false }
+                let now = ProcessInfo.processInfo.systemUptime
+                if firstBufferTime == nil { firstBufferTime = now }
+                lastBufferTime = now
+                inputFrameCount += Int(buffer.frameLength)
+                bufferCount += 1
+                frameCount += Int(out.frameLength)
+                samples.append(contentsOf: chunk)
+                return true
+            }
+            guard committed else { return }
+            // A callback already in progress may finish after cancellation, but it
+            // never blocks the state gate or permits the next callback/session.
+            let level = lock.withLock { captureIsCurrent() ? levelCallback : nil }
+            level?(max(0, min(1, (db + 50) / 40)))
+            let callback = lock.withLock { captureIsCurrent() ? bufferCallback : nil }
+            callback?(out)
         }
     }
 
@@ -727,7 +754,7 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         ] }
         metadata["operation_id"] = operationID.uuidString
         metadata["elapsed_ms"] = milliseconds(since: startedAt)
-        metadata["attempt"] = String(recoveryCount + 1)
+        metadata["attempt"] = "1"
         metadata["explicit_device"] = String(deviceUID != nil)
         if let configuration {
             metadata["engine_running"] = String(configuration.running)

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+- Audio capture now detects both a missing first buffer and a stream that stops delivering buffers for three seconds. Capture startup, interruption and stop failures cancel the utterance quietly, without retries or partial text insertion. Silent buffers remain valid audio.
+- Conversion and callback work no longer hold the state lock used by main-thread stop/cancel. Deadline completion no longer waits for cleanup, and stale session timeouts cannot invalidate a newer capture.
+
+## 2026.1103.48063
+
 ### Changed
 - AI polishing requests, including enhanced comparison and sentence alternatives, now have a five-second deadline. Timeout silently uses the recognized transcript without a polishing error notice or late replacement. Candidate selection time is separate; translation and voice-edit requests are unchanged.
 

@@ -383,7 +383,7 @@ TESTS = r'''
         precondition(interrupted.state == .processing && interrupted.recorder.stops == 0)
         await interrupted.processingTask?.value
         precondition(interrupted.cancelled && interrupted.processingTask == nil && interruptedSession.cancelled)
-        precondition(interrupted.hud.phases == [.recognizing, .hidden, .error("Microphone disconnected")])
+        precondition(interrupted.hud.phases == [.recognizing, .hidden])
         precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && interrupted.history.entries.isEmpty)
         precondition(Diagnostics.shared.events.contains { $0.0 == "dictation_cancel" && $0.1["reason"] == "stop_interruption" })
         print("PASS interrupted recording never processes or pastes a partial transcript")
@@ -428,7 +428,7 @@ TESTS = r'''
             precondition(session.cancelled && session.finishes == 0)
             precondition(TextIO.inserted.isEmpty && LLMClient.calls == 0 && test.history.entries.isEmpty)
             if outcome == "timeout" {
-                precondition(test.state == .idle && test.hud.model.phase == .error("Microphone stop timed out"))
+                precondition(test.state == .idle && test.hud.model.phase == .hidden)
             } else {
                 precondition(test.state == .recording && test.hud.model.preview == "new recording")
                 precondition(test.session?.cancelled == false)
@@ -1382,7 +1382,7 @@ STARTUP_TESTS = r'''
             await task.value
             await processing?.value
             precondition(test.state == .idle && test.startupTask == nil && test.processingTask == nil && session.cancelled)
-            precondition(test.hud.model.phase == .error("Cannot start recording: Microphone start timed out"))
+            precondition(test.hud.model.phase == .hidden)
             precondition(test.recorder.stopCalls == 0 && session.finishes == 0 && LLMClient.calls == 0 && TextIO.inserted.isEmpty)
         }
         print("PASS start timeout surfaces actionable error and cancels queued finish without recognition/upload")

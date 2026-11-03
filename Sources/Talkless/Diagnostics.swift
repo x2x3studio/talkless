@@ -67,7 +67,7 @@ final class Diagnostics: @unchecked Sendable {
             "user", "escape", "combo", "recorder_interruption", "recognition_error", "stop_interruption",
             "permission", "not_determined", "denied", "restricted", "model_busy", "model_unavailable", "not_configured",
             "unavailable", "invalid_format", "empty_audio", "empty_result", "cancelled", "timeout", "network", "model", "unknown",
-            "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout",
+            "unchanged", "device_changed", "device_unavailable", "format_changed", "engine_stopped", "no_audio_timeout", "audio_stalled_timeout",
             "conversion_failed", "start_failed", "recovery_exhausted", "configuration_race", "configuration_change", "target_changed", "clipboard_changed", "read_observed", "paste_unconfirmed", "paste_pending", "clipboard_write_failed", "localization_missing",
             "route_mismatch", "route_unavailable", "native_operation_timeout", "startup_release", "startup_failed", "stop_failed", "finish_before_start",
         ],

@@ -49,7 +49,7 @@ error_callback = re.search(
 )
 assert error_callback, "Missing production Qwen error callback"
 recorder_error_callback = re.search(
-    r"recorder.onError = \{ \[weak self\] message in\n(.*?)\n        \}", controller, re.S,
+    r"recorder.onError = \{ \[weak self\] _ in\n(.*?)\n        \}", controller, re.S,
 )
 assert recorder_error_callback, "Missing production recorder interruption callback"
 

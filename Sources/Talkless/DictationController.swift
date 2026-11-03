@@ -542,10 +542,10 @@ final class DictationController: ObservableObject {
         recordingPreparationGeneration = preparationGeneration
 
         recorder.onBuffer = { [weak session] buffer in session?.feed(buffer) }
-        recorder.onError = { [weak self] message in
-            guard let self, self.generation == generation, self.state == .recording else { return }
+        recorder.onError = { [weak self] _ in
+            guard let self, self.generation == generation,
+                  self.state == .recording || self.state == .processing else { return }
             self.cancel(reason: "recorder_interruption")
-            self.hud.show(.error(message))
         }
         // Publish busy state and capture the finish choice before yielding. Event-tap
         // callbacks must never wait for engine/input-node/HAL startup or teardown.
@@ -578,7 +578,6 @@ final class DictationController: ObservableObject {
                 guard self.generation == generation, !Task.isCancelled else { return }
                 operation.record("recording_error", ["error_code": String((error as NSError).code), "reason": "start_failed", "stage": "startup"])
                 self.cancel(reason: "startup_failed")
-                self.hud.show(.error(L10n.format("Cannot start recording: %@", error.localizedDescription)))
             }
         }
     }
@@ -831,7 +830,6 @@ final class DictationController: ObservableObject {
                     guard generation == self.generation, !Task.isCancelled else { return }
                     // Never finish recognition or paste a partial after failed teardown.
                     self.cancel(reason: "stop_interruption")
-                    self.hud.show(.error(error.localizedDescription))
                     return
                 }
                 operation?.record(stage == "recognition" ? "recognition_error" : "edit_error", ["stage": stage,

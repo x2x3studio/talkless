@@ -104,9 +104,9 @@ final class AudioOperationQueue: @unchecked Sendable {
                 return (true, failures)
             }
             guard result.0 else { return }
-            operation.timeout()
             let error = TalklessError.message(L10n.tr(Self.unresponsive))
             result.1.forEach { $0(error) }
+            operation.timeout()
         }
     }
 }

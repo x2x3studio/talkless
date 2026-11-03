@@ -268,10 +268,36 @@ extension AudioRecorder {
     }
     @MainActor fileprivate func testMonitor() async throws -> Bool {
         guard let session else { return false }
-        return try await operations.run(timeout: 1, onTimeout: {}) { [native] in native.monitor(session: session) }
+        return try await perform(timeout: 3, stage: "recording", session: session, operation: operationID) {
+            $0.monitor(session: session)
+        }
     }
     @MainActor fileprivate func testDrain() async throws {
         try await operations.run(timeout: 1, onTimeout: {}) {}
+    }
+    @MainActor fileprivate func testStopMonitor() {
+        monitorTask?.cancel()
+        monitorTask = nil
+    }
+    @MainActor fileprivate func testOldTimeoutCannotInvalidateNewSession() async throws {
+        let oldSession = native.reserveSession()
+        let operation = UUID()
+        session = oldSession
+        TestHardware.block = "old-timeout"
+        let pending = Task { @MainActor in
+            try await perform(timeout: 3, stage: "recording", session: oldSession, operation: operation) { _ in
+                TestHardware.checkpoint("old-timeout")
+            }
+        }
+        try await Tests.waitForNative()
+        let freshSession = native.reserveSession()
+        session = freshSession
+        do { try await pending.value; fatalError("Old work must time out") } catch is TalklessError {}
+        await Tests.drain()
+        precondition(isRunning && interruptionError == nil,
+                     "An old operation deadline must not invalidate a newly reserved session")
+        TestHardware.block = nil; TestHardware.release.signal()
+        cancel()
     }
 }
 @main struct Tests {
@@ -370,17 +396,20 @@ extension AudioRecorder {
             TestHardware.currentDeviceStatus = noErr; TestHardware.actualDevice = nil
             TestHardware.changeActualEveryRead = false; TestHardware.invalidFormat = false
         }
-        TestHardware.plans = [.init(startNotification: true, stoppedAfterStart: true), .init()]
-        try await recorder.start()
-        try await recorder.testNative { $0.deliver() }
-        _ = try await recorder.stop()
-        recorder.cancel(); try await recorder.testDrain()
-        TestHardware.plans = [.init(stoppedAfterStart: true), .init(stoppedAfterStart: true)]
-        let bounded = TestHardware.enginesCreated
-        do { try await recorder.start(); fatalError("Recovery must be bounded") } catch is TalklessError {}
-        try await recorder.testDrain()
-        precondition(TestHardware.enginesCreated == bounded + 2)
-        print("PASS invalid/unreadable/unstable formats/routes fail, startup recovery is strictly bounded")
+        for notify in [false, true] {
+            TestHardware.plans = [.init(startNotification: notify, stoppedAfterStart: true), .init()]
+            let created = TestHardware.enginesCreated
+            await expectFailure("interrupted") { try await recorder.start() }
+            try await recorder.testDrain()
+            precondition(TestHardware.enginesCreated == created + 1 && TestHardware.plans.count == 1,
+                         "A failed startup must not start a replacement engine")
+            // Only a new user attempt consumes the healthy plan.
+            try await recorder.start()
+            try await recorder.testNative { $0.deliver() }
+            let retried = try await recorder.stop(); precondition(!retried.isEmpty)
+            recorder.cancel(); try await recorder.testDrain()
+        }
+        print("PASS invalid/unreadable/unstable formats/routes fail without automatic recovery; next user attempt works")
 
         TestHardware.mismatchedFormat = true
         await expectFailure("audio format is not ready") { try await recorder.start() }
@@ -397,10 +426,8 @@ extension AudioRecorder {
         recorder.cancel(); try await recorder.testDrain()
         TestHardware.mismatchedFormat = false
         TestHardware.changeOutputOnRead = 2
-        try await recorder.start()
-        try await recorder.testNative { precondition($0.inputNode.installedFormat == format(44_100, 1)) }
-        _ = try await recorder.stop()
-        recorder.cancel(); try await recorder.testDrain()
+        do { try await recorder.start(); fatalError("A changing startup format must fail without retry") } catch is TalklessError {}
+        try await recorder.testDrain()
         TestHardware.changeOutputOnRead = 3
         do { try await recorder.start(); fatalError("Stale preinstall format must fail") } catch is TalklessError {}
         try await recorder.testDrain()
@@ -455,29 +482,38 @@ extension AudioRecorder {
         precondition(recorder.interruptionError!.contains("did not deliver audio"))
         recorder.cancel(); try await recorder.testDrain()
         try await recorder.start()
-        try await recorder.testNative { $0.deliver(silent: true) }
-        TestClock.now += 10
-        let silentMonitored = try await recorder.testMonitor(); precondition(silentMonitored)
-        _ = try await recorder.stop()
+        try await recorder.testNative { $0.deliver() }
+        TestClock.now += 2.99
+        let beforeStall = try await recorder.testMonitor(); precondition(beforeStall)
+        TestClock.now += 0.02
+        let stalled = try await recorder.testMonitor(); precondition(!stalled)
+        await drain()
+        precondition(recorder.duration == 0 && !recorder.isRunning)
+        precondition(Diagnostics.shared.snapshot().contains { $0.0 == "audio_interruption" && $0.1["reason"] == "audio_stalled_timeout" })
         recorder.cancel(); try await recorder.testDrain()
-        print("PASS one-shot MainActor error, bounded no-buffer watchdog, silent PCM accepted")
+        try await recorder.start()
+        for _ in 0..<10 {
+            TestClock.now += 1
+            try await recorder.testNative { $0.deliver(silent: true) }
+            let silentMonitored = try await recorder.testMonitor(); precondition(silentMonitored)
+        }
+        let silentSamples = try await recorder.stop()
+        precondition(!silentSamples.isEmpty && silentSamples.allSatisfy { $0 == 0 })
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS one-shot MainActor error, first-buffer/stream-stall watchdogs, continuous silent PCM accepted")
 
         try await recorder.start()
+        let beforeFailure = TestHardware.enginesCreated
         try await recorder.testNative { $0.isRunning = false; $0.notify() }
-        TestHardware.plans = [.init(deliverDuringStart: true)]
-        TestHardware.block = "init"
-        let recovering = Task { @MainActor in try await recorder.testMonitor() }
-        try await waitForNative() // Recovery decision was made before finalization.
-        let beforeFinish = observations.buffers
-        precondition(recorder.beginFinalization())
-        TestHardware.block = nil; TestHardware.release.signal()
-        _ = try await recovering.value
-        precondition(observations.buffers == beforeFinish && recorder.duration == 0,
-                     "Already-running recovery must not reopen capture after finalization")
-        let finishedDuringRecovery = try await recorder.stop()
-        precondition(finishedDuringRecovery.isEmpty)
+        let stoppedBeforeAudio = try await recorder.testMonitor()
+        precondition(!stoppedBeforeAudio && TestHardware.enginesCreated == beforeFailure,
+                     "An engine failure before the first buffer must not trigger recovery")
         recorder.cancel(); try await recorder.testDrain()
-        print("PASS finalization racing already-running recovery never admits post-finish audio")
+        try await recorder.start()
+        try await recorder.testNative { $0.deliver() }
+        let retriedAfterMonitor = try await recorder.stop(); precondition(!retriedAfterMonitor.isEmpty)
+        recorder.cancel(); try await recorder.testDrain()
+        print("PASS recording failure before first buffer stops immediately without recovery and permits a new user attempt")
 
         precondition(!recorder.beginFinalization(), "Idle finalization must not affect the next session")
         try await recorder.start()
@@ -518,6 +554,82 @@ extension AudioRecorder {
             recorder.cancel(); try await recorder.testDrain()
         }
         print("PASS finalization during pending startup rejects startup/late audio, skips watchdog, and permits next turn")
+
+        let interrupted = AudioRecorder()
+        var interruptionNotifications = 0
+        interrupted.onError = { _ in
+            interruptionNotifications += 1
+            // Match the controller's silent cancellation path.
+            interrupted.cancel()
+        }
+        try await interrupted.start()
+        interrupted.testStopMonitor()
+        TestClock.now += 3.01
+        TestHardware.block = "stop"
+        let interruption = Task { @MainActor in try await interrupted.testMonitor() }
+        try await waitForNative()
+        await drain()
+        precondition(interruptionNotifications == 1 && !interrupted.isRunning && interrupted.duration == 0,
+                     "Capture invalidation and MainActor notification must precede hung native teardown")
+        do { _ = try await interruption.value; fatalError("Controller cancellation must resolve the monitor") }
+        catch is CancellationError {}
+        try await Task.sleep(for: .milliseconds(300))
+        precondition(interruptionNotifications == 1, "A teardown timeout must not duplicate the interruption")
+        await expectFailure("Quit and reopen Talkless") { try await interrupted.start() }
+        TestHardware.block = nil; TestHardware.release.signal()
+        print("PASS interruption reaches MainActor before blocked teardown, cancellation is immediate and cleanup has a deadline")
+
+        for stage in ["conversion", "callback"] {
+            let tail = AudioRecorder()
+            tail.onLevel = { _ in TestHardware.checkpoint("callback") }
+            tail.onBuffer = { observations.buffer($0) }
+            try await tail.start()
+            tail.testStopMonitor()
+            let beforeTail = observations.buffers
+            TestHardware.block = stage
+            let deliveringTail = Task { @MainActor in try await tail.testNative { $0.deliver() } }
+            try await waitForNative()
+            precondition(tail.beginFinalization())
+            // stop() must wait on its worker, while finalization itself never waits.
+            let stoppingTail = Task { @MainActor in try await tail.stop() }
+            await drain()
+            TestHardware.block = nil; TestHardware.release.signal()
+            try await deliveringTail.value
+            let tailSamples = try await stoppingTail.value
+            precondition(!tailSamples.isEmpty && observations.buffers == beforeTail + 1,
+                         "A buffer admitted before finalization must reach both samples and feed")
+            tail.cancel(); try await tail.testDrain()
+        }
+        print("PASS finalization during conversion/level callback preserves admitted tail audio in both samples and feed")
+
+        let callbackBlocked = AudioRecorder()
+        callbackBlocked.onLevel = { _ in TestHardware.checkpoint("callback") }
+        callbackBlocked.onBuffer = { observations.buffer($0) }
+        try await callbackBlocked.start()
+        callbackBlocked.testStopMonitor()
+        let buffersBeforeBlockedCallback = observations.buffers
+        TestHardware.block = "callback"
+        let delivering = Task { @MainActor in try await callbackBlocked.testNative { $0.deliver() } }
+        try await waitForNative()
+        precondition(callbackBlocked.beginFinalization())
+        callbackBlocked.cancel()
+        precondition(!callbackBlocked.isRunning && callbackBlocked.duration == 0,
+                     "A blocked audio callback must not hold the MainActor-facing state lock")
+        TestHardware.block = nil; TestHardware.release.signal()
+        do { try await delivering.value } catch is CancellationError {}
+        try await callbackBlocked.testDrain()
+        precondition(observations.buffers == buffersBeforeBlockedCallback,
+                     "Cancellation during level callback must reject its later buffer callback")
+        callbackBlocked.onLevel = nil
+        try await callbackBlocked.start()
+        try await callbackBlocked.testNative { $0.deliver() }
+        let afterCallback = try await callbackBlocked.stop(); precondition(!afterCallback.isEmpty)
+        callbackBlocked.cancel(); try await callbackBlocked.testDrain()
+        print("PASS blocked callback cannot stall MainActor finalization/cancellation; stale delivery rejected and next turn works")
+
+        let oldTimeout = AudioRecorder()
+        try await oldTimeout.testOldTimeoutCannotInvalidateNewSession()
+        print("PASS expired old-session native deadline never invalidates a new capture generation")
 
         // A HAL call is intentionally blocked; the MainActor must keep scheduling
         // heartbeats, cancellation must resolve immediately, and timeout must poison
@@ -613,9 +725,10 @@ extension AudioRecorder {
         print("PASS cancelled-but-still-hung native operation keeps deadline and poisons recorder")
 
         let logs = Diagnostics.shared.snapshot()
+        precondition(!logs.contains { $0.0 == "audio_recovery" }, "No automatic recovery attempt is allowed")
         for event in ["audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
                       "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
-                      "audio_interruption", "audio_recovery", "audio_operation_timeout", "audio_engine_reused"] {
+                      "audio_interruption", "audio_operation_timeout", "audio_engine_reused"] {
             precondition(logs.contains { $0.0 == event }, "Missing event \(event)")
         }
         for (_, fields) in logs {
@@ -657,6 +770,9 @@ with tempfile.TemporaryDirectory(prefix="talkless-audio-tests-") as work:
                          ("AudioUnitGetProperty", "TestGetProperty")]:
         stubbed = stubbed.replace(native, test)
     stubbed = stubbed.replace("ProcessInfo.processInfo.systemUptime", "TestClock.now")
+    conversion = "            converter.convert(to: out, error: &error) { _, status in"
+    assert conversion in stubbed
+    stubbed = stubbed.replace(conversion, '            TestHardware.checkpoint("conversion")\n' + conversion)
     # Same independent timer path, shortened only for deterministic blocked-HAL tests.
     stubbed = stubbed.replace(".now() + seconds", ".now() + min(seconds, 0.2)")
     freeze = "                    let result = lock.withLock { () -> (Bool, String?) in"
