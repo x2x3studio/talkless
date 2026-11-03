@@ -37,17 +37,26 @@ private actor QwenModelRuntime {
     static let shared = QwenModelRuntime()
     var results: [QwenDecodedOutput] = []
     var calls = 0
+    var decodedSamples: [[Float]] = []
     func prepare(modelDirectory: URL, onLoading: @escaping @MainActor @Sendable () -> Void = {}) async throws {}
     func decode(samples: [Float], modelDirectory: URL, language: String?, context: String) async throws -> QwenDecodedOutput {
         calls += 1
+        decodedSamples.append(samples)
         precondition(!results.isEmpty, "Unexpected extra decode")
         return results.removeFirst()
     }
-    func reset(_ values: [QwenDecodedOutput]) { results = values; calls = 0 }
+    func reset(_ values: [QwenDecodedOutput]) { results = values; calls = 0; decodedSamples = [] }
 }
 """#
 let tests = #"""
 @main struct Tests {
+    @MainActor static func wait(_ condition: () -> Bool) async throws {
+        for _ in 0..<1000 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        preconditionFailure("Timed out waiting for Qwen preview")
+    }
     @MainActor static func main() async throws {
         let chinese = "\u{4F60}\u{597D}\u{FF0C}\u{4E16}\u{754C}\u{3002}"
         let japanese = "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}"
@@ -112,20 +121,21 @@ let tests = #"""
         let runtime = QwenModelRuntime.shared
         let directory = URL(fileURLWithPath: "/unused")
         let audio = [Float](repeating: 1, count: 32000)
-        await runtime.reset([.incompleteHeader])
+        await runtime.reset([.incompleteHeader, .incompleteHeader])
         let state = QwenCaptureState()
         var previews: [String] = []
         state.onPartial = { previews.append($0) }
         let task = Task { try await state.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in fatalError("Cached preparation must not overwrite HUD status") }) }
         state.enqueue(audio)
-        try await Task.sleep(for: .milliseconds(100))
+        try await wait { !previews.isEmpty }
         precondition(previews == [""], "Control-only preview must never show metadata")
         state.close(samples: audio)
-        do { _ = try await task.value; fatalError("Reusing incomplete preview for final must fail") }
+        do { _ = try await task.value; fatalError("A freshly decoded incomplete final must fail") }
         catch QwenOutputError.invalidHeader {}
         let calls = await runtime.calls
-        precondition(calls == 1, "No redundant decode if final samples match preview")
-        print("PASS short preview suppresses header and cached final fails without metadata paste")
+        let failedSamples = await runtime.decodedSamples
+        precondition(calls == 2 && failedSamples == [audio, audio], "Final must decode again even when samples match the preview")
+        print("PASS short preview hides headers and fresh invalid final fails without metadata paste")
 
         await runtime.reset([.incompleteHeader, .transcript(chinese)])
         let recovery = QwenCaptureState()
@@ -133,12 +143,13 @@ let tests = #"""
         recovery.onPartial = { recoveredPreviews.append($0) }
         let recoveryTask = Task { try await recovery.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in }) }
         recovery.enqueue(audio)
-        try await Task.sleep(for: .milliseconds(100))
-        recovery.enqueue([1])
-        recovery.close(samples: audio + [1])
+        try await wait { !recoveredPreviews.isEmpty }
+        recovery.close(samples: audio)
         let recovered = try await recoveryTask.value
+        let recoveredSamples = await runtime.decodedSamples
         precondition(recovered == chinese && recoveredPreviews == [""])
-        print("PASS longer final replaces header-only preview with actual speech")
+        precondition(recoveredSamples == [audio, audio], "An unchanged recording still gets a fresh final transcript")
+        print("PASS fresh final replaces header-only preview with actual speech without new audio")
 
         await runtime.reset([.malformedHeader])
         let short = QwenCaptureState()

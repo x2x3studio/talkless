@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- Enhanced recognition now runs the local recognizer once after recording ends, while Doubao continues streaming during speech.
+- Offline dictation previews reprocess the full accumulated recording about every two seconds of new audio, replacing rather than appending the preview. Final recognition always reprocesses the complete recording; long audio retains safe internal 30-second windows without dropping samples. Models remain resident between utterances.
+
+## 2026.1103.36788
+
+### Changed
 - Enhanced recognition and sentence alternatives now live in Labs, separate from everyday AI polishing settings.
 - Dictation, translation and sentence-choice windows are about 30% wider, with screen bounds retained for the chooser.
 - Disabling sentence alternatives requests only one AI result. Enhanced prompt additions are shorter; JSON validation and candidate diffs run off the main thread. Separate timing events distinguish local/online recognition, AI response and candidate waiting.

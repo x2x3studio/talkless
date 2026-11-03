@@ -465,7 +465,7 @@ final class DictationController: ObservableObject {
                     self.diagnosticOperation?.record("recognition_fallback", ["engine": "qwen", "reason": "recognition_error"])
                 })
                 let local = QwenTranscriptionSession(modelDirectory: qwenDirectory, language: nil, contextualStrings: dictionaryTerms,
-                    onError: { [weak self] message in
+                    livePreview: false, onError: { [weak self] message in
                         relay.session?.localFailed(TalklessError.message(message))
                         guard let self, self.isCurrentRecognition(generation) else { return }
                         self.diagnosticOperation?.record("recognition_fallback", ["engine": "doubao", "reason": "recognition_error"])

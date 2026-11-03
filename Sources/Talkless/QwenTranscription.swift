@@ -19,6 +19,7 @@ final class QwenTranscriptionSession: TranscriptionSession, @unchecked Sendable 
         modelDirectory: URL,
         language: String? = nil,
         contextualStrings: [String] = [],
+        livePreview: Bool = true,
         onStatus: @escaping @MainActor @Sendable (String) -> Void = { _ in },
         onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }
     ) {
@@ -30,6 +31,7 @@ final class QwenTranscriptionSession: TranscriptionSession, @unchecked Sendable 
                     modelDirectory: modelDirectory,
                     language: language,
                     context: contextualStrings.joined(separator: ", "),
+                    livePreview: livePreview,
                     onStatus: onStatus
                 )
             } catch {
@@ -324,7 +326,7 @@ private final class QwenCaptureState: @unchecked Sendable {
     func close(samples: [Float]) {
         lock.withLock {
             guard !closed, !cancelled else { return }
-            // Recover only missing tail samples, never re-recognize committed windows.
+            // Recover only missing tail samples; the accumulated recording already owns earlier audio.
             if samples.count > receivedSamples {
                 let missing = samples.count - receivedSamples
                 // A recorder-owned offline replay has no live producer or expanding inbox.
@@ -405,6 +407,7 @@ private final class QwenCaptureState: @unchecked Sendable {
 
     func run(
         modelDirectory: URL, language: String?, context: String,
+        livePreview: Bool = true,
         onStatus: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> String {
         defer {
@@ -423,11 +426,8 @@ private final class QwenCaptureState: @unchecked Sendable {
         }
         try checkCancellation()
 
-        let windowSamples = 30 * 16_000
         let decodeIntervalSamples = 2 * 16_000
         var audio: [Float] = []
-        var committed = ""
-        var liveOutput = QwenDecodedOutput.transcript("")
         var decodedSamples = 0
 
         for await _ in wakeups {
@@ -441,54 +441,46 @@ private final class QwenCaptureState: @unchecked Sendable {
             if let error = inbox.2 { throw error }
             for frame in inbox.0 { audio.append(contentsOf: frame) }
 
-            while audio.count >= windowSamples {
-                let cut = Self.commitBoundary(in: audio, limit: windowSamples)
-                let output: QwenDecodedOutput
-                if decodedSamples == cut {
-                    output = liveOutput
-                } else {
-                    output = try await QwenModelRuntime.shared.decode(
-                        samples: Array(audio[..<cut]), modelDirectory: modelDirectory,
-                        language: language, context: context
-                    )
-                }
-                try checkCancellation()
-                committed = Self.join(committed, try output.finalText())
-                // Non-overlapping acoustic ranges: retain ALL audio after the boundary.
-                audio.removeFirst(cut)
-                decodedSamples = 0
-                liveOutput = .transcript("")
-                publish(committed)
-            }
-
             if inbox.1 {
-                if !audio.isEmpty, decodedSamples != audio.count {
-                    liveOutput = try await QwenModelRuntime.shared.decode(
-                        samples: audio, modelDirectory: modelDirectory,
-                        language: language, context: context
-                    )
-                }
-                try checkCancellation()
-                let final = Self.join(committed, try liveOutput.finalText())
-                return final
+                return try await decodeRecording(audio, modelDirectory: modelDirectory, language: language,
+                                                 context: context, final: true)
             }
 
-            // Skip stale intermediate snapshots when inference was slower than capture.
-            // The next wakeup drains all accumulated PCM, rather than queueing every decode.
-            if audio.count - decodedSamples >= decodeIntervalSamples {
-                liveOutput = try await QwenModelRuntime.shared.decode(
-                    samples: audio, modelDirectory: modelDirectory,
-                    language: language, context: context
-                )
+            // Coalesce arrivals during inference; never queue snapshots every two seconds.
+            if livePreview, audio.count - decodedSamples >= decodeIntervalSamples {
+                let preview = try await decodeRecording(audio, modelDirectory: modelDirectory, language: language,
+                                                        context: context, final: false)
                 try checkCancellation()
                 decodedSamples = audio.count
-                // Header-only short-window results are not user text. Retain their
-                // state so releasing with no new samples still fails closed.
-                publish(Self.join(committed, liveOutput.previewText))
+                publish(preview)
             }
         }
         try checkCancellation()
         throw TalklessError.message(L10n.tr("The Qwen recognition session ended before completion"))
+    }
+
+    /// Every pass starts at the beginning. Individual model calls stay within the
+    /// supported window; only the full recording's final pass authorizes insertion.
+    private func decodeRecording(_ audio: [Float], modelDirectory: URL, language: String?,
+                                 context: String, final: Bool) async throws -> String {
+        let windowSamples = 30 * 16_000
+        var offset = 0
+        var text = ""
+        while offset < audio.count {
+            try checkCancellation()
+            let remaining = Array(audio[offset..<min(audio.count, offset + windowSamples)])
+            let count = remaining.count >= windowSamples
+                ? Self.commitBoundary(in: remaining, limit: windowSamples) : remaining.count
+            let decoded = try await QwenModelRuntime.shared.decode(
+                samples: Array(remaining.prefix(count)), modelDirectory: modelDirectory,
+                language: language, context: context
+            )
+            try checkCancellation()
+            text = Self.join(text, final ? try decoded.finalText() : decoded.previewText)
+            offset += count
+        }
+        try checkCancellation()
+        return text
     }
 
     /// Prefer the latest >=120ms low-energy run in the last five seconds of a 30s window.

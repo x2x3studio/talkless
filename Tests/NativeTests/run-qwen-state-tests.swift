@@ -70,20 +70,36 @@ private actor QwenModelRuntime {
     static let shared = QwenModelRuntime()
     var calls: [[Float]] = []
     var contexts: [String] = []
-    func prepare(modelDirectory: URL, onLoading: @escaping @MainActor @Sendable () -> Void = {}) async throws {}
+    var preparations = 0
+    var suspendDecode = false
+    var pendingDecode: CheckedContinuation<Void, Never>?
+    func prepare(modelDirectory: URL, onLoading: @escaping @MainActor @Sendable () -> Void = {}) async throws { preparations += 1 }
     func unload() {}
     func decode(samples: [Float], modelDirectory: URL, language: String?, context: String) async throws -> QwenDecodedOutput {
         calls.append(samples)
         contexts.append(context)
+        if suspendDecode {
+            suspendDecode = false
+            await withCheckedContinuation { pendingDecode = $0 }
+        }
         try await Task.sleep(for: .milliseconds(2))
         return .transcript("[\(Int(samples.first ?? -1))..\(Int(samples.last ?? -1))]")
     }
-    func reset() { calls = []; contexts = [] }
+    func pauseNextDecode() { suspendDecode = true }
+    func resumeDecode() { pendingDecode?.resume(); pendingDecode = nil }
+    func reset() { calls = []; contexts = []; preparations = 0 }
 }
 """#
 let tests = #"""
 @main struct Tests {
-    static func main() async throws {
+    @MainActor static func wait(_ condition: () async -> Bool) async throws {
+        for _ in 0..<1000 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        preconditionFailure("Timed out waiting for Qwen fixture")
+    }
+    @MainActor static func main() async throws {
         let runtime = QwenModelRuntime.shared
         let directory = URL(fileURLWithPath: "/unused")
         let blockedUI = QwenCaptureState()
@@ -126,9 +142,9 @@ let tests = #"""
         let text = try await state.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in })
         let calls = await runtime.calls
         precondition(calls.count == 2)
-        precondition(calls.flatMap { $0 } == all, "Nonoverlapping commits must cover every sample")
+        precondition(calls.flatMap { $0 } == all, "Final decode windows must cover every sample exactly once")
         precondition(text == "[1..480000] [480001..520000]", text)
-        print("PASS full-window commit, backlog, and missing-tail recovery")
+        print("PASS final full-recording decode, backlog, and missing-tail recovery")
 
         await runtime.reset()
         let replay = QwenCaptureState()
@@ -142,16 +158,52 @@ let tests = #"""
 
         await runtime.reset()
         let preview = QwenCaptureState()
+        var partials: [String] = []
+        preview.onPartial = { partials.append($0) }
         let task = Task { try await preview.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in }) }
-        preview.enqueue(Array(all.prefix(32000)))
-        try await Task.sleep(for: .milliseconds(100))
-        preview.enqueue(Array(all[32000..<40000]))
-        preview.close(samples: Array(all.prefix(40000)))
+        for seconds in [2, 4, 6] {
+            let end = seconds * 16000
+            preview.enqueue(Array(all[(end - 32000)..<end]))
+            try await wait { partials.count == seconds / 2 }
+            let snapshots = await runtime.calls
+            precondition(snapshots.last == Array(all.prefix(end)), "Each preview must re-decode from sample zero")
+        }
+        let shortPreviews = await runtime.calls
+        precondition(shortPreviews.map { $0.count } == [32000, 64000, 96000])
+        precondition(partials == ["[1..32000]", "[1..64000]", "[1..96000]"], "Previews replace, rather than append, prior words")
+        preview.enqueue(Array(all[96000...]))
+        try await wait { partials.count == 4 }
+        let beforeFinish = await runtime.calls
+        precondition(Array(beforeFinish.dropFirst(3)).flatMap { $0 } == all,
+                     "A cumulative preview over 30 seconds must retain every internal window")
+        precondition(beforeFinish.dropFirst(3).allSatisfy { $0.count <= 30 * 16000 })
+        precondition(partials.last == "[1..480000] [480001..520000]")
+        preview.close(samples: all)
         let final = try await task.value
-        let previews = await runtime.calls
-        precondition(previews.map { $0.count } == [32000, 40000])
-        precondition(final == "[1..40000]", final)
-        print("PASS replaceable preview and final active-window decode")
+        let completedCalls = await runtime.calls
+        precondition(completedCalls.count == beforeFinish.count + 2, "Final recognition must re-decode even unchanged preview audio")
+        precondition(Array(completedCalls.dropFirst(beforeFinish.count)).flatMap { $0 } == all,
+                     "Final decode must include the complete recording, not only the last window")
+        precondition(final == "[1..480000] [480001..520000]", final)
+        print("PASS cumulative 2/4/6-second previews, lossless 30-second windows, and fresh full-recording final")
+
+        await runtime.reset()
+        let batch = QwenTranscriptionSession(modelDirectory: directory, livePreview: false)
+        batch.onPartial = { _ in fatalError("Batch recognition must never publish a preview") }
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(all.count))!
+        buffer.frameLength = AVAudioFrameCount(all.count)
+        all.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: $0.count) }
+        batch.feed(buffer)
+        try await wait { await runtime.preparations == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        let beforeBatchFinish = await runtime.calls
+        precondition(beforeBatchFinish.isEmpty, "livePreview:false must not decode before finish, even beyond 30 seconds")
+        let batchFinal = try await batch.finish(samples: all)
+        let batchCalls = await runtime.calls
+        precondition(batchCalls.count == 2 && batchCalls.flatMap { $0 } == all)
+        precondition(batchFinal == "[1..480000] [480001..520000]")
+        print("PASS session batch mode skips all live inference and decodes the complete recording only on finish")
 
         await runtime.reset()
         let cancelled = QwenCaptureState()
@@ -165,6 +217,21 @@ let tests = #"""
         precondition(afterCancel.isEmpty)
         cancelled.reportError("stale error", to: { _ in fatalError("Cancelled session must not report errors") })
         print("PASS cancellation before decoding and suppression of stale errors")
+
+        await runtime.reset()
+        await runtime.pauseNextDecode()
+        let inFlight = QwenCaptureState()
+        inFlight.onPartial = { _ in fatalError("Cancelled inference must not publish stale preview words") }
+        let inFlightTask = Task { try await inFlight.run(modelDirectory: directory, language: nil, context: "", onStatus: { _ in }) }
+        inFlight.enqueue(all)
+        try await wait { await runtime.pendingDecode != nil }
+        inFlight.cancel()
+        await runtime.resumeDecode()
+        do { _ = try await inFlightTask.value; fatalError("In-flight cancel must throw") }
+        catch is CancellationError {}
+        let interruptedCalls = await runtime.calls
+        precondition(interruptedCalls.count == 1, "Cancellation must stop before decoding the next internal window")
+        print("PASS in-flight cancellation suppresses previews and stops remaining decode windows")
 
         let overflow = QwenCaptureState()
         overflow.enqueue([Float](repeating: 1, count: 120 * 16000 + 1))
