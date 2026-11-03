@@ -1,6 +1,12 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "麦克风没有响应。请退出并重新打开 Talkless 后重试。";
 "About" = "关于";
+"Current microphone: %@" = "当前麦克风：%@";
+"No available system microphone. Choose an input device." = "没有可用的系统麦克风，请选择输入设备。";
+"Checking microphones…" = "正在检查麦克风…";
+"Choose your microphone, shortcut, and speech recognition." = "先确认麦克风，再设置快捷键和识别方式。";
+"Set up AI polishing and voice editing with your own AI service." = "使用你配置的 AI 服务进行润色和语音编辑。";
+"Format punctuation and spacing on this Mac, without an AI service." = "在本机处理标点和空格，无需 AI 服务。";
 "Permissions, language, startup, and troubleshooting." = "权限、语言、启动与故障排查。";
 "Version, updates, and project information." = "版本、更新与项目信息。";
 "Voice input for macOS." = "macOS 语音输入。";

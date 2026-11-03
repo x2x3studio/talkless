@@ -8,6 +8,23 @@ import Testing
 @Suite struct AudioInputSettingsTests {
     private static let microphone = AudioInputDevice(id: 1, uid: "test-mic", name: "Test microphone")
 
+    @Test func systemDefaultDeviceIsResolvedOffMainAndTracksChanges() async throws {
+        let discovery = AudioInputDeviceDiscovery()
+        discovery.activate()
+        let microphone = Self.microphone
+        let firstTask = discovery.refresh(defaultDevice: {
+            #expect(!Thread.isMainThread)
+            return 1
+        }, using: { [microphone] })
+        let first = try #require(firstTask)
+        await first.value
+        #expect(discovery.hasLoaded && discovery.defaultDeviceID == 1)
+        let secondTask = discovery.refresh(defaultDevice: { nil }, using: { [microphone] })
+        let second = try #require(secondTask)
+        await second.value
+        #expect(discovery.defaultDeviceID == nil && discovery.devices == [microphone])
+    }
+
     @Test func slowDiscoveryRunsOffMainAndDropsOverlappingRefreshes() async throws {
         let discovery = AudioInputDeviceDiscovery()
         discovery.activate()
@@ -84,25 +101,25 @@ import Testing
         let microphone = Self.microphone
         let initial = try #require(discovery.refresh { [microphone] })
         await initial.value
-        #expect(updates.withLock { $0 } == [true], "Published state changes occur on the main thread")
+        #expect(updates.withLock { $0 } == [true, true], "First load publishes readiness and devices on the main thread")
         let unchanged = try #require(discovery.refresh { [microphone] })
         await unchanged.value
-        #expect(updates.withLock { $0.count } == 1)
+        #expect(updates.withLock { $0.count } == 2)
 
         let failure = try #require(discovery.refresh { throw DiscoveryFailure.unavailable })
         await failure.value
         #expect(discovery.devices == [microphone])
         #expect(discovery.error == "Synthetic discovery failure")
-        #expect(updates.withLock { $0.count } == 2)
+        #expect(updates.withLock { $0.count } == 3)
         let repeatedFailure = try #require(discovery.refresh { throw DiscoveryFailure.unavailable })
         await repeatedFailure.value
-        #expect(updates.withLock { $0.count } == 2)
+        #expect(updates.withLock { $0.count } == 3)
 
         let recovery = try #require(discovery.refresh { [microphone] })
         await recovery.value
         #expect(discovery.error == nil)
         #expect(discovery.devices == [microphone])
-        #expect(updates.withLock { $0 } == [true, true, true])
+        #expect(updates.withLock { $0 } == [true, true, true, true])
         let disconnected = try #require(discovery.refresh { [] })
         await disconnected.value
         #expect(discovery.devices.isEmpty)

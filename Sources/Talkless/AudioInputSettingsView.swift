@@ -5,6 +5,7 @@ struct AudioInputSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var settings: AppSettings
     var loadDevices: @Sendable () throws -> [AudioInputDevice] = AudioInputDevices.available
+    var loadDefaultDevice: @Sendable () throws -> UInt32? = { try AudioInputDevices.systemDefault() }
     @StateObject private var discovery = AudioInputDeviceDiscovery()
     private var devices: [AudioInputDevice] { discovery.devices }
     private var discoveryError: String? { discovery.error }
@@ -43,6 +44,16 @@ struct AudioInputSettingsView: View {
                     .accessibilityLabel(L10n.tr("Reset microphone to System default"))
             }
             .padding(.vertical, 4)
+            if settings.audioInputDeviceUID == nil {
+                if let device = devices.first(where: { $0.id == discovery.defaultDeviceID }) {
+                    Text(L10n.format("Current microphone: %@", device.name)).settingsNote()
+                } else if discovery.hasLoaded {
+                    Text(L10n.tr("No available system microphone. Choose an input device."))
+                        .font(.caption).foregroundStyle(.orange)
+                } else {
+                    Text(L10n.tr("Checking microphones…")).settingsNote()
+                }
+            }
             if let discoveryError {
                 Text(discoveryError)
                     .font(.caption).foregroundStyle(.orange)
@@ -70,7 +81,7 @@ struct AudioInputSettingsView: View {
     }
 
     private func refreshDevices() {
-        discovery.refresh(using: loadDevices)
+        discovery.refresh(defaultDevice: loadDefaultDevice, using: loadDevices)
     }
 }
 
@@ -79,6 +90,8 @@ struct AudioInputSettingsView: View {
 final class AudioInputDeviceDiscovery: ObservableObject {
     @Published private(set) var devices: [AudioInputDevice] = []
     @Published private(set) var error: String?
+    @Published private(set) var defaultDeviceID: UInt32?
+    @Published private(set) var hasLoaded = false
     private var inFlight: Task<Void, Never>?
     private var isActive = false
     private var generation = 0
@@ -95,19 +108,22 @@ final class AudioInputDeviceDiscovery: ObservableObject {
     }
 
     @discardableResult
-    func refresh(using loadDevices: @escaping @Sendable () throws -> [AudioInputDevice]) -> Task<Void, Never>? {
+    func refresh(defaultDevice: @escaping @Sendable () throws -> UInt32? = { nil },
+                 using loadDevices: @escaping @Sendable () throws -> [AudioInputDevice]) -> Task<Void, Never>? {
         guard isActive, inFlight == nil else { return nil }
         let generation = generation
         let query = Task.detached(priority: .utility) {
-            Result { try loadDevices() }
+            Result { (try loadDevices(), try? defaultDevice()) }
         }
         let completion = Task { [weak self] in
             let result = await query.value
             guard let self else { return }
             self.inFlight = nil
             guard self.isActive, self.generation == generation else { return }
+            if !self.hasLoaded { self.hasLoaded = true }
             switch result {
-            case .success(let found):
+            case .success(let (found, defaultID)):
+                if defaultID != self.defaultDeviceID { self.defaultDeviceID = defaultID }
                 // Assign only on change: polling must not redraw the whole Dictation page every 2 s.
                 if found != self.devices { self.devices = found }
                 if self.error != nil { self.error = nil }

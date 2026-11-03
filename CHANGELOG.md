@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+- Voice input settings now start with the microphone, followed by shortcuts and recognition options on one page. System default shows the actual device name, with an unavailable warning when needed.
+- AI polishing preferences and service setup share their own page; local text formatting has a separate page. Existing preferences are preserved.
+- Setup Guide confirms the microphone and its permissions before teaching shortcuts, with an input-device picker directly in that step.
+
+## 2026.1103.13052
+
 ### Added
 - Doubao online has a separate Spoken cleanup switch that sends enable_ddc to the recognizer. It defaults off and does not enable AI polishing.
 

@@ -1,5 +1,19 @@
 import SwiftUI
 
+/// Reuse the real device picker with the same settings as Dictation; discovery is read-only.
+struct SetupMicrophoneSetup: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            AudioInputSettingsView(settings: settings)
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .frame(height: 180)
+    }
+}
+
 struct SetupRecordingSetup: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var settings = AppSettings.shared

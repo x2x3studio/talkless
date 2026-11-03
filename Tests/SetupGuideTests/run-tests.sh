@@ -35,6 +35,13 @@ assert 'shortcutsReady: controller.hotkeyActive' in live
 view = (root / "Sources/Talkless/SetupGuideView.swift").read_text()
 assert 'summaryRow("Accessibility", ready: snapshot.accessibility == .granted)' in view
 assert 'summaryRow("Dictation shortcuts", ready: snapshot.shortcutsReady)' in view
+assert 'microphoneSetup: AnyView(SetupMicrophoneSetup(settings: settings))' in live
+steps = (root / "Sources/Talkless/SetupGuideSteps.swift").read_text()
+microphone_setup = steps.split('struct SetupMicrophoneSetup: View {', 1)[1].split('struct SetupRecordingSetup', 1)[0]
+assert '@ObservedObject var settings: AppSettings' in microphone_setup
+assert 'AudioInputSettingsView(settings: settings)' in microphone_setup
+assert 'AppSettings' not in view and 'AudioInputSettingsView' not in view
+print("PASS live microphone step reuses the real picker and shared settings; preview view stays service-free")
 print("PASS startup logs blocked AX once, guide preserves AX permission separately from shortcut readiness")
 print("PASS App startup captures first-run before settings, prompts only on user action, and wires reopen/close")
 PY

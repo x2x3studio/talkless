@@ -1,6 +1,12 @@
 /* User-visible interface strings. English source keys are stable lookup identifiers. */
 "The microphone is not responding. Quit and reopen Talkless, then try again." = "The microphone is not responding. Quit and reopen Talkless, then try again.";
 "About" = "About";
+"Current microphone: %@" = "Current microphone: %@";
+"No available system microphone. Choose an input device." = "No available system microphone. Choose an input device.";
+"Checking microphones…" = "Checking microphones…";
+"Choose your microphone, shortcut, and speech recognition." = "Choose your microphone, shortcut, and speech recognition.";
+"Set up AI polishing and voice editing with your own AI service." = "Set up AI polishing and voice editing with your own AI service.";
+"Format punctuation and spacing on this Mac, without an AI service." = "Format punctuation and spacing on this Mac, without an AI service.";
 "Permissions, language, startup, and troubleshooting." = "Permissions, language, startup, and troubleshooting.";
 "Version, updates, and project information." = "Version, updates, and project information.";
 "Voice input for macOS." = "Voice input for macOS.";

@@ -6,9 +6,12 @@ import SwiftUI
 struct AIServiceSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject private var settings: AppSettings
+    private let processingSections: AnyView?
 
-    init(settings: AppSettings = .shared) {
+    /// Optional feature sections share this form; the setup guide can show connection controls only.
+    init(settings: AppSettings = .shared, processingSections: AnyView? = nil) {
         self.settings = settings
+        self.processingSections = processingSections
     }
 
     @State private var remoteModels: [RemoteModel] = []
@@ -68,7 +71,9 @@ struct AIServiceSettingsView: View {
 
     var body: some View {
         Form {
-            Section {
+            if let processingSections { processingSections }
+
+            Section(L10n.tr("AI service")) {
                 Picker(L10n.tr("Provider"), selection: Binding(
                     get: { provider },
                     set: { newProvider in

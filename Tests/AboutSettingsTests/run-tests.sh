@@ -26,6 +26,31 @@ assert 'AboutSettingsTab(controller: controller, updateController: updateControl
 assert 'onPermissions: { selection = .system }' in source
 assert 'publisher(for: .showSettingsSection)' in source and 'notification.object as? SettingsSection' in source
 assert source.count('UpdateSettingsView(') == 1
+# The three voice-related pages share no nested forms or feature controls.
+voice = source[source.index('private struct DictationSettingsTab:'):source.index('private struct SystemSettingsTab:')]
+assert voice.count('Form {') == 1
+ordered = ['AudioInputSettingsView(', 'if !microphoneGranted || !accessibilityGranted',
+           'RecordingSettingsSection(', 'SpeechSettingsSections(']
+positions = [voice.index(item) for item in ordered]
+assert positions == sorted(positions), 'Microphone, permission notice, shortcut, then recognition'
+assert 'DictationProcessingSettingsView(' not in voice
+speech = source[source.index('private struct SpeechSettingsSections:'):source.index('struct SettingsChoiceCard:')]
+assert 'Form {' not in speech and 'ScrollView' not in speech
+assert 'RecognitionEngineChooser(' in speech and 'ModelManagementView(' in speech and 'DoubaoSettingsSection(' in speech
+assert 'case .models:' not in source
+ai_page = source.split('case .aiService:', 1)[1].split('case .formatting:', 1)[0]
+assert 'AIServiceSettingsView(' in ai_page and 'DictationProcessingSettingsView(' in ai_page
+assert 'TextFormattingSettingsView(settings: settings)' in source
+processing = (root / 'Sources/Talkless/DictationProcessingSettingsView.swift').read_text()
+ai_sections, formatting = processing.split('struct TextFormattingSettingsView:', 1)
+assert 'Form {' not in ai_sections and 'ScrollView' not in ai_sections
+for setting in ['polishEnabled', 'outputLanguage', 'appToneEnabled', 'customInstructions', 'voiceEditEnabled']:
+    assert setting in ai_sections and setting not in formatting
+for setting in ['punctuationStyle', 'latinSpacing']:
+    assert setting in formatting and setting not in ai_sections
+service = (root / 'Sources/Talkless/PolishSettingsView.swift').read_text()
+assert service.count('Form {') == 1 and 'ScrollView' not in service
+assert 'if let processingSections { processingSections }' in service
 assert 'UpdateController(' not in about
 assert 'https://typeless.x2x3.com' in about
 assert 'https://github.com/x2x3studio/talkless' in about

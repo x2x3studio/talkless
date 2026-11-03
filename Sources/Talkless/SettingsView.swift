@@ -89,7 +89,6 @@ struct SettingsView: View {
                     switch currentSection {
                     case .dictation:
                         DictationSettingsTab(controller: controller,
-                                             onConfigureAI: { selection = .aiService },
                                              onPermissions: { selection = .system })
                     case .translation:
                         TranslationSettingsView(isBusy: controller.state != .idle,
@@ -102,10 +101,12 @@ struct SettingsView: View {
                         AboutSettingsTab(controller: controller, updateController: updateController)
                     case .overlay:
                         OverlaySettingsView(appearance: $settings.hudAppearance)
-                    case .models:
-                        SpeechTab(controller: controller)
                     case .aiService:
-                        AIServiceSettingsView()
+                        AIServiceSettingsView(settings: settings, processingSections: AnyView(
+                            DictationProcessingSettingsView(settings: settings)
+                        ))
+                    case .formatting:
+                        TextFormattingSettingsView(settings: settings)
                     case .dictionary:
                         DictionaryTab().padding(28)
                     case .history:
@@ -135,7 +136,6 @@ private struct DictationSettingsTab: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
-    let onConfigureAI: () -> Void
     let onPermissions: () -> Void
     @ObservedObject private var permissions = PermissionMonitor.shared
     private var microphoneGranted: Bool { permissions.microphoneStatus == .authorized }
@@ -152,6 +152,8 @@ private struct DictationSettingsTab: View {
 
     var body: some View {
         Form {
+            AudioInputSettingsView(settings: settings)
+
             if !microphoneGranted || !accessibilityGranted {
                 Section {
                     HStack(spacing: 12) {
@@ -169,14 +171,13 @@ private struct DictationSettingsTab: View {
                     }
                 }
             }
-            AudioInputSettingsView(settings: settings)
 
             RecordingSettingsSection(mode: $settings.recordingGestureMode, triggerKey: $settings.triggerKey,
                                      isBusy: controller.state != .idle,
                                      setCaptureActive: controller.setShortcutCaptureActive,
                                      resetKey: settings.resetTriggerKey)
 
-            DictationProcessingSettingsView(settings: settings, onConfigureAI: onConfigureAI)
+            SpeechSettingsSections(controller: controller)
         }
         .formStyle(.grouped)
     }
@@ -368,7 +369,8 @@ private struct AboutSettingsTab: View {
 
 // MARK: - Speech Recognition
 
-private struct SpeechTab: View {
+/// Recognition sections share the voice-input form, without a nested scroll view.
+private struct SpeechSettingsSections: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var controller: DictationController
     @ObservedObject var settings = AppSettings.shared
@@ -376,39 +378,36 @@ private struct SpeechTab: View {
     private var controlsDisabled: Bool { controller.state != .idle || modelManager.operationModelID != nil }
 
     var body: some View {
-        Form {
-            Section {
-                RecognitionEngineChooser(engine: $settings.asrEngine)
-                    .disabled(controlsDisabled)
-            }
-
-            if settings.asrEngine == .qwen {
-                ModelManagementView(controller: controller)
-
-                Section {
-                    DisclosureGroup(L10n.tr("Advanced")) {
-                        Toggle(L10n.tr("Use a custom model folder"), isOn: $settings.useCustomQwenDirectory)
-                        if settings.useCustomQwenDirectory {
-                            TextField(L10n.tr("Model folder"), text: $settings.qwenModelDirectory)
-                                .textFieldStyle(.roundedBorder)
-                            HStack {
-                                Button(L10n.tr("Choose Folder…")) { chooseModelDirectory() }
-                                Button(L10n.tr("Use Downloaded Models")) {
-                                    settings.useCustomQwenDirectory = false
-                                }
-                            }
-                            Text(L10n.tr("A Qwen3 ASR MLX folder with its configuration, tokenizer, and safetensors weights. Talkless does not manage or delete this folder."))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .disabled(controlsDisabled)
-                }
-            } else {
-                DoubaoSettingsSection(settings: settings, localModelStatus: controller.modelPreparationStatus)
-                    .disabled(controller.state != .idle)
-            }
+        Section(L10n.tr("Speech recognition")) {
+            RecognitionEngineChooser(engine: $settings.asrEngine)
+                .disabled(controlsDisabled)
         }
-        .formStyle(.grouped)
+
+        if settings.asrEngine == .qwen {
+            ModelManagementView(controller: controller)
+
+            Section {
+                DisclosureGroup(L10n.tr("Advanced")) {
+                    Toggle(L10n.tr("Use a custom model folder"), isOn: $settings.useCustomQwenDirectory)
+                    if settings.useCustomQwenDirectory {
+                        TextField(L10n.tr("Model folder"), text: $settings.qwenModelDirectory)
+                            .textFieldStyle(.roundedBorder)
+                        HStack {
+                            Button(L10n.tr("Choose Folder…")) { chooseModelDirectory() }
+                            Button(L10n.tr("Use Downloaded Models")) {
+                                settings.useCustomQwenDirectory = false
+                            }
+                        }
+                        Text(L10n.tr("A Qwen3 ASR MLX folder with its configuration, tokenizer, and safetensors weights. Talkless does not manage or delete this folder."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(controlsDisabled)
+            }
+        } else {
+            DoubaoSettingsSection(settings: settings, localModelStatus: controller.modelPreparationStatus)
+                .disabled(controller.state != .idle)
+        }
     }
 
     private func chooseModelDirectory() {

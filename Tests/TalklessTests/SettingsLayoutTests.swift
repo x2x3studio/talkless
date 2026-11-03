@@ -8,7 +8,12 @@ import Testing
     @Test func everyPageAppearsInExactlyOneSidebarGroup() {
         let grouped = SettingsSection.groups.flatMap(\.sections)
         #expect(grouped == SettingsSection.allCases, "Groups follow page order and include every page once")
-        #expect(SettingsSection.groups.first?.sections.first == .dictation, "Dictation is the first page")
+        #expect(SettingsSection.groups.first?.sections == [.dictation, .aiService, .formatting, .dictionary, .overlay])
+        #expect(SettingsSection.models == .dictation, "Old speech-setup entry points open voice input")
+        #expect(!SettingsSection.allCases.map(\.rawValue).contains("models"), "No duplicate speech-recognition page")
+        #expect(SettingsSection.dictation.title == L10n.tr("Voice input"))
+        #expect(SettingsSection.aiService.title == L10n.tr("AI polishing"))
+        #expect(SettingsSection.formatting.title == L10n.tr("Text formatting"))
         #expect(grouped.firstIndex(of: .translation)! > grouped.firstIndex(of: .aiService)!,
                 "Translation follows the voice-input pages")
     }
@@ -119,6 +124,11 @@ import Testing
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
         settings.audioInputDeviceUID = "test-mic"
+        settings.polishEnabled = true
+        settings.voiceEditEnabled = false
+        settings.punctuationStyle = .spaces
+        settings.latinSpacing = .spaced
+        settings.customInstructions = "Keep my existing writing instructions."
         settings.dictionary = "Talkless\nSwiftUI"
         settings.dictionaryReplacements = [DictionaryReplacement(heard: "talk less", term: "Talkless")]
         for second in 0..<2 {
@@ -139,13 +149,21 @@ import Testing
                     ("audio", AnyView(Form {
                         AudioInputSettingsView(settings: settings, loadDevices: {
                             [AudioInputDevice(id: 1, uid: "test-mic", name: "USB Microphone with a deliberately long device name")]
-                        })
+                        }, loadDefaultDevice: { 1 })
                         RecordingSettingsSection(mode: .constant(.toggle), triggerKey: .constant(.rightCommand),
                                                  setCaptureActive: { _ in true }, resetKey: { nil })
-                        DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
+                        Section(L10n.tr("Speech recognition")) {
+                            RecognitionEngineChooser(engine: .constant(.doubao))
+                        }
+                        DoubaoSettingsSection(settings: settings)
                     }.formStyle(.grouped))),
-                    ("ai-service", AnyView(AIServiceSettingsView(settings: settings))),
-                    ("ai-service-custom", AnyView(AIServiceSettingsView(settings: customSettings))),
+                    ("ai-polishing", AnyView(AIServiceSettingsView(settings: settings, processingSections: AnyView(
+                        DictationProcessingSettingsView(settings: settings)
+                    )))),
+                    ("ai-polishing-custom", AnyView(AIServiceSettingsView(settings: customSettings, processingSections: AnyView(
+                        DictationProcessingSettingsView(settings: customSettings)
+                    )))),
+                    ("ai-service-only", AnyView(AIServiceSettingsView(settings: settings))),
                     ("doubao", AnyView(Form {
                         Section { RecognitionEngineChooser(engine: .constant(.doubao)) }
                         DoubaoSettingsSection(settings: settings)
@@ -179,9 +197,7 @@ import Testing
                     ("languages-sheet", AnyView(PreferredTranslationLanguagesView(preferredLanguageIDs: ["en", "zh-Hans"]) { _ in })),
                     ("translation", AnyView(TranslationSettingsView(settings: settings, isBusy: false,
                         shortcutError: nil, setCaptureActive: { _ in true }, onConfigureAI: {}))),
-                    ("processing", AnyView(Form {
-                        DictationProcessingSettingsView(settings: settings, onConfigureAI: {})
-                    }.formStyle(.grouped))),
+                    ("formatting", AnyView(TextFormattingSettingsView(settings: settings))),
                     ("dictionary", AnyView(DictionaryView(settings: settings).padding(28))),
                     ("term-editor", AnyView(DictionaryTermEditor(original: "Talkless", settings: settings) { _ in })),
                     ("overlay", AnyView(OverlaySettingsView(appearance: .constant(HUDAppearance())))),
@@ -196,6 +212,11 @@ import Testing
                 }
             }
         }
+        #expect(settings.polishEnabled)
+        #expect(!settings.voiceEditEnabled)
+        #expect(settings.punctuationStyle == .spaces && settings.latinSpacing == .spaced)
+        #expect(settings.customInstructions == "Keep my existing writing instructions.")
+        #expect(settings.audioInputDeviceUID == "test-mic", "Reorganized pages preserve existing preferences")
     }
 
     @Test func rendersDisconnectedMicrophoneWithoutResettingSelection() {
@@ -205,7 +226,7 @@ import Testing
         let settings = AppSettings(defaults: defaults, credentialStore: LayoutCredentials())
         settings.audioInputDeviceUID = "disconnected-mic"
         let view = Form {
-            AudioInputSettingsView(settings: settings, loadDevices: { [] })
+            AudioInputSettingsView(settings: settings, loadDevices: { [] }, loadDefaultDevice: { nil })
         }.formStyle(.grouped)
         #expect(render(view, size: NSSize(width: 604, height: 300)).count > 2_000)
         #expect(settings.audioInputDeviceUID == "disconnected-mic")

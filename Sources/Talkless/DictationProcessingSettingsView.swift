@@ -1,15 +1,12 @@
 import SwiftUI
 
-/// Sections for the Dictation form. AI setup and selected-text translation live on their own pages.
+/// AI processing sections embedded in the same form as the provider configuration.
 @MainActor
 struct DictationProcessingSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject private var settings: AppSettings
-    private let onConfigureAI: () -> Void
-
-    init(settings: AppSettings = .shared, onConfigureAI: @escaping () -> Void) {
+    init(settings: AppSettings = .shared) {
         self.settings = settings
-        self.onConfigureAI = onConfigureAI
     }
 
     var body: some View {
@@ -21,7 +18,7 @@ struct DictationProcessingSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            AIServiceStatusView(settings: settings, onConfigureAI: onConfigureAI)
+            AIServiceStatusView(settings: settings)
             if !settings.llmConfigured {
                 Text(L10n.tr("Set up an AI service to use AI polishing. Until then, dictation skips AI polishing."))
                     .settingsNote()
@@ -58,22 +55,6 @@ struct DictationProcessingSettingsView: View {
         }
 
         Section {
-            Picker(L10n.tr("Punctuation"), selection: $settings.punctuationStyle) {
-                ForEach(PunctuationStyle.allCases) { Text($0.title).tag($0) }
-            }
-            .id("punctuation-\(localization.locale.identifier)")
-            Picker(L10n.tr("Spaces around numbers and English"), selection: $settings.latinSpacing) {
-                ForEach(LatinSpacing.allCases) { Text($0.title).tag($0) }
-            }
-            .id("spacing-\(localization.locale.identifier)")
-        } header: {
-            Text(L10n.tr("Text formatting"))
-        } footer: {
-            Text(L10n.tr("Text formatting runs on this Mac for every dictation, independently of AI polishing. No AI service is needed."))
-                .settingsNote()
-        }
-
-        Section {
             Toggle(isOn: $settings.voiceEditEnabled) {
                 Text(L10n.tr("Edit text by voice"))
                 Text(L10n.format("Select text, hold %@ + %@, and say how to change it. For example, “make it shorter”.",
@@ -95,5 +76,37 @@ struct DictationProcessingSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+/// Local formatting remains independent of AI settings and never needs a provider.
+@MainActor
+struct TextFormattingSettingsView: View {
+    @ObservedObject private var localization = LocalizationSettings.shared
+    @ObservedObject private var settings: AppSettings
+
+    init(settings: AppSettings = .shared) {
+        self.settings = settings
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker(L10n.tr("Punctuation"), selection: $settings.punctuationStyle) {
+                    ForEach(PunctuationStyle.allCases) { Text($0.title).tag($0) }
+                }
+                .id("punctuation-\(localization.locale.identifier)")
+                Picker(L10n.tr("Spaces around numbers and English"), selection: $settings.latinSpacing) {
+                    ForEach(LatinSpacing.allCases) { Text($0.title).tag($0) }
+                }
+                .id("spacing-\(localization.locale.identifier)")
+            } header: {
+                Text(L10n.tr("Text formatting"))
+            } footer: {
+                Text(L10n.tr("Text formatting runs on this Mac for every dictation, independently of AI polishing. No AI service is needed."))
+                    .settingsNote()
+            }
+        }
+        .formStyle(.grouped)
     }
 }

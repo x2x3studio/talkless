@@ -42,8 +42,10 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
             assertions += 1
             precondition(condition(), message)
         }
-        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "models", "dictionary", "aiService", "overlay", "history", "translation", "system", "about"],
-              "About appends without changing existing section raw values/order")
+        check(SettingsSection.allCases.map(\.rawValue) == ["dictation", "aiService", "formatting", "dictionary", "overlay", "history", "translation", "system", "about"],
+              "Voice input, AI polishing, and local formatting each have one page")
+        check(SettingsSection.models == .dictation, "Legacy speech-setup routes open voice input")
+        check(SettingsSection.groups.flatMap(\.sections) == SettingsSection.allCases, "Each page occurs once in sidebar order")
         check(SettingsSection.about.symbol == "info.circle", "About uses a native information symbol")
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 604, height: 570),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)

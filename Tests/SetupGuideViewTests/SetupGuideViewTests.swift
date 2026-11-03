@@ -37,10 +37,12 @@ private struct SyntheticGuideHost: View {
     let actions: SetupGuideActions
     let localization: LocalizationSettings
     let step: SetupGuideStep
+    var microphoneSetup: AnyView? = nil
 
     var body: some View {
         SetupGuideView(state: state, actions: actions,
                        launchAtLogin: LaunchAtLoginPresentation(controller: login),
+                       microphoneSetup: microphoneSetup,
                        localization: localization, initialStep: step)
     }
 }
@@ -67,7 +69,11 @@ enum SettingsAppearance {
     var translationShortcut = Key()
 }
 
-// The live speech and AI steps embed real Settings views; the guide's own logic is tested here.
+// Live steps embed real Settings views; synthetic stand-ins never discover devices or load models.
+struct SetupMicrophoneSetup: View {
+    @ObservedObject var settings: AppSettings
+    var body: some View { EmptyView() }
+}
 struct SetupRecordingSetup: View {
     init(controller: DictationController) {}
     var body: some View { EmptyView() }
@@ -142,7 +148,11 @@ struct SetupGuideViewTests {
             setLaunchAtLogin: { enabled in Task { await login.setEnabled(enabled) } },
             openLoginItems: login.openLoginItems
         )
-        check(SetupGuideStep.allCases.count == 8, "Eight steps including optional launch at login")
+        check(SetupGuideStep.allCases == [.welcome, .microphone, .controls, .accessibility, .speech, .ai, .login, .done],
+              "Microphone selection comes immediately after welcome, before controls and remaining setup")
+        check(SetupGuideStep.welcome.next == .microphone && SetupGuideStep.microphone.next == .controls
+              && SetupGuideStep.controls.previous == .microphone && SetupGuideStep.microphone.previous == .welcome,
+              "Forward and back navigation both follow microphone-first setup")
         check(SetupGuideStep.ai.next == .login && SetupGuideStep.login.next == .done,
               "Optional login step sits immediately before summary")
         let controls = SetupGuideControls(dictationKeyTitle: "Right ⌘", holdToTalk: false)
@@ -163,9 +173,10 @@ struct SetupGuideViewTests {
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Talkless Setup — Synthetic preview"
         window.appearance = NSAppearance(named: .aqua)
-        func mount(_ step: SetupGuideStep) -> NSHostingView<SyntheticGuideHost> {
+        func mount(_ step: SetupGuideStep, microphoneSetup: AnyView? = nil) -> NSHostingView<SyntheticGuideHost> {
             let hosting = NSHostingView(rootView: SyntheticGuideHost(login: login, state: state, actions: actions,
-                                                                    localization: localization, step: step))
+                                                                    localization: localization, step: step,
+                                                                    microphoneSetup: microphoneSetup))
             window.contentView = hosting
             window.setContentSize(NSSize(width: 600, height: 540))
             window.orderFrontRegardless()
@@ -184,6 +195,22 @@ struct SetupGuideViewTests {
             _ = mount(.microphone)
         }
         check(calls.isEmpty, "Every permission state renders without requesting access")
+        var microphonePickerAppearances = 0
+        let microphonePicker = AnyView(Text("Synthetic microphone picker").onAppear {
+            microphonePickerAppearances += 1
+        })
+        for step in SetupGuideStep.allCases where step != .microphone {
+            _ = mount(step, microphoneSetup: microphonePicker)
+        }
+        check(microphonePickerAppearances == 0, "Microphone picker is never mounted outside the microphone step")
+        for permission in [SetupGuidePermission.notDetermined, .requesting, .granted, .denied, .restricted] {
+            state.snapshot.microphone = permission
+            let before = microphonePickerAppearances
+            _ = mount(.microphone, microphoneSetup: microphonePicker)
+            check(microphonePickerAppearances == before + 1,
+                  "Injected microphone selection remains available for permission state \(permission)")
+        }
+        check(calls.isEmpty, "Embedding a microphone picker does not request permission or invoke guide actions")
         state.snapshot = .init()
         actions.allow(.requesting, microphone: true)
         check(calls.isEmpty, "Pending microphone dialog cannot launch another request")

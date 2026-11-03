@@ -76,7 +76,7 @@ struct SetupGuideActions {
 }
 
 enum SetupGuideStep: Int, CaseIterable {
-    case welcome, controls, microphone, accessibility, speech, ai, login, done
+    case welcome, microphone, controls, accessibility, speech, ai, login, done
 
     var next: Self { Self(rawValue: rawValue + 1) ?? self }
     var previous: Self { Self(rawValue: rawValue - 1) ?? self }
@@ -113,8 +113,9 @@ struct SetupGuideView: View {
     @ObservedObject var state: SetupGuideState
     let actions: SetupGuideActions
     let launchAtLogin: LaunchAtLoginPresentation
-    /// Live choices embedded by the app: engine, model download or Doubao key, and the AI service.
-    /// Previews and tests leave them nil and get status rows with buttons into Settings instead.
+    /// Live choices embedded by the app: microphone, controls, speech engine and AI service.
+    /// Previews and tests leave them nil to render only value-based instructions and status.
+    let microphoneSetup: AnyView?
     let controlsSetup: AnyView?
     let speechSetup: AnyView?
     let aiSetup: AnyView?
@@ -124,11 +125,13 @@ struct SetupGuideView: View {
 
     init(state: SetupGuideState, actions: SetupGuideActions,
          launchAtLogin: LaunchAtLoginPresentation = .init(),
-         controlsSetup: AnyView? = nil, speechSetup: AnyView? = nil, aiSetup: AnyView? = nil,
+         microphoneSetup: AnyView? = nil, controlsSetup: AnyView? = nil,
+         speechSetup: AnyView? = nil, aiSetup: AnyView? = nil,
          localization: LocalizationSettings = .shared, initialStep: SetupGuideStep = .welcome) {
         self.state = state
         self.actions = actions
         self.launchAtLogin = launchAtLogin
+        self.microphoneSetup = microphoneSetup
         self.controlsSetup = controlsSetup
         self.speechSetup = speechSetup
         self.aiSetup = aiSetup
@@ -245,6 +248,7 @@ struct SetupGuideView: View {
         case .microphone:
             explanation("Allow Talkless to record your voice when you start dictation.")
             permissionContent(snapshot.microphone, isMicrophone: true)
+            microphoneSetup
         case .accessibility:
             explanation("Allow Talkless to use global shortcuts and insert text into other apps.")
             permissionContent(snapshot.accessibility, isMicrophone: false)

@@ -73,6 +73,7 @@ struct SetupGuideLiveView: View {
             },
             openLoginItems: launchAtLogin.openLoginItems
         ), launchAtLogin: LaunchAtLoginPresentation(controller: launchAtLogin),
+           microphoneSetup: AnyView(SetupMicrophoneSetup(settings: settings)),
            controlsSetup: AnyView(SetupRecordingSetup(controller: controller)),
            speechSetup: AnyView(SetupSpeechSetup(controller: controller, openSettings: { openSettings(.models) })),
            aiSetup: AnyView(SetupAISetup()))

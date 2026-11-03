@@ -4,11 +4,14 @@ import Foundation
 /// and focused tests can route to a page without compiling the whole Settings window.
 enum SettingsSection: String, CaseIterable, Identifiable {
     // Voice input comes first; translation is a secondary tool.
-    case dictation, models, dictionary, aiService, overlay, history, translation, system, about
+    case dictation, aiService, formatting, dictionary, overlay, history, translation, system, about
+
+    /// Existing speech-setup entry points now open the combined voice-input page.
+    static var models: Self { .dictation }
 
     /// Sidebar groups, in display order.
     static let groups: [(title: String, sections: [SettingsSection])] = [
-        ("Voice input", [.dictation, .models, .dictionary, .aiService, .overlay]),
+        ("Voice input", [.dictation, .aiService, .formatting, .dictionary, .overlay]),
         ("Tools", [.history, .translation]),
         ("General", [.system, .about]),
     ]
@@ -17,10 +20,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .dictation: L10n.tr("Dictation")
+        case .dictation: L10n.tr("Voice input")
         case .translation: L10n.tr("Translation")
-        case .models: L10n.tr("Speech recognition")
-        case .aiService: L10n.tr("AI service")
+        case .aiService: L10n.tr("AI polishing")
+        case .formatting: L10n.tr("Text formatting")
         case .dictionary: L10n.tr("Dictionary")
         case .overlay: L10n.tr("Overlay")
         case .history: L10n.tr("History")
@@ -33,8 +36,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .dictation: "mic"
         case .translation: "character.bubble"
-        case .models: "waveform"
-        case .aiService: "network"
+        case .aiService: "sparkles"
+        case .formatting: "textformat"
         case .dictionary: "character.book.closed"
         case .overlay: "rectangle.on.rectangle"
         case .history: "clock"
@@ -45,10 +48,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .dictation: L10n.tr("Choose how you record and how your words are processed.")
+        case .dictation: L10n.tr("Choose your microphone, shortcut, and speech recognition.")
         case .translation: L10n.tr("Translate selected text, independently of dictation.")
-        case .models: L10n.tr("Choose how audio becomes text.")
-        case .aiService: L10n.tr("One AI connection for polishing, translation, and voice editing.")
+        case .aiService: L10n.tr("Set up AI polishing and voice editing with your own AI service.")
+        case .formatting: L10n.tr("Format punctuation and spacing on this Mac, without an AI service.")
         case .dictionary: L10n.tr("Review and manage preferred spellings.")
         case .overlay: L10n.tr("Preview and customize recording feedback.")
         case .history: L10n.tr("Your recent dictations, edits, and translations.")
