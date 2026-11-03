@@ -135,6 +135,7 @@ final class Diagnostics: @unchecked Sendable {
     var recordingModelDirectory: URL?
     let hud = FakeHUD()
     let translationPanel = FakeTranslationPanel()
+    let sentencePanel = FakeSession()
     let recorder = FakeRecorder()
     var session: FakeSession?
     var processingTask: Task<Void, Never>?
