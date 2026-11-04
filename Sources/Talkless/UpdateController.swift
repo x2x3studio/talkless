@@ -65,6 +65,8 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         super.init()
 
         guard configuredFeeds != nil else { return }
+        // The initial channel belongs to this installation, not the next downloaded bundle.
+        defaults.set(channel.rawValue, forKey: Self.channelPreferenceKey)
         defaults.set(automaticallyChecksForUpdates, forKey: Self.automaticChecksPreferenceKey)
 
         let controller = SPUStandardUpdaterController(

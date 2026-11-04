@@ -218,12 +218,27 @@ import Sparkle
         let fallback = UpdateController(bundle: configured, defaults: defaults,
             scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
         precondition(fallback.channel == .beta)
+        precondition(defaults.string(forKey: "TalklessUpdateChannel") == "beta")
         var noChannelInfo = info
         noChannelInfo.removeValue(forKey: "TalklessDefaultUpdateChannel")
+        let upgradedToStable = UpdateController(bundle: try bundle(noChannelInfo), defaults: defaults,
+            scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
+        precondition(upgradedToStable.channel == .beta, "Installing Stable must preserve Beta enrollment")
+        precondition(upgradedToStable.feedURLString(for: sparkle) == beta)
+        precondition(upgradedToStable.allowedChannels(for: sparkle) == ["beta"])
+        clear()
         let stableFallback = UpdateController(bundle: try bundle(noChannelInfo), defaults: defaults,
             scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
         precondition(stableFallback.channel == .stable)
-        print("PASS legacy automatic-check migration and channel fallback")
+        precondition(defaults.string(forKey: "TalklessUpdateChannel") == "stable")
+        let installedBeta = UpdateController(bundle: configured, defaults: defaults,
+            scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
+        precondition(installedBeta.channel == .stable, "Installing a different channel must not replace saved preference")
+        installedBeta.selectChannel(.beta)
+        let explicitBeta = UpdateController(bundle: try bundle(noChannelInfo), defaults: defaults,
+            scheduleAutomaticCheck: FakeClock().schedule, isDictationActive: { false })
+        precondition(explicitBeta.channel == .beta, "Explicit user choice survives subsequent upgrades")
+        print("PASS channel persistence across Beta/Stable packages, explicit choice and fresh-install defaults")
 
         var invalidInfos: [[String: Any]] = []
         for field in ["SUFeedURL", "SUBetaFeedURL", "SUPublicEDKey"] {

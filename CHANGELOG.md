@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Save the initial update-channel preference before starting the updater. Beta enrollment now survives installing a Stable package; explicit Stable/Beta choices continue to override package defaults. Existing lost preferences cannot be inferred automatically.
+
+## 2026.1104.16581 Stable
+
 ### Stable release
 - First Stable release, promoting the application code from Beta 2026.1104.16581 without adding new application features. Includes local and Doubao recognition, optional AI polishing, and the continuous-paste fix.
 - Stable builds use the Stable update channel by default. Labs features remain experimental and opt-in; existing user preferences are preserved.
