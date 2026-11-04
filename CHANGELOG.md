@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Fixed
+- Removed the clipboard-read heuristic that could permanently block second and later dictations. Clipboard text is now written eagerly; each queued paste settles after a finite two-second compatibility grace and always releases its state, even after cancellation or target changes.
+- Restoring the original clipboard still requires ownership; user copies are never overwritten. Posting paste keys is logged as keys_posted, not as verified insertion. No Enter key or focus change is needed to unlock subsequent dictation.
+
+## 2026.1103.62672
+
+### Fixed
 - Each dictation now keeps a snapshot of its AI service, prompts, output language and local formatting. Changing Settings during recording or processing applies to the next utterance instead of mixing configurations within the current one. Voice-edit selection and preconnection use the same snapshot.
 
 ## 2026.1103.60164

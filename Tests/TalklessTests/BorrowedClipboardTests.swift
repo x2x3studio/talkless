@@ -52,7 +52,7 @@ import Testing
             var posted = 0
             let sender: @MainActor () async -> Void = { posted += 1 }
             let wait: @MainActor (Duration) async -> Void = { duration in
-                if duration == .milliseconds(25) { await gate.wait() }
+                if duration == .seconds(2) { await gate.wait() }
             }
             let first = Task { await TextIO.insert("first", isTargetCurrent: { true }, wait: wait, sendPaste: sender) }
             await gate.untilWaiting()
@@ -74,30 +74,16 @@ import Testing
         }
     }
 
-    @Test func noReadTimesOutAndBlocksPasteAndSelectionCopyEvenAfterLateRead() async {
+    @Test func noReadSignalNeverBlocksFollowingUtterances() async {
         await withPrivatePasteboard { board in
             var posts = 0
-            let first = await TextIO.insert("unconsumed", isTargetCurrent: { true }, wait: { _ in }, sendPaste: { posts += 1 })
-            #expect(first == .unconfirmed)
-            let change = board.changeCount
-            #expect(await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: { posts += 1 }) == .blocked)
-            var copyRequested = false
-            let selection = await TextIO.selectedTextViaCopy(isTargetCurrent: { true }, requestCopy: { copyRequested = true }, wait: { _ in })
-            #expect(selection == nil)
-            #expect(!copyRequested)
-            #expect(posts == 1)
-            #expect(board.changeCount == change)
-            // A late consumer still gets the original text, but cannot asynchronously unlock
-            // the clipboard and race another still-pending consumer.
-            #expect(board.string(forType: .string) == "unconsumed")
-            #expect(await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {}) == .blocked)
-            #expect(board.changeCount == change)
-            #expect(TextIO.copyToClipboard("explicit user copy"))
-            let next = await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {
-                #expect(board.string(forType: .string) == "next")
-            })
-            #expect(next == .submitted)
-            #expect(board.string(forType: .string) == "explicit user copy")
+            for text in ["first", "second", "third"] {
+                let result = await TextIO.insert(text, isTargetCurrent: { true }, wait: { _ in }, sendPaste: { posts += 1 })
+                #expect(result == .submitted)
+                #expect(BorrowedClipboard.canBorrow)
+                #expect(board.string(forType: .string) == "user's own text")
+            }
+            #expect(posts == 3)
         }
     }
 
@@ -117,37 +103,20 @@ import Testing
         }
     }
 
-    @Test func cancellingAfterKeysPreservesTextAndBlocksNextPaste() async {
+    @Test func cancellingAfterKeysSettlesAndAllowsNextPaste() async {
         await withPrivatePasteboard { board in
             let gate = Gate()
             let insertion = Task {
                 await TextIO.insert("late consumer", isTargetCurrent: { true }, wait: { duration in
-                    if duration == .milliseconds(25) { await gate.wait() }
+                    if duration == .seconds(2) { await gate.wait() }
                 }, sendPaste: {})
             }
             await gate.untilWaiting()
             insertion.cancel()
             gate.release()
             #expect(await insertion.value == .cancelled)
-            #expect(await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {}) == .blocked)
-            #expect(board.string(forType: .string) == "late consumer")
-        }
-    }
-
-    @Test func cancellingDuringReceiptGraceDoesNotRestore() async {
-        await withPrivatePasteboard { board in
-            let gate = Gate()
-            let insertion = Task {
-                await TextIO.insert("requested", isTargetCurrent: { true }, wait: { duration in
-                    if duration == .milliseconds(100) { await gate.wait() }
-                }, sendPaste: { #expect(board.string(forType: .string) == "requested") })
-            }
-            await gate.untilWaiting()
-            insertion.cancel()
-            gate.release()
-            #expect(await insertion.value == .cancelled)
-            #expect(!BorrowedClipboard.canBorrow)
-            #expect(board.string(forType: .string) == "requested")
+            #expect(await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {}) == .submitted)
+            #expect(board.string(forType: .string) == "user's own text")
         }
     }
 
@@ -171,15 +140,15 @@ import Testing
     @Test func externalCopyDuringGraceWinsAndReleasesBlockedOwnership() async {
         await withPrivatePasteboard { board in
             let result = await TextIO.insert("dictated", isTargetCurrent: { true }, wait: { duration in
-                if duration == .milliseconds(100) {
+                if duration == .seconds(2) {
                     board.clearContents()
                     board.setString("external copy", forType: .string)
                 }
             }, sendPaste: { #expect(board.string(forType: .string) == "dictated") })
-            #expect(result == .clipboardChanged)
+            #expect(result == .submitted)
             #expect(BorrowedClipboard.canBorrow)
             #expect(board.string(forType: .string) == "external copy")
-            #expect(await TextIO.insert("unread", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {}) == .unconfirmed)
+            #expect(await TextIO.insert("unread", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {}) == .submitted)
             board.clearContents()
             board.setString("new external copy", forType: .string)
             let next = await TextIO.insert("next", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {
@@ -195,7 +164,7 @@ import Testing
             let result = await TextIO.insert("dictated", isTargetCurrent: { true }, wait: { _ in }, sendPaste: {
                 #expect(TextIO.copyToClipboard("keep this"))
             })
-            #expect(result == .clipboardChanged)
+            #expect(result == .submitted)
             #expect(board.string(forType: .string) == "keep this")
         }
     }
@@ -209,8 +178,8 @@ import Testing
             #expect(board.string(forType: .string) == "user's own text")
             targetCurrent = true
             #expect(await TextIO.insert("after", isTargetCurrent: { targetCurrent }, wait: { _ in }, sendPaste: { targetCurrent = false }) == .targetChanged)
-            #expect(!BorrowedClipboard.canBorrow)
-            #expect(board.string(forType: .string) == "after")
+            #expect(BorrowedClipboard.canBorrow)
+            #expect(board.string(forType: .string) == "user's own text")
         }
     }
 
@@ -219,7 +188,7 @@ import Testing
             let gate = Gate()
             let first = Task {
                 await TextIO.insert("first", isTargetCurrent: { true }, wait: { duration in
-                    if duration == .milliseconds(25) { await gate.wait() }
+                    if duration == .seconds(2) { await gate.wait() }
                 }, sendPaste: {})
             }
             await gate.untilWaiting()
@@ -236,12 +205,12 @@ import Testing
         }
     }
 
-    @Test func copyWaitsForPasteReceiptAndRestoration() async {
+    @Test func copyWaitsForPasteRestoration() async {
         await withPrivatePasteboard { board in
             let gate = Gate()
             let paste = Task {
                 await TextIO.insert("dictated", isTargetCurrent: { true }, wait: { duration in
-                    if duration == .milliseconds(25) { await gate.wait() }
+                    if duration == .seconds(2) { await gate.wait() }
                 }, sendPaste: {})
             }
             await gate.untilWaiting()
@@ -289,7 +258,7 @@ import Testing
         }
     }
 
-    @Test func restoresEveryItemAndFormatAfterReceipt() async {
+    @Test func restoresEveryItemAndFormat() async {
         await withPrivatePasteboard { board in
             board.clearContents()
             let text = NSPasteboardItem()
@@ -309,49 +278,28 @@ import Testing
         }
     }
 
-    @Test func staleProviderAndTokenCannotSignalOrFinishNewPaste() async throws {
+    @Test func staleCleanupCannotReleaseANewerPaste() async throws {
         try await withPrivatePasteboard { board in
             let oldLease = try #require(BorrowedClipboard.borrow())
             let old = try #require(BorrowedClipboard.beginPaste("old", lease: oldLease))
-            old.provider.arm()
-            #expect(TextIO.copyToClipboard("explicit copy"))
+            #expect(TextIO.copyToClipboard("user copy"))
             let newLease = try #require(BorrowedClipboard.borrow())
             let current = try #require(BorrowedClipboard.beginPaste("current", lease: newLease))
-            current.provider.arm()
-            let orphanedItem = NSPasteboardItem()
-            old.provider.pasteboard(nil, item: orphanedItem, provideDataForType: .string)
-            #expect(!old.provider.wasRequested)
-            #expect(!current.provider.wasRequested)
-            #expect(orphanedItem.string(forType: .string) == nil)
             BorrowedClipboard.finish(old)
             #expect(BorrowedClipboard.owns(current))
-            #expect(board.string(forType: .string) == "current")
             BorrowedClipboard.finish(current)
-            #expect(board.string(forType: .string) == "explicit copy")
+            #expect(BorrowedClipboard.canBorrow && board.string(forType: .string) == "user copy")
         }
     }
 
-    @Test func requestBeforePostingCannotManufactureReceipt() async {
+    @Test func earlyClipboardReadDoesNotLockLaterPastes() async {
         await withPrivatePasteboard { board in
-            let result = await TextIO.insert("early reader", isTargetCurrent: { true }, wait: { duration in
-                if duration == .milliseconds(50) { #expect(board.string(forType: .string) == "early reader") }
-            }, sendPaste: {})
-            #expect(result == .unconfirmed)
-            #expect(!BorrowedClipboard.canBorrow)
+            for text in ["first", "second", "third"] {
+                let result = await TextIO.insert(text, isTargetCurrent: { true }, wait: { duration in
+                    if duration == .milliseconds(50) { #expect(board.string(forType: .string) == text) }
+                }, sendPaste: {})
+                #expect(result == .submitted && BorrowedClipboard.canBorrow)
+            }
         }
-    }
-
-    @Test func providerSafelyAcceptsBackgroundRequest() async {
-        let provider = PasteDataProvider("background")
-        provider.arm()
-        let received = await Task.detached {
-            let item = NSPasteboardItem()
-            provider.pasteboard(nil, item: item, provideDataForType: .string)
-            return item.string(forType: .string)
-        }.value
-        #expect(received == "background")
-        #expect(provider.wasRequested)
-        provider.invalidate()
-        #expect(!provider.wasRequested)
     }
 }

@@ -178,8 +178,7 @@ enum TextIO {
         }
     }
 
-    /// `.submitted` means lazy clipboard data was requested after posting began, NOT that
-    /// the target inserted it. Clipboard managers can also request data: this is a heuristic.
+    /// `.submitted` means the paste shortcut was posted, not verified document insertion.
     @discardableResult
     static func insert(_ text: String, targetPID: pid_t? = nil) async -> PasteOutcome {
         guard let pid = targetPID ?? NSWorkspace.shared.frontmostApplication?.processIdentifier,
@@ -189,7 +188,7 @@ enum TextIO {
                             sendPaste: { await postPaste(to: pid) })
     }
 
-    /// The queue covers writing, posting, observing a request, and finishing the lease.
+    /// The queue covers writing, posting, the consumption grace period and restoration.
     /// Tests inject all app interaction and may advance the bounded wait without real time.
     @discardableResult
     static func insert(_ text: String,
@@ -201,39 +200,21 @@ enum TextIO {
             guard isTargetCurrent() else { return .targetChanged }
             guard let lease = BorrowedClipboard.borrow() else { return .clipboardChanged }
             guard let paste = BorrowedClipboard.beginPaste(text, lease: lease) else { return .writeFailed }
+            defer { BorrowedClipboard.finish(paste) }
             // Let the clipboard write and any just-released dictation key settle first.
             await wait(.milliseconds(50))
             guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
             if cancellation.isCancelled || !isTargetCurrent() {
-                BorrowedClipboard.finish(paste)
                 return cancellation.isCancelled ? .cancelled : .targetChanged
             }
-            paste.provider.arm()
-            // Once key posting starts, complete the shortcut, especially Command-up.
-            // Every exit after this point must preserve the text unless a request was observed.
+            // Complete Command-up even if cancellation arrives after posting starts.
             await sendPaste()
-            for _ in 0..<120 {
-                guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
-                guard !cancellation.isCancelled else { return .cancelled }
-                guard isTargetCurrent() else { return .targetChanged }
-                if paste.provider.wasRequested {
-                    // A request is not insertion confirmation. A short grace lets the
-                    // requesting app finish copying data before returning the user's items.
-                    await wait(.milliseconds(100))
-                    guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
-                    guard !cancellation.isCancelled else { return .cancelled }
-                    guard isTargetCurrent() else { return .targetChanged }
-                    BorrowedClipboard.finish(paste)
-                    return .submitted
-                }
-                await wait(.milliseconds(25))
-            }
-            guard BorrowedClipboard.owns(paste) else { return .clipboardChanged }
+            // A finite compatibility grace, never proof that the target consumed text.
+            // Keep the transaction occupied through this wait, including cancellation.
+            await wait(.seconds(2))
             guard !cancellation.isCancelled else { return .cancelled }
             guard isTargetCurrent() else { return .targetChanged }
-            // No timer restores this lease, even if a callback arrives later. It remains
-            // blocked until ownership changes or the user explicitly keeps new clipboard text.
-            return .unconfirmed
+            return .submitted
         }
     }
 
@@ -434,34 +415,7 @@ private struct SelectionCopyItem: @unchecked Sendable {
     }
 }
 
-/// The callback may arrive on any thread. It only supplies its own item, never reads or
-/// changes the pasteboard, and never schedules a restore. Invalidated providers cannot signal
-/// a newer transaction. Requests before key posting are deliberately not counted.
-final class PasteDataProvider: NSObject, NSPasteboardItemDataProvider, @unchecked Sendable {
-    private struct State {
-        var valid = true
-        var armed = false
-        var requested = false
-    }
-    private let state = Mutex(State())
-    private let text: String
-
-    init(_ text: String) { self.text = text }
-    var wasRequested: Bool { state.withLock { $0.valid && $0.requested } }
-    func arm() { state.withLock { $0.armed = true } }
-    func invalidate() { state.withLock { $0.valid = false } }
-
-    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem,
-                    provideDataForType type: NSPasteboard.PasteboardType) {
-        state.withLock { state in
-            guard state.valid, type == .string else { return }
-            if item.setString(text, forType: type), state.armed { state.requested = true }
-        }
-    }
-}
-
-/// The one place Talkless touches the general pasteboard. An unresolved paste keeps its
-/// original multi-item snapshot and blocks both new pastes and automatic selection copies.
+/// Clipboard leases are scoped to one queued operation and always released at its end.
 @MainActor
 enum BorrowedClipboard {
     typealias Snapshot = [[NSPasteboard.PasteboardType: Data]]
@@ -474,7 +428,6 @@ enum BorrowedClipboard {
         fileprivate let token = UUID()
         fileprivate let lease: Lease
         fileprivate let change: Int
-        let provider: PasteDataProvider
     }
 
     /// Tests swap in a private named board. A lease is also bound to that exact board.
@@ -489,7 +442,6 @@ enum BorrowedClipboard {
     }
 
     static func borrow() -> Lease? {
-        // Never snapshot our own lazy text: doing so would manufacture a receipt.
         guard canBorrow else { return nil }
         let board = pasteboard
         let change = board.changeCount
@@ -499,18 +451,16 @@ enum BorrowedClipboard {
 
     static func beginPaste(_ text: String, lease: Lease) -> Paste? {
         guard canBorrow, lease.board === pasteboard, pasteboard.changeCount == lease.change else { return nil }
-        let provider = PasteDataProvider(text)
         let item = NSPasteboardItem()
-        item.setDataProvider(provider, forTypes: [.string])
+        guard item.setString(text, forType: .string) else { return nil }
         item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
         let cleared = pasteboard.clearContents()
         guard pasteboard.writeObjects([item]) else {
-            provider.invalidate()
             giveBack(lease, ifUnchangedSince: cleared)
             return nil
         }
-        let paste = Paste(lease: lease, change: pasteboard.changeCount, provider: provider)
+        let paste = Paste(lease: lease, change: pasteboard.changeCount)
         activePaste = paste
         return paste
     }
@@ -520,11 +470,12 @@ enum BorrowedClipboard {
             && pasteboard.changeCount == paste.change
     }
 
-    /// Called only before posting, or after a request plus grace. No unconfirmed timer path.
+    /// Clear this operation even when another app changed the clipboard; never restore over it.
     static func finish(_ paste: Paste) {
-        guard owns(paste) else { return }
+        guard activePaste?.token == paste.token else { return }
+        let restore = owns(paste)
         invalidatePaste()
-        giveBack(paste.lease, ifUnchangedSince: paste.change)
+        if restore { giveBack(paste.lease, ifUnchangedSince: paste.change) }
     }
 
     static func giveBack(_ lease: Lease, ifUnchangedSince change: Int) {
@@ -532,7 +483,7 @@ enum BorrowedClipboard {
         restore(lease.saved)
     }
 
-    /// Explicit user copy is allowed to replace an unresolved paste. Old tokens become inert.
+    /// Explicit user copy wins over any pending restoration.
     @discardableResult
     static func keep(_ text: String) -> Bool {
         invalidatePaste()
@@ -541,7 +492,6 @@ enum BorrowedClipboard {
     }
 
     private static func invalidatePaste() {
-        activePaste?.provider.invalidate()
         activePaste = nil
     }
 

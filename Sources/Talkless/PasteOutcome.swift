@@ -1,6 +1,6 @@
 import Foundation
 
-/// Submitted means a clipboard data request was observed, not verified document insertion.
+/// Submitted means paste keys were posted, not verified document insertion.
 enum PasteOutcome: String, Sendable {
     case submitted, cancelled, clipboardChanged, unconfirmed, blocked, targetChanged, writeFailed
 
@@ -8,7 +8,7 @@ enum PasteOutcome: String, Sendable {
 
     var diagnosticReason: String {
         switch self {
-        case .submitted: "read_observed"
+        case .submitted: "keys_posted"
         case .cancelled: "cancelled"
         case .clipboardChanged: "clipboard_changed"
         case .unconfirmed: "paste_unconfirmed"
