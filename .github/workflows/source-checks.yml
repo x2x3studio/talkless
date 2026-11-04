@@ -9,12 +9,22 @@ permissions:
 
 jobs:
   source-hygiene:
-    runs-on: macos-15
+    # Only trusted main pushes run on the release machine; PRs keep an isolated hosted runner.
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON('["self-hosted", "macOS", "ARM64", "talkless-macos-arm64"]') || fromJSON('["macos-15"]') }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          clean: false
+      - name: Clean workspace, keeping the SwiftPM build caches
+        run: |
+          set -euo pipefail
+          git reset --hard --quiet
+          git clean -ffdx --quiet -e /.build/ -e /Tools/ReleaseTool/.build/
       - name: Check repository hygiene
         run: bash scripts/release-tool.sh check-repository
       - name: Test release tool
-        run: swift test --package-path Tools/ReleaseTool
+        run: swift test --build-system native --package-path Tools/ReleaseTool
       - name: Check shell syntax
         run: bash -n scripts/build-app.sh scripts/build-metal.sh scripts/test.sh Tests/Fixtures/generate.sh
