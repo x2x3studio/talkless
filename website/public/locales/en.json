@@ -69,7 +69,7 @@
   "privacy.local.title": "Local speech stays local.",
   "privacy.local.body": "With local Qwen and Enhanced recognition off, audio is processed on your Mac, not uploaded. Download the speech model separately, then dictate offline.",
   "privacy.cloud.title": "Cloud is a choice, not a catch.",
-  "privacy.cloud.body": "Online Doubao recognition sends audio directly to Doubao Speech. Optional AI polishing, editing and translation send the necessary text to your separately configured AI provider.",
+  "privacy.cloud.body": "Online recognition uses Volcengine\u2019s Doubao Speech ASR API, an external service relative to Talkless, not the Doubao chat app. Audio goes directly to Volcengine. Optional AI polishing, editing and translation use your separately configured AI provider.",
   "privacy.history.title": "Your history lives with you.",
   "privacy.history.body": "Dictation history and diagnostic logs stay on your Mac. Logs are bounded to 15 MB and exclude audio, transcripts, API keys, and prompts. Nothing is automatically uploaded.",
   "privacy.open.title": "An app you can look inside.",
@@ -138,7 +138,7 @@
   "privacy.page.title": "Local by default.\nSpecific about the rest.",
   "privacy.page.intro": "Local-first is a starting point, not a blanket promise that every feature is offline. Here is how the app and this website handle data.",
   "privacy.audio.title": "Speech and model downloads",
-  "privacy.audio.body": "Local Qwen processes audio on your Mac. Model downloads contact your chosen source; Talkless does not host weights. Doubao recognition sends audio directly to Doubao, including when Enhanced recognition is enabled in Labs. Enhanced recognition runs both engines on the same recording. Talkless does not relay or save recordings.",
+  "privacy.audio.body": "Local Qwen processes audio on your Mac. Model downloads contact your chosen source; Talkless does not host weights. Online recognition uses the Doubao Speech ASR API offered through Volcengine, not the Doubao chat app or Volcano Ark chat-model API. Audio is sent directly to that service, including when Labs Enhanced recognition is enabled. Talkless does not relay or save recordings.",
   "privacy.requests.title": "Optional AI requests",
   "privacy.requests.body": "AI polishing sends transcript text, dictionary hints and writing instructions to your configured provider. Enhanced recognition can send both local and online transcripts for comparison; sentence alternatives uses the same service. App-aware tone can include the foreground app and its writing context. Output-language and additional instructions apply when configured. Voice editing sends selected text and the spoken instruction; translation sends selected text and language instructions.",
   "privacy.requests.choice": "Opening AI settings does not send your text. Fetch Models and Test Connection are explicit network actions; a connection test uses a fixed sample, not your dictation. Provider pricing, processing and retention policies apply. Talkless cannot guarantee a provider\u2019s privacy practices.",
@@ -195,5 +195,12 @@
   "guide.labs.body": "Settings \u2192 Labs contains Enhanced recognition and Sentence alternatives, both off by default. Enhanced recognition sends the same audio to local Qwen and Doubao, then gives the available transcripts to your AI service. It requires the local model, Doubao credentials and an AI service; one failed route stops while the other continues. It can use more resources and take longer; improved accuracy is not guaranteed.",
   "guide.labs.choices": "Sentence alternatives appears only when AI returns two or three different full versions. Changed words are highlighted. Click a whole sentence; hover to pause the countdown and leave to resume. Timeout uses the marked default. The wait defaults to five seconds and can be set from two to fifteen. Explicit same-language choices can feed dictionary learning; timeout is not user approval.",
   "release.note.0": "Removed clipboard-read detection that could block later dictations. Each paste now settles after a finite two-second compatibility interval and releases its state.",
-  "release.note.1": "Clipboard restoration respects user changes. Sending paste keys is not a guarantee that the target accepted the text."
+  "release.note.1": "Clipboard restoration respects user changes. Sending paste keys is not a guarantee that the target accepted the text.",
+  "privacy.provider.body": "Volcengine is a third-party provider relative to Talkless. Its general Terms of Service and Privacy Policy name Beijing Volcano Engine Technology Co., Ltd. The applicable contract and product-specific terms are those presented when you activate or purchase the Speech service in the Volcengine console. See the official documents below; API documentation is not a user agreement.",
+  "privacy.provider.terms": "Volcengine Terms of Service",
+  "privacy.provider.contract": "Volcengine Products and Services Agreement",
+  "privacy.provider.privacy": "Volcengine Privacy Policy",
+  "privacy.provider.scope": "Talkless\u2019s statement that it does not save recordings describes Talkless itself, not a promise about Volcengine\u2019s retention or training policies. The provider distinguishes customer data processed by its services from account personal information. Consult the applicable service terms for processing, retention and deletion; this page does not claim zero retention or no training by the provider.",
+  "guide.speech.provider": "Doubao online means Volcengine\u2019s Doubao Speech ASR service. Obtain a Speech API key in the Volcengine console, not a Doubao app login or an Ark chat-model key. It is an optional third-party service; the official terms are linked on our privacy page.",
+  "guide.speech.termsLink": "Service provider and official terms"
 }

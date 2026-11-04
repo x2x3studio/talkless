@@ -2,6 +2,20 @@
 
 Talkless offers two recognition paths: local Qwen3 ASR and online Doubao. AI polishing, voice editing and translation providers remain separate.
 
+## Service provider and official agreements
+
+"Doubao online" means the Doubao Speech ASR API offered through Volcengine, not the consumer Doubao chat app or the Volcano Ark chat-model API. Volcengine is a third-party provider relative to Talkless. Its general Terms of Service and Privacy Policy name Beijing Volcano Engine Technology Co., Ltd.
+
+Official documents:
+
+- [Volcengine Terms of Service](https://docs.volcengine.com/docs/6256/64903)
+- [Volcengine Products and Services Agreement](https://docs.volcengine.com/docs/6256/68938)
+- [Volcengine Privacy Policy](https://docs.volcengine.com/docs/6256/64902)
+
+The applicable contract and product-specific terms are those presented when the customer activates or purchases Speech services in the Volcengine console. The Speech documentation also links [Generative Model Service Specific Terms](https://docs.volcengine.com/docs/6561/1533787); that page describes generative services and does not explicitly identify ASR, so this guide does not assert that it alone governs this integration. Do not substitute consumer Doubao or Ark terms for the Speech service agreement.
+
+"Talkless does not save recordings" describes this app only. It is not a guarantee of zero provider retention or no training. The provider distinguishes customer data processed through its services from account personal information; consult the applicable agreements for data handling, retention and deletion.
+
 ## Setup
 
 Select **Settings > Voice input > Speech recognition > Doubao online**. Enter the **Speech API key** from the new Doubao Speech console. This is not an Ark chat-model key. The key is stored under a dedicated Keychain account, never in UserDefaults, the repository or diagnostic logs. Former Whisper-compatible provider keys are not reused. Retired recognition choices fall back to local Qwen, so upgrading does not silently upload audio to a different provider.

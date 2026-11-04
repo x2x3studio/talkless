@@ -124,7 +124,11 @@ def main():
             url = urlsplit(link)
             if url.scheme:
                 assert url.scheme == 'https', f'Insecure or executable link: {link}'
-                assert url.hostname in ('github.com', 'typeless.x2x3.com'), f'Unexpected external dependency: {link}'
+                assert url.hostname in ('github.com', 'typeless.x2x3.com') or link in {
+                    'https://docs.volcengine.com/docs/6256/64903',
+                    'https://docs.volcengine.com/docs/6256/68938',
+                    'https://docs.volcengine.com/docs/6256/64902',
+                }, f'Unexpected external dependency: {link}'
             else:
                 if url.path == '/download':
                     continue
