@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Stable release
+- First Stable release, promoting the application code from Beta 2026.1104.16581 without adding new application features. Includes local and Doubao recognition, optional AI polishing, and the continuous-paste fix.
+- Stable builds use the Stable update channel by default. Labs features remain experimental and opt-in; existing user preferences are preserved.
+
+## 2026.1104.16581 Beta
+
 ### Fixed
 - Removed the clipboard-read heuristic that could permanently block second and later dictations. Clipboard text is now written eagerly; each queued paste settles after a finite two-second compatibility grace and always releases its state, even after cancellation or target changes.
 - Restoring the original clipboard still requires ownership; user copies are never overwritten. Posting paste keys is logged as keys_posted, not as verified insertion. No Enter key or focus change is needed to unlock subsequent dictation.
