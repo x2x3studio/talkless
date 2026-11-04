@@ -4,7 +4,7 @@ Speech recognition and AI processing are separate: local Qwen3 ASR does not need
 
 ## Configuration
 
-**Settings > AI service** configures the provider shared by dictation polishing, selected-text translation and voice editing. It has no master AI enable toggle. **Configuration complete** means the settings can form a request locally, not that a connection has succeeded.
+**Settings > AI polishing** is a separate page containing the polishing and voice-editing switches, polishing preferences, and the provider shared by dictation polishing, selected-text translation and voice editing. There is no master switch for all AI features: translation and Labs enhanced recognition are independent of the polishing switch. **Configuration complete** means the settings can form a request locally, not that a connection has succeeded. Speech recognition is configured under **Voice input > Speech recognition**; local punctuation and spacing have their own **Text formatting** page.
 
 | Provider | Protocol | Initial model |
 | --- | --- | --- |
@@ -23,10 +23,18 @@ OpenRouter's preset uses `https://openrouter.ai/api/v1` and your own key. `openr
 
 ## Feature settings and transmitted text
 
-- **Settings > Dictation > Smart text cleanup** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. Each dictation follows the setting captured when its recording starts; there is no per-input override.
+- **Settings > AI polishing** controls polishing, output language, app-aware tone and additional instructions. Polishing is off for new users. AI/provider settings, prompts, dictionary and local formatting are captured when recording starts; changes affect the next recording, not one already in progress. Labs enhanced recognition requests AI comparison independently of the polishing switch.
 - Polishing sends a JSON-framed transcript plus editing instructions. Dictionary terms are candidate spellings for the model, not mandatory replacements; the prompt also lists each term's heard spellings. Those exact heard spellings are already replaced locally before the request, so the transcript sent for polishing contains the fixed text. With app-aware tone enabled, the prompt also identifies the frontmost app and its writing context. Additional instructions and a chosen output language are included when set.
-- **Settings > Dictation > Voice editing** enables selected-text editing with the dictation key plus Control, off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms.
+- **Settings > AI polishing > Edit text by voice** enables selected-text editing with the dictation key plus Control (Option for a Right Control dictation key), off by default. A voice-edit request includes the selection, recognized spoken instruction and dictionary terms.
 - **Settings > Translation** requires a configured AI service but is independent of the polishing toggle. A translation request includes the selected text and language instructions. Source/target settings and Auto direction are separate from dictation output language and interface language. Matching explicit source/target language IDs skips the provider; Auto detection alone is not that bypass. Changing languages in the translation panel can send a new request. See [selected-text translation](user-guide.md#selected-text-translation).
+
+## Labs and request deadlines
+
+**Settings > Labs** exposes **Enhanced recognition** and **Sentence alternatives** independently; both default to off. Enhanced recognition uses local Qwen and online Doubao for ordinary dictation regardless of the selected recognition card, so it uploads audio even when Offline is selected. It requires a local model, Doubao credentials and an AI service. Available primary/secondary transcripts are sent as JSON data to the AI provider with the captured polishing instructions; failure of one recognizer can leave a single transcript. It still requests AI comparison when the separate polishing switch is off.
+
+Sentence alternatives can run with ordinary AI polishing or enhanced recognition. The AI request asks for one conservative complete-text candidate, or up to three when ambiguity remains. Multiple candidates open a nonactivating chooser; one inserts directly. The default wait is five seconds (configurable from two to fifteen), hovering pauses it, and expiry selects the default. Turning alternatives off does not disable enhanced recognition's AI comparison. See [Labs controls](user-guide.md#labs-enhanced-recognition-and-sentence-alternatives). Neither feature is a verified accuracy improvement.
+
+Ordinary polishing, enhanced AI comparison and sentence-alternatives generation all use a **five-second request deadline**. Timeout quietly falls back to the primary transcript after local dictionary fixes, then applies local formatting. Other polishing failures use the same text fallback with a brief error. The candidate countdown, recognition deadlines and insertion grace period are separate. Voice editing, translation and Test Connection do not use this five-second dictation fallback.
 
 ## Overlay feedback
 
@@ -36,11 +44,11 @@ When the final output is ready, amber backgrounds show literal additions and rep
 
 Whitespace-only changes and whole-token deletions produce no colored result span. A word shortened by removing letters is highlighted as a replacement. Revision comparison is local and bounded to **512 visible comparison tokens and 64 KiB of UTF-8 text per input**; if either input exceeds a limit, revision decoration is skipped without changing the output. These tokens are unrelated to the provider's token accounting. Highlighting makes no extra AI requests.
 
-After insertion returns, final text briefly shows a checkmark with dismissal scheduled after **50 ms**, without delaying insertion or blocking the next recording. Scheduling is best effort, not an exact real-time duration. On a polishing failure, the raw transcript is inserted and the fallback message appears for about **three seconds** instead. History retains the raw and final text for later review. See [overlay controls](user-guide.md#overlay).
+After insertion returns, final text briefly shows a checkmark with dismissal scheduled after **50 ms**, without delaying insertion or blocking the next recording. Scheduling is best effort, not an exact real-time duration. On a non-timeout polishing failure, the pre-AI transcript is used and the fallback message appears for about **three seconds** instead; a five-second timeout falls back without that error message. Dictionary fixes and local formatting still apply. History retains the raw and final text for later review. See [overlay controls](user-guide.md#overlay).
 
 ## Test Connection and its receipt
 
-Nothing is sent merely by opening AI service settings, switching providers or entering a key. **Fetch Models** and **Test Connection** are explicit actions. Tests may incur provider charges and use the current endpoint, protocol, credentials and model, with a 30-second timeout and a 1,024-output-token limit.
+Nothing is sent merely by opening the AI polishing page, switching providers or entering a key. **Fetch Models** and **Test Connection** are explicit actions. Tests may incur provider charges and use the current endpoint, protocol, credentials and model, with a 30-second timeout and a 1,024-output-token limit.
 
 The test uses exactly these fixed inputs, not your transcript, selection, dictionary, app context or additional instructions:
 

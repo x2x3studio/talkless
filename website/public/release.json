@@ -1,20 +1,20 @@
 {
-  "version": "2026.1031.40954",
-  "build": "1793445754",
+  "version": "2026.1104.16581",
+  "build": "1793766981",
   "channel": "beta",
   "architecture": "arm64",
   "minimumMacOS": "26",
-  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1031.40954-beta.1793445754/Talkless-2026.1031.40954-1793445754-arm64.dmg",
-  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1031.40954-beta.1793445754",
-  "publishedDate": "2026-10-31",
+  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1104.16581-beta.1793766981/Talkless-2026.1104.16581-1793766981-arm64.dmg",
+  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1104.16581-beta.1793766981",
+  "publishedDate": "2026-11-04",
   "notes": {
     "en": [
-      "AI polishing, voice editing, and translation reuse warm connections, and Talkless starts connecting to the AI service while you speak, so results arrive sooner.",
-      "Saving history no longer blocks the interface after each dictation."
+      "Removed clipboard-read detection that could block later dictations. Each paste now settles after a finite two-second compatibility interval and releases its state.",
+      "Clipboard restoration respects user changes. Sending paste keys is not a guarantee that the target accepted the text."
     ],
     "zh-Hans": [
-      "AI \u6da6\u8272\u3001\u8bed\u97f3\u7f16\u8f91\u548c\u7ffb\u8bd1\u4f1a\u590d\u7528\u5df2\u5efa\u7acb\u7684\u8fde\u63a5\uff0c\u5e76\u5728\u8bf4\u8bdd\u65f6\u63d0\u524d\u8fde\u63a5 AI \u670d\u52a1\uff0c\u7ed3\u679c\u8fd4\u56de\u66f4\u5feb\u3002",
-      "\u4fdd\u5b58\u5386\u53f2\u8bb0\u5f55\u4e0d\u518d\u5728\u6bcf\u6b21\u542c\u5199\u540e\u963b\u585e\u754c\u9762\u3002"
+      "\u79fb\u9664\u53ef\u80fd\u62e6\u4f4f\u540e\u7eed\u542c\u5199\u7684\u526a\u8d34\u677f\u8bfb\u53d6\u68c0\u6d4b\u3002\u6bcf\u7b14\u7c98\u8d34\u5728\u6709\u9650\u7684\u4e24\u79d2\u517c\u5bb9\u7f13\u51b2\u540e\u6536\u5c3e\u5e76\u91ca\u653e\u72b6\u6001\u3002",
+      "\u6062\u590d\u526a\u8d34\u677f\u65f6\u5c0a\u91cd\u7528\u6237\u7684\u65b0\u590d\u5236\u5185\u5bb9\uff1b\u53d1\u51fa\u7c98\u8d34\u6309\u952e\u4e0d\u7b49\u4e8e\u76ee\u6807\u5e94\u7528\u5df2\u786e\u8ba4\u6536\u5230\u6587\u5b57\u3002"
     ]
   }
 }

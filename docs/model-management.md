@@ -1,6 +1,6 @@
 # Local model management
 
-This page describes the implementation accompanying **2026.1031.18018**. Open **Settings > Speech recognition** and choose **Qwen3 ASR** to see the managed model controls. The catalogue offers one model: **Qwen3 ASR · 0.6B**, MLX 4-bit, with nine pinned files totaling **712,778,752 bytes**. Weights are downloaded separately, not bundled with the app. GGUF checkpoints are not interchangeable with these MLX files.
+Open **Settings > Voice input > Speech recognition** and choose **Offline** to see the managed model controls. The catalogue offers one model: **Qwen3 ASR - 0.6B**, MLX 4-bit, with nine pinned files totaling **712,778,752 bytes**. Weights are downloaded separately, not bundled with the app. GGUF checkpoints are not interchangeable with these MLX files.
 
 ## Download, use and recover
 

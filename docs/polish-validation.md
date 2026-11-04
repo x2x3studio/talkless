@@ -13,7 +13,7 @@ bash Tests/PolishIntegration/test-validation.sh
 env -u TALKLESS_RUN_LIVE_TESTS bash Tests/PolishIntegration/run-tests.sh
 ```
 
-Observed results for the current source:
+Historical results recorded for the 2026-10-31 audit, not a fresh run against the current source:
 
 - API tests print **24 API tests passed** twice: once as a standalone executable and once in a temporary `.app`, checking the bundle-version User-Agent as well as protocol/transport behavior. All HTTP is intercepted by URLProtocol.
 - Provider settings tests print **Provider settings tests passed (2676 assertions; in-memory defaults and credentials only).** This includes receipt sanitization/fixed request serialization, provider persistence, credentials and shortcut/HUD checks; it is not 2,676 network tests.

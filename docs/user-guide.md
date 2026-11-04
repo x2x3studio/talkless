@@ -11,31 +11,32 @@ Requires **Apple Silicon and macOS 26 or later**. You do not need Xcode to use a
 1. Download the DMG from [Releases](https://github.com/x2x3studio/talkless/releases). Beta builds are marked **Pre-release**.
 2. Drag Talkless to **Applications** and open that copy.
 3. Follow the **Setup guide** to learn the controls and allow **Microphone** and **Accessibility** access. Microphone records your voice; Accessibility enables global shortcuts and text insertion.
-4. In the guide's **Speech recognition** step, choose **Offline** and click **Download** for the local model (recommended), or choose **Doubao online** and paste your Speech API key. The optional **Smart text cleanup** step turns on AI cleanup and sets up your provider and key in place.
+4. In the guide's **Speech recognition** step, choose **Offline** and click **Download** for the local model (recommended), or choose **Doubao online** and paste your Speech API key. The optional **AI polishing** step turns on AI cleanup and sets up your provider and key in place.
 5. Click a text field in another app, hold **Fn**, speak, and release. Wait for recognition to finish and the text to appear.
 
-Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. Smart text cleanup is optional and off by default; the guide sends audio or text only when you click a Test button. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
+Permissions and downloads require your action. You can continue past any setup step or choose **Skip setup**, but unfinished essentials still need attention before dictation works. AI polishing is optional and off by default; the guide sends audio or text only when you click a Test button. Its optional **Launch at login** step uses the same macOS login-item setting as System preferences. Enable it explicitly to start Talkless when you sign in; continuing or skipping does not change it. Existing login-item choices are preserved, and macOS approval or registration errors remain visible.
 
-Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. A saved Doubao key counts as set up without a test request; custom model folders are reviewed in Speech recognition settings. Existing installations are not forced through setup after an update.
+Reopen the guide from **Settings > System > Setup guide** without resetting your preferences. It shows your current shortcuts and readiness. A saved Doubao key counts as set up without a test request; custom model folders are reviewed under **Voice input > Speech recognition**. Existing installations are not forced through setup after an update.
 
 If macOS opens the emoji panel when you press Fn, set the Globe-key action to **Do Nothing** in **System Settings > Keyboard**, or choose another dictation key.
 
 ## Find your settings
 
-Click Talkless's menu bar icon and choose **Settings…**. The menu also offers **Check for Updates…** (shown as **Update to VERSION…** when a new version was found) and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. If Accessibility or Microphone permission is missing, or the selected local speech model is not downloaded, a warning row appears at the top of the menu; click it to open the right setting. Trying to dictate or translate while a permission is missing also opens that System Settings pane; dictated text is copied so you can paste it with ⌘V. Opening Talkless again while it is running shows Settings (or the setup guide if setup is unfinished). AI polishing controls are in Dictation settings, not a separate menu row.
+Click Talkless's menu bar icon and choose **Settings...**. The menu also offers **Check for Updates...** (shown as **Update to VERSION...** when a new version was found) and **Quit Talkless**. **Start Dictation** starts hands-free dictation into the app you were using; its subtitle shows your actual key and gesture, such as **Hold Fn / Globe** or **Tap Fn / Globe**. While recording it becomes **Finish Dictation**. **Translate selection** translates the selected text in the frontmost app; its subtitle shows the translation shortcut when one is set. If Accessibility or Microphone permission is missing, or the selected local speech model is not downloaded, a warning row appears at the top of the menu; click it to open the right setting. Trying to dictate or translate while a permission is missing also opens that System Settings pane. If insertion is blocked after recognition, the result is saved in History rather than replacing your clipboard. Opening Talkless again while it is running shows Settings (or the setup guide if setup is unfinished). AI polishing controls have their own Settings page, not a separate menu row.
 
-Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech recognition, Dictionary, AI service, Overlay), **Tools** (History, Translation) and **General** (System, About).
+Settings pages are grouped in the sidebar: **Voice input** (Voice input, AI polishing, Text formatting, Dictionary, Overlay), **Tools** (History, Translation) and **General** (System, Labs, About). Speech recognition is a section of Voice input, not a separate page.
 
 | Settings page | What you can change |
 | --- | --- |
-| **Dictation** | Microphone first, then recording mode and key, AI polishing, output language, app-aware tone, additional instructions and voice editing |
-| **Speech recognition** | Local Qwen or online Doubao, local model downloads and Doubao Speech credentials |
+| **Voice input** | Microphone first, then recording mode and key, followed by local Qwen or online Doubao recognition, model downloads and Speech credentials |
+| **AI polishing** | Polishing and voice-editing switches, output language, app-aware tone, additional instructions, and the shared AI provider, credentials and model |
+| **Text formatting** | Local punctuation and spacing rules, independent of AI |
 | **Dictionary** | Confirmed terms, heard-as fixes, import/export and suggested spelling corrections |
-| **AI service** | Shared provider, credentials and model for polishing, voice editing and translation |
 | **Overlay** | Preview, backdrop, opacity, animations and cursor following |
 | **History** | Daily dictation activity, and saved results grouped by day with search and type filters |
 | **Translation** | Source and target languages, automatic direction, preferred languages, translation shortcut |
 | **System** | Interface language, permissions, setup guide, launch at login and diagnostics |
+| **Labs** | Independent experimental enhanced-recognition and sentence-alternatives switches, plus candidate wait time |
 | **About** | Installed version/build, updates, website and source-code links |
 
 ### Interface language and startup
@@ -48,7 +49,7 @@ Settings pages are grouped in the sidebar: **Voice input** (Dictation, Speech re
 
 ### Recording controls
 
-Choose **Settings > Dictation > Recording**:
+Choose **Settings > Voice input > Recording**:
 
 | Control | Behavior |
 | --- | --- |
@@ -56,28 +57,30 @@ Choose **Settings > Dictation > Recording**:
 | **Tap to toggle** | Press once to start; press again to finish. |
 | **Escape** | Cancel recording or processing without inserting the pending result. |
 
-Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode and the AI polishing setting are captured when you start: with **Smart text cleanup** on (and an AI service configured), every dictation is polished; with it off, none are.
+Talkless does not stop recording when you pause. There is no timing-based automatic recording mode. Recording mode, AI/provider preferences, dictionary and local formatting are captured when you start; changes apply to the next recording. Ordinary dictation uses AI when **AI polishing** is on and configured, or when Labs **Enhanced recognition** is enabled. Otherwise it skips AI polishing.
 
-Local Qwen and online Doubao both show live text in the overlay; Doubao streams audio while you speak and waits for its final response after recording ends. The final text is pasted using the clipboard and Command-V. Keep the intended text field focused until it arrives: dictation uses the **current cursor**, rather than restoring focus to the app where you started. The previous clipboard contents are restored unless you copied something else in the meantime. If you need the result again, use History.
+Local Qwen and online Doubao both show live text in the overlay; Doubao streams audio while you speak and waits for its final response after recording ends. The final text is pasted using the clipboard and Command-V. Keep the **original app and intended text field** focused until it arrives. Talkless does not restore focus or pin the original cursor position; switching apps blocks insertion and saves the result in History.
+
+Clipboard operations are serialized. After posting Command-V, Talkless waits a fixed **two-second compatibility grace period**, then restores the previous clipboard contents only if nothing else changed the clipboard. Cancellation after posting still lets that transaction settle. The wait is finite, does not depend on observing a clipboard read, and does not leave a permanent unresolved-paste lock. It is not proof that the destination accepted the text; a very slow app may miss the temporary contents. Use History to recover the result, and check the destination before pasting again.
 
 ### Change or reset shortcuts
 
-In **Dictation > Recording**, click the **Dictation key** field, then press and release **Fn**, **Right Option**, **Right Command**, or **Right Control**. Only these single keys are supported, not combinations. Escape cancels capture, and the dictation key cannot be cleared. **Reset** restores Fn without changing recording mode, translation or other settings. Shortcut changes are unavailable during dictation.
+In **Voice input > Recording**, click the **Dictation key** field, then press and release **Fn**, **Right Option**, **Right Command**, or **Right Control**. Only these single keys are supported, not combinations. Escape cancels capture, and the dictation key cannot be cleared. **Reset** restores Fn without changing recording mode, translation or other settings. Shortcut changes are unavailable during dictation.
 
 ### Choose a microphone
 
-**Dictation > Audio > Microphone** defaults to **System default**. You can choose a specific input device without changing the Mac's system-wide microphone. Changes apply to the next recording; **Reset** restores System default.
+**Voice input > Microphone**, at the top of the page, defaults to **System default**. You can choose a specific input device without changing the Mac's system-wide microphone. Changes apply to the next recording; **Reset** restores System default.
 
-An unavailable chosen microphone is not silently replaced. Reconnect it or choose another. If the input route changes or disconnects during an established recording, Talkless stops and discards that interrupted recording; check the microphone and start again. A microphone that supplies no audio reports an error rather than recording indefinitely.
+An unavailable chosen microphone is not silently replaced. Reconnect it or choose another. If the input route changes or disconnects during an established recording, Talkless stops and discards that interrupted recording; check the microphone and start again. If audio buffers never arrive or stop arriving for about three seconds, Talkless cancels quietly rather than recording indefinitely. This is not a silence detector: a quiet microphone still supplies buffers.
 
 ## Choose speech recognition
 
-Open **Settings > Speech recognition**:
+Open **Settings > Voice input > Speech recognition**:
 
-Pick one of two cards. Your choice is the only engine used; Doubao is never contacted in local mode.
+Pick one of two cards. With Labs **Enhanced recognition** off, your choice is the primary engine; Offline does not contact Doubao. Enhanced recognition instead uses both engines for ordinary dictation, regardless of the selected card.
 
 - **Offline** (local Qwen3-ASR model on your Mac) is the default. The built-in model is **Qwen3 ASR · 0.6B**, in MLX 4-bit format, with an approximately **713 MB** download. It runs on your Mac and stays loaded between dictations. Model weights are not included in the app or app updates.
-- **Doubao online** streams audio directly to Doubao's bidirectional ASR 2.0 service with live previews. Enter a Speech API key from the new Doubao Speech console, not an Ark/chat-model key. The endpoint and model are built in. Under **More options**, choose duration-based (default) or concurrent billing to match your enabled resource. The key stays in Keychain; these credentials are separate from **AI service**. Without local fallback, connection failure cancels recognition rather than inserting a partial transcript. The connection/upload stall limit is 10 seconds, and final recognition has a 15-second deadline after recording ends. Enable **Allow falling back to offline recognition** to keep an installed Qwen model in memory: when Doubao is unavailable (no key, network, rejected key, quota or timeout), that recording is recognized locally; the next recording still tries Doubao first. Without a downloaded model, the switch has no effect and Doubao recordings run without fallback. Selecting online with fallback off releases local model memory when idle, not model files.
+- **Doubao online** streams audio directly to Doubao's bidirectional ASR 2.0 service with live previews. Enter a Speech API key from the new Doubao Speech console, not an Ark/chat-model key. The endpoint and model are built in. Under **More options**, choose duration-based (default) or concurrent billing to match your enabled resource. The key stays in Keychain; these credentials are separate from **AI polishing**. Without local fallback, connection failure cancels recognition rather than inserting a partial transcript. The connection/upload stall limit is 10 seconds, and final recognition has a 15-second deadline after recording ends. Enable **Allow falling back to offline recognition** to keep an installed Qwen model in memory: when Doubao is unavailable (no key, network, rejected key, quota or timeout), that recording is recognized locally; the next recording still tries Doubao first. Without a downloaded model, the switch has no effect and Doubao recordings run without fallback. Selecting online with both fallback and Labs enhanced recognition off releases local model memory when idle, not model files.
 - Retired Apple/Whisper-compatible selections fall back to local Qwen on upgrade. Old cloud keys are not reused or sent to Doubao; existing saved credentials are left untouched.
 
 Local model downloads support progress, cancel/resume, retry, selection with **Use**, and confirmed deletion. Choose Hugging Face, HF Mirror, or a custom Hugging Face-compatible HTTPS mirror. HF Mirror may redirect to Hugging Face; availability depends on your network. Files are verified before use. Advanced settings also allow an explicit custom MLX model folder.
@@ -86,26 +89,28 @@ See [model management](model-management.md) for download sources, storage and cu
 
 ## Optional AI processing
 
-Configure **Settings > AI service** with your provider, credentials and model. This connection is shared by polishing, voice editing and translation; configuring it does **not** enable the first two features. Translation works independently of the polishing toggle. Requests use your own provider and may incur charges. See [AI providers and privacy](ai-polish.md) for supported services, connection testing and exactly what is sent.
+Configure **Settings > AI polishing** with your provider, credentials and model. This connection is shared by polishing, voice editing and translation; configuring it does **not** enable the first two features. Translation works independently of the polishing toggle. Requests use your own provider and may incur charges. See [AI providers and privacy](ai-polish.md) for supported services, connection testing and exactly what is sent.
 
 ### Polish dictation
 
-In **Dictation**, enable **Smart text cleanup** so AI lays out, corrects and polishes the text after you speak. It is off by default. To get the original words back, open **Settings > History**, which keeps the raw text of every dictation (**Copy Raw Transcript**).
+In **Settings > AI polishing**, enable **AI polishing** to send recognized text to your provider for correction and polishing. It is off by default. Open **AI polishing preferences** for the options below. History keeps the pre-AI transcript after local dictionary fixes (**Copy Raw Transcript**); it is not an untouched recognizer output.
 
 - **Output language:** Keep original language, Simplified Chinese, English, or Japanese. This applies only when polishing runs. It is not a recognition-language setting.
 - **Adapt tone to the current app:** tailor polished text to chat, email, code or documents. This is on by default, but only has an effect when polishing runs.
 - **Additional instructions:** add writing preferences, such as “Always use digits for numbers.”
 
-If polishing fails, the raw transcript is inserted instead, with a brief error message.
+Polishing requests have a **five-second deadline**, including enhanced recognition's AI comparison and sentence-alternatives requests. A timeout quietly falls back to the recognized text after dictionary fixes; other polishing failures also fall back but show a brief error. Local formatting still applies. This is not a five-second limit on recording, recognition, candidate review or the full insertion process. Voice editing and translation use separate error paths.
 
-Two formatting options in **Dictation** apply on this Mac to every dictation, with or without smart text cleanup, as the last step before insertion:
+### Local text formatting
+
+Two options in **Settings > Text formatting** apply on this Mac to every dictation, with or without AI polishing, as the last step before insertion. They do not need an AI service:
 
 - **Punctuation:** Keep all punctuation (default), No punctuation at sentence end (drops a final period or comma on each line; question and exclamation marks stay), or Spaces instead of punctuation. Decimals, versions and URLs are never changed.
 - **Spaces around numbers and English:** No spaces (default) or Spaces before and after, between Chinese and Latin words or numbers, for example around “Python” or “3” in a Chinese sentence.
 
 ### Edit selected text by voice
 
-1. Enable **Dictation > Edit text by voice**. It is off by default and is independent of the AI polishing switch.
+1. Enable **AI polishing > Edit text by voice**. It is off by default and is independent of the AI polishing switch.
 2. Select text in the foreground app.
 3. Hold your dictation key **together with Control** (Option when Right Control is your dictation key) and say how to change it, such as “Make this shorter” or “Translate into English.” You can also press Control after you start speaking. The overlay shows a blue pencil while editing. Finish normally.
 4. Keep the selection and text field in place while Talkless processes and pastes the edited result.
@@ -114,9 +119,18 @@ Only this gesture edits. The dictation key alone always types your words, replac
 
 Voice editing requires a configured AI service. Talkless reads the selection through Accessibility. When an app does not report its selection, Talkless asks that app to copy (its own Edit › Copy menu item, or Command-C sent only to that app) and then restores your clipboard. Editors that copy the whole line when nothing is selected (such as VS Code) are recognized. If nothing is selected, the overlay says so and your words are typed as ordinary dictation. A voice-editing request that fails shows an error rather than pasting the spoken instruction as a replacement.
 
+## Labs: enhanced recognition and sentence alternatives
+
+**Settings > Labs** contains two independent switches, both off by default. These are experimental options, not proven improvements to recognition accuracy.
+
+- **Enhanced recognition** requires an installed local Qwen model, configured Doubao Speech credentials and a configured AI service. For ordinary dictation it runs Qwen and Doubao together, even when **Offline** is selected, then asks AI to compare the available transcripts. Audio is sent to Doubao and text is sent to the AI provider. This path uses AI even if the separate **AI polishing** switch is off; it does not change that saved switch. It uses more memory and may take longer. The explicit voice-edit gesture uses the selected recognition engine instead.
+- If one recognizer fails, enhanced recognition can continue with the other. After recording ends, it waits at most 20 seconds for recognition; once a nonempty result arrives, it allows at most two more seconds for the other recognizer, within that deadline. A nonempty online result received in time is primary; otherwise the local result is used. Both failing produces an error, not invented text. The subsequent AI request has the separate five-second deadline described above.
+- **Sentence alternatives** requires AI polishing or enhanced recognition, plus an AI service. It can be used without enhanced recognition. The provider is asked for one conservative complete-text result, with up to three candidates only for unresolved ambiguity. One candidate inserts without a chooser; multiple candidates open **Choose a sentence**. Enabling the switch does not guarantee alternatives will appear.
+- Click a complete candidate to use it. Differences from the default are emphasized for comparison, not marked as verified corrections. The nonactivating panel does not take keyboard focus. **Candidate wait** defaults to **5 seconds**, adjustable from **2 to 15 seconds**. Hovering inside pauses the countdown; leaving resumes it, and expiry uses the first/default candidate. Escape cancels the pending input. The countdown is separate from the AI request timeout.
+
 ## Selected-text translation
 
-1. Configure **AI service**.
+1. Configure **AI polishing**.
 2. Select text in another app and press **Control-Option-T**.
 3. Review the translation panel, then choose **Copy** or **Replace Original**. Keep the original selection in place if replacing it.
 
@@ -143,10 +157,10 @@ Under **Translation > Keyboard shortcut**, click the shortcut field and record a
 
 Open **Settings > Dictionary**. Every row reads **heard → written**: what recognition wrote by mistake, then the spelling you meant. Rows come from two places.
 
-- **Learned automatically:** with **Learn from my dictations** on (the default), Talkless compares each dictation's recognized text with its AI-polished text on this Mac. When polish makes the same short spelling fix again, that fix takes effect: two dictations for most spellings, three for two-character Chinese words. A fix that has not been needed for 30 days retires on its own, for example once recognition starts getting the word right. If polish later changes a learned fix back, the fix retires immediately. Each row shows how often the mishearing was seen, how many dictations it fixed and when it was last needed. **Keep** moves the fix to your own entries so it never retires; the trash button deletes it and Talkless never learns that pair again. Corrections seen fewer times appear under **Watching** with how many more times they need, and **Learning log** lists what was learned or retired and when. Learning needs **Smart text cleanup** on; the page says so when it is off. Existing local history is read once, the first time learning runs. Voice edits, translations and dictation polished into another language are never used. Nothing is sent anywhere and no extra AI request is made. Talkless does not watch corrections you make in other apps after pasting.
+- **Learned automatically:** with **Learn from my dictations** on (the default), Talkless compares each dictation's recognized text with its AI-polished text on this Mac. When polish makes the same short spelling fix again, that fix takes effect: two dictations for most spellings, three for two-character Chinese words. A fix that has not been needed for 30 days retires on its own, for example once recognition starts getting the word right. If polish later changes a learned fix back, the fix retires immediately. Each row shows how often the mishearing was seen, how many dictations it fixed and when it was last needed. **Keep** moves the fix to your own entries so it never retires; the trash button deletes it and Talkless never learns that pair again. Corrections seen fewer times appear under **Watching** with how many more times they need, and **Learning log** lists what was learned or retired and when. Learning needs a successful same-language AI result, through polishing or enhanced recognition. When a sentence chooser appears, only an explicit click supplies learning evidence; the automatically chosen default does not. Existing local history is read once, the first time learning runs. Voice edits, translations and dictation polished into another language are never used. Nothing is sent anywhere and no extra AI request is made. Talkless does not watch corrections you make in other apps after pasting.
 - **Added by you:** **Add…** creates an entry with **Heard as** (optional, one per line) and **Write as**. An entry with no heard spelling is a recognition hint only. Capitalization and spaces are preserved. Your entries never retire, and a learned fix never overrides them.
 
-Learned and hand-written entries work the same way. After recognition, and before any AI polishing, heard spellings are replaced with the written form, so fixes work with polishing off and appear in the live preview. Matching ignores case and full-width forms; Latin spellings match whole words only, Chinese spellings match anywhere. A heard spelling must be at least two characters and can fix only one entry. The written forms are also sent as recognition hints to local Qwen and as context to AI polishing, so mistakes become rarer over time and their fixes then retire.
+Learned and hand-written entries work the same way. After recognition, and before any AI polishing, heard spellings are replaced with the written form, so fixes work with polishing off and appear in the live preview. Matching ignores case and full-width forms; Latin spellings match whole words only, Chinese spellings match anywhere. A heard spelling must be at least two characters and can fix only one entry. The written forms are also sent as recognition hints to local Qwen and as context to AI polishing. These mechanisms do not establish an accuracy improvement; retirement means a learned fix has not been needed recently, not that recognition has been proven better.
 
 **Import… / Export…** (the **⋯** menu) cover your own entries as plain UTF-8 text: one term per line, optionally followed by `= heard, heard`. Lines starting with `#` are ignored. Import only adds new terms and fixes; it never deletes or changes existing ones, and reports skipped entries.
 
@@ -216,7 +230,7 @@ For permission problems, open **System > Permissions**. Allow Talkless in macOS 
 
 ## Local data and privacy
 
-Local Qwen recognition does not upload audio. Doubao online recognition streams recorded audio directly to Doubao; optional AI features send the text and context needed for their requests. Review [AI providers and privacy](ai-polish.md) for details.
+Local Qwen recognition does not upload audio. Doubao online recognition streams recorded audio directly to Doubao; optional AI features send the text and context needed for their requests. Labs enhanced recognition uses both recognizers and sends available transcripts to AI even when Offline is selected and the separate polishing switch is off. Review [AI providers and privacy](ai-polish.md) for details.
 
 Talkless stores:
 

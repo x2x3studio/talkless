@@ -13,7 +13,7 @@ Approved events and metadata describe:
 - Startup, missing localization resources, permissions and unavailable/busy models.
 - Recording mode, physical hotkey timing, stage durations, sample/frame/buffer counts and first-buffer latency.
 - Audio configuration notifications, engine state, numeric formats and route-change flags, not device names or stable device identifiers.
-- Startup recovery, interruption, no-audio timeout and explicit cancellation reasons such as Escape, shortcut combinations or recognition failure.
+- Startup failures, interruption, no-audio or stalled-audio timeout and explicit cancellation reasons such as Escape, shortcut combinations or recognition failure.
 - While Settings is open: interface stalls longer than 150 ms (`ui_stall`, duration only), bursts of Settings redraws (`settings_renders`, a count per 10 seconds), and which Settings page was showing.
 - Empty recognition, polishing fallback and insertion attempts. `paste_returned` means the insertion call returned, not that another app confirmed accepting text.
 
@@ -37,6 +37,12 @@ After insertion returns, the final result briefly shows a checkmark with dismiss
 
 Blue underlines mark dictionary spellings present in the displayed text; amber backgrounds mark literal final AI additions/replacements relative to finalized recognition. Neither is proof of a dictionary-caused correction or a grammar/spelling check. Revision decoration is skipped above 512 visible comparison tokens or 64 KiB per input; no decoration does not establish that text was unchanged. No additional text or highlight ranges are added to diagnostics. See the [overlay guide](user-guide.md#overlay) for display limits and examples.
 
+## Polishing fallback and clipboard timing
+
+Dictation polishing, including Labs enhanced comparison and sentence alternatives, has a **five-second AI request deadline**. Timeout quietly falls back to the recognized text after dictionary fixes; local formatting still applies. Other polishing failures show a brief fallback error. This deadline does not limit recording, speech recognition or candidate review, and is not silence detection.
+
+Paste operations and selection-copy fallback share a serial clipboard queue. Insertion snapshots the clipboard, writes temporary text, briefly settles the write, posts Command-V to the intended app, and waits a fixed **two-second compatibility grace period**. It then releases the transaction and restores the snapshot only if the clipboard is still unchanged. Cancellation after posting does not skip settlement; a newer user copy wins. There is no clipboard-read confirmation gate or permanent unresolved-paste lock. The grace period is not proof of document insertion, and slow destinations can still miss the temporary text. `paste_returned` with `reason=keys_posted` records submission, not acceptance. Results remain available in History when insertion is skipped.
+
 ## Startup and packaged resources
 
 Normal launch starts diagnostics before resolving localization or constructing application settings/controllers. A missing localization bundle records `startup_resource_error` with `reason=localization_missing`, not a filesystem path.
@@ -49,21 +55,21 @@ A separate read-only packaging probe runs before normal app initialization:
 
 It prints one JSON report and exits `0` for success or `1` for failure. It checks packaged English/Chinese strings, permission strings, the SwiftPM resource manifest/bundles and resource containment, MLX Metal library, icon and Sparkle binary. On successful inspection it also exercises Hub's local resource accessor. It does not initialize app settings, diagnostics, permissions or models, and does not download a model or make an API request. The report includes resolved app/resource paths: it is not a sanitized diagnostics receipt. Passing this probe does not test microphone capture, inference or paste.
 
-## Audio startup and recovery
+## Audio startup, stop and failures
 
 One serial background queue owns the audio engine, device queries, configuration, start, stop and teardown. These native calls never run inside the UI/event-tap callback. Healthy recordings with the same route reuse their engine instead of assigning the same microphone on every press; capture is stopped between recordings. Cancellation returns immediately, while native cleanup remains serialized behind any in-flight operation.
 
 Startup has a five-second deadline; stop, monitoring and queued cleanup have three-second deadlines independent of the native worker. If a native call never returns, its queue is marked unusable and further capture is refused until Talkless restarts. A deadline cannot safely terminate a Core Audio call: the app does not create replacement queues or accumulate parallel HAL operations. `audio_operation_timeout` distinguishes this failure from first-buffer timeout; `audio_engine_reused` records healthy reuse.
 
-The audio tap explicitly uses a Sendable callback so it does not inherit MainActor isolation when Core Audio invokes it on a background thread. Before constructing the engine, the app checks that the requested input device exists and has input channels. It reacquires a coherent route/format and checks again immediately before installing the tap. Device-disconnection races in the native API remain possible; Swift guards cannot catch an Objective-C exception.
+The audio tap explicitly uses a Sendable callback so it does not inherit MainActor isolation when Core Audio invokes it on a background thread. It copies into a bounded, preallocated queue (96 slots, up to 8,192 frames each), using atomic admission and coalesced worker wakeups. Conversion, sample accumulation and recognition delivery run on a separate serial processing worker, not inside the tap. Overflow, oversized buffers, overlapping callbacks or format changes fail closed rather than growing the queue or blocking capture. Before constructing the engine, the app checks that the requested input device exists and has input channels. It reacquires a coherent route/format and checks again immediately before installing the tap. Device-disconnection races in the native API remain possible; Swift guards cannot catch an Objective-C exception.
 
 **System default** leaves the engine's default route alone. Core Audio may expose a process-local aggregate rather than the physical microphone as the engine's current device; a different ID alone is not an error. Startup still requires an available default input, readable current route, stable snapshots and compatible formats. An explicit microphone must match the selected device and is assigned to that engine only, not made the system-wide default; an unavailable selected device is not silently replaced. A configuration notification triggers validation, not automatic cancellation. Healthy unchanged capture continues.
 
 Startup diagnostics distinguish device discovery, current-device query failure, explicit route mismatch, unready formats and unstable configuration. `route_matches_requested` means the route satisfies the default/explicit selection policy, not that two device IDs are equal or aggregate membership was proved. `route_kind` is `aggregate` only when Core Audio reports that class, `direct` for a matching device, and otherwise `unknown`. An unknown class alone does not reject the default route. `selected_device_changed` compares the freshly resolved requested input—including the system default—with its baseline; `actual_device_changed` compares the engine's current route. Logs also include numeric current-device status and availability/format checks, but never raw device IDs, names or UIDs.
 
-A stopped/reconfigured engine may be rebuilt **once, before any audio has been delivered**. Recovery does not stitch a new route onto an existing recording. After capture begins, a real interruption discards partial audio; Stop also validates native state so key release cannot bypass an interruption handler still in the queue. Stale callbacks from earlier attempts/sessions are ignored.
+A stopped or invalidly reconfigured engine ends the current recording; there is no automatic pre-audio rebuild or recovery retry. The controller cancels recording interruptions quietly and discards partial audio. Stop also validates native state so key release cannot bypass an interruption handler still in the queue. Stale callbacks from earlier sessions are ignored; start a new recording after checking the microphone.
 
-Each successfully started attempt receives a three-second first-buffer allowance, checked by a periodic monitor. A permitted pre-audio recovery gets its own allowance. A running microphone that delivers no buffers reports **The microphone did not deliver audio** rather than retrying indefinitely. Silence still supplies buffers and is not this timeout. Conversion failures and missing/invalid input formats have distinct failure paths.
+Each successfully started recording receives a three-second first-buffer allowance, checked by a periodic monitor. The allowance is not renewed by an automatic recovery attempt. After buffers start, three seconds without another buffer also counts as stalled audio. The recorder records `no_audio_timeout` or `audio_stalled_timeout`; the dictation controller cancels these interruptions quietly and discards partial audio rather than showing a recurring error. Silence still supplies buffers and is not this timeout. Conversion failures and missing/invalid input formats have distinct diagnostic paths.
 
 Recording mode is captured at startup: Hold finishes on release; Toggle finishes on the next press. Release timing uses the physical event timestamp, not delayed callback processing after cold startup. See [dictation and shortcuts](user-guide.md#dictation-and-shortcuts).
 
@@ -76,7 +82,7 @@ bash Tests/DiagnosticsTests/run-tests.sh
 python3 -I Tests/LocalizationTests/run-bundle-tests.py
 ```
 
-Audio tests use synthetic callbacks and simulated native-device state, including optimized callback isolation and a negative control for the old MainActor defect, resampling, bounded recovery, stale callbacks, stop races and no-buffer timeout. Diagnostics tests cover schema filtering, rotation, write failures, queued export snapshots and opt-in crash filtering. These checks do not establish that a particular microphone/driver problem is fixed.
+Audio tests use synthetic callbacks and simulated native-device state, including optimized callback isolation and a negative control for the old MainActor defect, resampling, stale callbacks, stop races and no-buffer timeout. Diagnostics tests cover schema filtering, rotation, write failures, queued export snapshots and opt-in crash filtering. These checks do not establish that a particular microphone/driver problem is fixed.
 
 For an explicit hardware smoke test with an installed app:
 
