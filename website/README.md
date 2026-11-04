@@ -2,7 +2,7 @@
 
 Public product page: https://typeless.x2x3.com. The product is **Talkless**; the hostname does not rename the app.
 
-Cloudflare Worker `talkless-site` serves `public/` as static assets, following Mateo's static Worker deployment pattern. A small script (`src/worker.js`) handles only `/download` and `/release.json`. No build step, database, analytics script, or microphone access. The demo is simulated; edited demo text stays in the browser.
+Cloudflare Worker `talkless-site` serves `public/` as static assets, following Mateo's static Worker deployment pattern. A small script (`src/worker.js`) handles only `/download` and `/release.json`, with shared KV storing public release snapshots only. No build step, user database, analytics script, or microphone access. The demo is simulated; edited demo text stays in the browser.
 
 ## Preview and check
 
@@ -23,16 +23,29 @@ Each page has exactly one GitHub anchor, the repository entry in its header. Gui
 
 Requires an authenticated Wrangler CLI with access to the account and zone in `wrangler.jsonc`. Tested with Wrangler 4.154.0. Credentials stay outside the repository.
 
+Bind a shared KV namespace as `RELEASE_CACHE` in `wrangler.jsonc` and configure an hourly cron (`0 * * * *`). Before the first deployment (or immediately after publishing a release), seed both remote channel snapshots with authenticated Wrangler:
+
 ```sh
+node website/scripts/refresh-cache.mjs --config website/wrangler.jsonc --binding RELEASE_CACHE
 wrangler deploy --config website/wrangler.jsonc --dry-run
 wrangler deploy --config website/wrangler.jsonc
 ```
+
+The seed script requires `wrangler` on `PATH`. If using Wrangler through npm rather than a global install, run `npx --yes --package wrangler -c 'node website/scripts/refresh-cache.mjs'` to provide it to the child process.
+
+The seed script uses the same resolver as the scheduled Worker, then runs `wrangler kv key put --remote` for each successful channel. `--config` and `--binding` are optional with the defaults shown above. Keys are `latest-stable` and `latest-beta`; each stores `{ release, fetchedAt }`, with an ISO UTC timestamp and no expiry. A failed or empty channel is left unchanged, the other is still processed, and the script exits nonzero if either channel could not be refreshed. In a beta-only deployment an empty stable feed is expected; it does not prevent beta from being seeded. There is no public cache-write endpoint.
+
+The beta Sparkle feed may offer a stable release so beta app installations can upgrade. The website filters by the actual release channel rather than labeling that stable item as beta; if no beta item remains, it preserves the prior beta KV snapshot. For an initial seed with an empty beta KV, pass `--beta-snapshot website/public/release-beta.json` (also inside the `npx -c` command if used). Only when the beta feed has no beta item, the script checks that `latest-beta` does not exist, then independently re-fetches and validates the candidate's release metadata and bilingual notes before writing it. Existing beta KV is preserved; network failures, failed validation or key-list errors never authorize this fallback. Run this bootstrap before enabling scheduled refreshes; KV is eventually consistent, not a conditional-write database.
 
 The custom-domain route provisions `typeless.x2x3.com`; workers.dev and preview URLs are disabled. Deploy only `public/`, never the repository root. `_headers` applies a same-origin content security policy and disables microphone/camera permissions.
 
 `html_handling: drop-trailing-slash` serves the companion `.html` files at clean paths. `run_worker_first` sends only `/download` and `/release.json` to `src/worker.js`; every other path is a static asset.
 
-The Worker reads the public Sparkle feeds (`updates/appcast.xml`, then `updates/appcast-beta.xml`), so a published stable release takes precedence over betas. It then reads that release's own `release-metadata.json` and `release-notes.md`, and serves the result only if the tag, version, build, channel and notarized DMG all agree. It does not call the GitHub API, so no API rate limit applies. Results are cached at the edge for five minutes and kept for a week as the last good answer. If upstream fails and no cached answer exists, it serves the deploy-time `public/release.json` snapshot. `/download` is an uncached **302** to the resolved, immutable GitHub DMG, so every download button stays same-origin. GitHub still serves the binary and applies its own privacy policy; `/privacy` discloses that boundary.
+Visitor requests read shared KV or deploy-time static snapshots only: neither the Worker request handler nor the browser fetches GitHub release metadata. An hourly scheduled refresh independently reads the public Sparkle feeds (`updates/appcast.xml` and `updates/appcast-beta.xml`), then each release's own `release-metadata.json` and `release-notes.md`. A snapshot is written only if the tag, version, build, channel, notarized DMG and paired notes agree. Each upstream fetch has an eight-second timeout (including body reads) and a 1 MiB body cap. A failure in either channel preserves that channel's last good snapshot without blocking refresh of the other. No GitHub API is used.
+
+`/release.json` and `/download` default to stable, falling back to beta only when no stable snapshot exists. Explicit `?channel=stable` and `?channel=beta` are strict: they never fall back across channels and return **404** if that channel is unavailable; an unknown channel returns **400**. For each channel, KV takes precedence over a matching static snapshot. `public/release.json` remains a single default release object (not the KV envelope); optional `public/release-beta.json` provides a separate beta fallback after the default snapshot becomes stable. A static snapshot is used only for its actual channel, so a beta-only deployment returns 404 for explicit stable. A static stable snapshot also takes precedence over a cached beta for the default route.
+
+`/download` is an uncached **302** to the resolved, immutable GitHub DMG, so download buttons stay same-origin and can carry the desired channel. GitHub still serves the binary and applies its own privacy policy; `/privacy` discloses that boundary. KV propagation and the JSON response's 60-second browser cache can briefly delay visibility after a refresh.
 
 `app.js` fetches `/release.json` after load to update version, build, date, release notes and the Beta tag. The static markup is the no-JavaScript fallback.
 
@@ -40,7 +53,7 @@ Check all five production page routes, HTTPS/security headers, language switchin
 
 ## Refresh the fallback snapshot
 
-New releases reach `/download` and the page labels within about five minutes without a deploy. Occasionally refresh `public/release.json` so the no-JavaScript markup and the Worker's last-resort fallback stay recent: set version, build, immutable download/source release URLs, ISO `publishedDate`, and `notes.en` / `notes.zh-Hans` text arrays for an already-published, verified release, then run:
+New releases reach `/download` and the page labels after the next successful hourly refresh without a deploy; run the seed script above to refresh immediately. Occasionally refresh `public/release.json` (and `public/release-beta.json` for the beta channel) so the no-JavaScript markup and the Worker's last-resort fallbacks stay recent: set channel, version, build, immutable download/source release URLs, ISO `publishedDate`, and `notes.en` / `notes.zh-Hans` text arrays for already-published, verified releases, then run:
 
 ```sh
 python3 -I website/scripts/sync-release.py

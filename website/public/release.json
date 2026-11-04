@@ -1,20 +1,20 @@
 {
   "version": "2026.1104.16581",
-  "build": "1793766981",
-  "channel": "beta",
+  "build": "1793789636",
+  "channel": "stable",
   "architecture": "arm64",
   "minimumMacOS": "26",
-  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1104.16581-beta.1793766981/Talkless-2026.1104.16581-1793766981-arm64.dmg",
-  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1104.16581-beta.1793766981",
+  "downloadURL": "https://github.com/x2x3studio/talkless/releases/download/v2026.1104.16581/Talkless-2026.1104.16581-1793789636-arm64.dmg",
+  "releaseURL": "https://github.com/x2x3studio/talkless/releases/tag/v2026.1104.16581",
   "publishedDate": "2026-11-04",
   "notes": {
     "en": [
-      "Removed clipboard-read detection that could block later dictations. Each paste now settles after a finite two-second compatibility interval and releases its state.",
-      "Clipboard restoration respects user changes. Sending paste keys is not a guarantee that the target accepted the text."
+      "First Stable release, promoting the application code from Beta 2026.1104.16581 without adding new application features. Includes local and Doubao recognition, optional AI polishing, and the continuous-paste fix.",
+      "Stable builds use the Stable update channel by default. Labs features remain experimental and opt-in; existing user preferences are preserved."
     ],
     "zh-Hans": [
-      "\u79fb\u9664\u53ef\u80fd\u62e6\u4f4f\u540e\u7eed\u542c\u5199\u7684\u526a\u8d34\u677f\u8bfb\u53d6\u68c0\u6d4b\u3002\u6bcf\u7b14\u7c98\u8d34\u5728\u6709\u9650\u7684\u4e24\u79d2\u517c\u5bb9\u7f13\u51b2\u540e\u6536\u5c3e\u5e76\u91ca\u653e\u72b6\u6001\u3002",
-      "\u6062\u590d\u526a\u8d34\u677f\u65f6\u5c0a\u91cd\u7528\u6237\u7684\u65b0\u590d\u5236\u5185\u5bb9\uff1b\u53d1\u51fa\u7c98\u8d34\u6309\u952e\u4e0d\u7b49\u4e8e\u76ee\u6807\u5e94\u7528\u5df2\u786e\u8ba4\u6536\u5230\u6587\u5b57\u3002"
+      "\u5c06 Beta 2026.1104.16581 \u7684\u5e94\u7528\u4ee3\u7801\u63d0\u5347\u4e3a\u9996\u4e2a Stable \u6b63\u5f0f\u7248\uff0c\u4e0d\u52a0\u5165\u65b0\u5e94\u7528\u529f\u80fd\u3002\u5305\u542b\u672c\u5730\u548c\u8c46\u5305\u8bc6\u522b\u3001\u53ef\u9009 AI \u6da6\u8272\u53ca\u8fde\u7eed\u7c98\u8d34\u4fee\u590d\u3002",
+      "\u6b63\u5f0f\u7248\u9ed8\u8ba4\u4f7f\u7528 Stable \u66f4\u65b0\u901a\u9053\uff0c\u5b9e\u9a8c\u5ba4\u529f\u80fd\u4ecd\u4e3a\u5b9e\u9a8c\u6027\u4e14\u6309\u9700\u5f00\u542f\uff1b\u5df2\u6709\u7528\u6237\u504f\u597d\u4fdd\u6301\u4e0d\u53d8\u3002"
     ]
   }
 }

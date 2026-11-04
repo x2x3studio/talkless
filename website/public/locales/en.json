@@ -10,6 +10,7 @@
   "hero.line3": "you type.",
   "hero.description": "A thought, a message, a whole first draft. Just say it. Talkless puts your words into the Mac app you're already using.",
   "download.label": "Download for Mac",
+  "download.beta": "Latest Beta",
   "download.requirements": "Apple Silicon \u00b7 macOS 26+ \u00b7 Source available",
   "demo.label": "Simulated Talkless dictation demo",
   "demo.desk": "A little space to think out loud",
@@ -160,6 +161,8 @@
   "updates.changed.title": "What changed",
   "updates.install.title": "Install or update",
   "updates.install.body": "The download is a Developer ID signed and notarized disk image for Apple Silicon and macOS 26+. Open it and drag Talkless into Applications. If you already use Talkless, Check for Updates is available from its menu bar menu. You choose when to download and install.",
+  "updates.channels.title": "Stable and Beta channels",
+  "updates.channels.body": "Download for Mac prefers the latest Stable release for everyday use. Latest Beta downloads the newest published Beta for trying changes early, and may have rough edges. Each channel has its own latest release: a newer Beta does not replace the default Stable download. The release notes above follow the default download.",
   "updates.beta.title": "A note about betas",
   "updates.beta.body": "Beta builds can have rough edges. Update checks follow your selected Stable or Beta channel. Switching back to Stable does not downgrade an installed beta. Speech models are downloaded separately and are not bundled with app updates.",
   "support.meta.title": "Support \u2014 Talkless",
@@ -194,13 +197,13 @@
   "guide.labs.title": "Optional experiments",
   "guide.labs.body": "Settings \u2192 Labs contains Enhanced recognition and Sentence alternatives, both off by default. Enhanced recognition sends the same audio to local Qwen and Doubao, then gives the available transcripts to your AI service. It requires the local model, Doubao credentials and an AI service; one failed route stops while the other continues. It can use more resources and take longer; improved accuracy is not guaranteed.",
   "guide.labs.choices": "Sentence alternatives appears only when AI returns two or three different full versions. Changed words are highlighted. Click a whole sentence; hover to pause the countdown and leave to resume. Timeout uses the marked default. The wait defaults to five seconds and can be set from two to fifteen. Explicit same-language choices can feed dictionary learning; timeout is not user approval.",
-  "release.note.0": "Removed clipboard-read detection that could block later dictations. Each paste now settles after a finite two-second compatibility interval and releases its state.",
-  "release.note.1": "Clipboard restoration respects user changes. Sending paste keys is not a guarantee that the target accepted the text.",
   "privacy.provider.body": "Volcengine is a third-party provider relative to Talkless. Its general Terms of Service and Privacy Policy name Beijing Volcano Engine Technology Co., Ltd. The applicable contract and product-specific terms are those presented when you activate or purchase the Speech service in the Volcengine console. See the official documents below; API documentation is not a user agreement.",
   "privacy.provider.terms": "Volcengine Terms of Service",
   "privacy.provider.contract": "Volcengine Products and Services Agreement",
   "privacy.provider.privacy": "Volcengine Privacy Policy",
   "privacy.provider.scope": "Talkless\u2019s statement that it does not save recordings describes Talkless itself, not a promise about Volcengine\u2019s retention or training policies. The provider distinguishes customer data processed by its services from account personal information. Consult the applicable service terms for processing, retention and deletion; this page does not claim zero retention or no training by the provider.",
   "guide.speech.provider": "Doubao online means Volcengine\u2019s Doubao Speech ASR service. Obtain a Speech API key in the Volcengine console, not a Doubao app login or an Ark chat-model key. It is an optional third-party service; the official terms are linked on our privacy page.",
-  "guide.speech.termsLink": "Service provider and official terms"
+  "guide.speech.termsLink": "Service provider and official terms",
+  "release.note.0": "First Stable release, promoting the application code from Beta 2026.1104.16581 without adding new application features. Includes local and Doubao recognition, optional AI polishing, and the continuous-paste fix.",
+  "release.note.1": "Stable builds use the Stable update channel by default. Labs features remain experimental and opt-in; existing user preferences are preserved."
 }

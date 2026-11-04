@@ -10,11 +10,12 @@ PUBLIC = Path(__file__).resolve().parents[1] / 'public'
 release = json.loads((PUBLIC / 'release.json').read_text())
 assert re.fullmatch(r'[0-9.]+', release['version']), 'Invalid release version'
 assert re.fullmatch(r'[0-9]+', release['build']), 'Invalid release build'
-tag = f"v{release['version']}-beta.{release['build']}"
+assert release['channel'] in ('stable', 'beta'), 'Invalid release channel'
+tag = f"v{release['version']}" + (f"-beta.{release['build']}" if release['channel'] == 'beta' else '')
 expected = f"https://github.com/x2x3studio/talkless/releases/download/{tag}/Talkless-{release['version']}-{release['build']}-arm64.dmg"
 assert release['downloadURL'] == expected, 'Release download does not match version/build'
 assert release['releaseURL'] == f'https://github.com/x2x3studio/talkless/releases/tag/{tag}', 'Unexpected source release URL'
-assert release['channel'] == 'beta' and release['architecture'] == 'arm64' and release['minimumMacOS'] == '26', 'Platform requirements changed; review website copy'
+assert release['architecture'] == 'arm64' and release['minimumMacOS'] == '26', 'Platform requirements changed; review website copy'
 assert date.fromisoformat(release['publishedDate']).isoformat() == release['publishedDate'], 'Invalid publication date'
 notes = release['notes']
 assert set(notes) == {'en', 'zh-Hans'}, 'Published notes must include both languages'
@@ -28,9 +29,25 @@ for locale, items in notes.items():
     catalog.update({f'release.note.{index}': value for index, value in enumerate(items)})
     path.write_text(json.dumps(catalog, ensure_ascii=True, indent=2) + '\n')
 
+english = json.loads((PUBLIC / 'locales/en.json').read_text())
 versions = 0
 for path in sorted(PUBLIC.glob('*.html')):
     html = path.read_text()
+    html = re.sub(r'(<body\b[^>]*?)\sdata-release-channel="[^"]*"', r'\1', html)
+    html = re.sub(r'<body\b', '<body data-release-channel="' + release['channel'] + '"', html, count=1)
+    def localized(match):
+        key = match.group(3)
+        resolved = key + '.stable' if release['channel'] == 'stable' and key + '.stable' in english else key
+        return match.group(1) + escape(english.get(resolved, match.group(4))).replace('\n', '<br>') + match.group(5)
+    html = re.sub(r'(<(h[1-6]|p|span|a|li)\b[^>]*\bdata-i18n="([^"]+)"[^>]*>)([^<]*)(</\2>)', localized, html)
+    html = re.sub(r'(<[^>]+data-release-channel-label[^>]*>)[^<]*', lambda m: m[1] + ('Stable' if release['channel'] == 'stable' else 'Beta'), html)
+    html = re.sub(r'(<span class="button-tag")(?: hidden)?', lambda m: m[1] + (' hidden' if release['channel'] == 'stable' else ''), html)
+    for field in ['title', 'description']:
+        key = ('meta' if path.stem == 'index' else path.stem + '.meta') + '.' + field
+        value = english.get(key + '.stable' if release['channel'] == 'stable' and key + '.stable' in english else key)
+        if value:
+            if field == 'title': html = re.sub(r'<title>.*?</title>', '<title>' + escape(value) + '</title>', html)
+            else: html = re.sub(r'(<meta name="description" content=")[^"]*(")', lambda m: m[1] + escape(value, quote=True) + m[2], html)
     html, count = re.subn(r'(data-release-version>)[^<]+', lambda match: match[1] + release['version'], html)
     versions += count
     html = re.sub(r'(data-release-build>)[^<]+', lambda match: match[1] + release['build'], html)

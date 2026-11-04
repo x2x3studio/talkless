@@ -21,38 +21,49 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   addEventListener(name, listener) { this.listeners[name] = listener; }
   querySelector(selector) { return selector === 'strong' ? this.strong : this.children.find(child => child.className === selector.slice(1)); }
+  closest(selector) { return selector === '[data-download-channel]' && this.dataset.downloadChannel ? this : this.parent?.closest(selector); }
   focus() { this.focused = true; this.listeners.focus?.(); }
   after(node) { this.next = node; }
 }
 
-async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false, runtime = release, agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', touchPoints = 0 } = {}) {
+async function boot({ languages = ['en-US'], reduced = true, stored = null, search = '', failCatalog = null, page = 'home', blockedStorage = false, runtime = release, snapshotChannel = release.channel, agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', touchPoints = 0 } = {}) {
   const elements = Object.fromEntries((page === 'home' ? ['#play-demo', '#demo-output', '#demo-transcript', '#dictation-pill', '#demo-announcement', '#release-version'] : ['#locale-announcement', '#release-version']).map(id => [id, new Element()]));
   if (page === 'home') elements['#play-demo'].strong = new Element();
   elements['#release-version'].textContent = release.version;
   const locales = ['en', 'zh-Hans'].map(locale => new Element({ locale }));
   const downloads = [new Element(), new Element()];
   downloads.forEach(link => { link.href = '/download'; });
+  const betaDownload = new Element({ downloadChannel: 'beta', i18n: 'download.beta' });
+  betaDownload.href = '/download?channel=beta';
+  downloads.push(betaDownload);
   const notes = [new Element(), new Element()];
   notes.forEach(link => { link.href = '/updates'; });
   const siteLinks = [new Element(), new Element(), ...notes];
   siteLinks[0].href = '/guide#shortcuts';
   siteLinks[1].href = '/';
   const headingKey = page === 'home' ? 'hero.line1' : page === 'privacy' ? 'privacy.page.title' : `${page}.title`;
-  const localized = [new Element({ i18n: headingKey })];
+  const localized = [new Element({ i18n: headingKey }), betaDownload];
   const build = new Element();
   build.textContent = release.build;
   const published = new Element();
   published.textContent = release.publishedDate;
-  const tags = [new Element(), new Element()];
+  const tags = downloads.map(link => {
+    const tag = new Element();
+    tag.parent = link;
+    tag.hidden = (link.dataset.downloadChannel || snapshotChannel) !== 'beta';
+    return tag;
+  });
+  const channelLabel = new Element();
+  channelLabel.textContent = snapshotChannel === 'stable' ? 'Stable' : 'Beta';
   const changes = new Element();
   const created = [];
   const requests = [];
   const storage = new Map(stored ? [['talkless.website.language', stored]] : []);
   const document = {
     documentElement: { lang: 'en' },
-    body: { dataset: { page }, children: [], append(node) { this.children.push(node); } },
+    body: { dataset: { page, releaseChannel: snapshotChannel }, children: [], append(node) { this.children.push(node); } },
     querySelector(selector) { return selector === '[data-release-changes]' ? (page === 'updates' ? changes : null) : elements[selector] ?? (selector.startsWith('meta[') ? new Element() : null); },
-    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': [...localized, ...changes.children, ...created.filter(node => node.dataset.i18n)], '[data-i18n-aria]': created.filter(node => node.dataset.i18nAria), '[data-release-version]': [elements['#release-version']], '[data-release-build]': [build], '[data-release-date]': [published], '.download-link .button-tag': tags })[selector] || []; },
+    querySelectorAll(selector) { return ({ '[data-locale]': locales, '.download-link': downloads, '[data-release-notes]': notes, '[data-site-link]': siteLinks, '[data-i18n]': [...localized, ...changes.children, ...created.filter(node => node.dataset.i18n)], '[data-i18n-aria]': created.filter(node => node.dataset.i18nAria), '[data-release-version]': [elements['#release-version']], '[data-release-build]': [build], '[data-release-date]': [published], '.download-link .button-tag': tags, '[data-release-channel-label]': [channelLabel] })[selector] || []; },
     createElement() { const node = new Element(); created.push(node); return node; },
     createTextNode(value) { const node = new Element(); node.textContent = value; return node; },
     addEventListener(name, listener) { this[name] = listener; },
@@ -74,7 +85,13 @@ async function boot({ languages = ['en-US'], reduced = true, stored = null, sear
   });
   await vm.runInContext(`(async () => { ${source}\n})();`, context, { filename: fileURLToPath(new URL('app.js', publicDirectory)) });
   await new Promise(resolve => setTimeout(resolve, 0));
-  return { elements, locales, downloads, notes, document, context, requests, storage, siteLinks, localized, headingKey, build, published, tags, changes };
+  return { elements, locales, downloads, notes, document, context, requests, storage, siteLinks, localized, headingKey, build, published, tags, changes, betaDownload, channelLabel };
+}
+
+for (const file of ['index.html', 'updates.html']) {
+  const html = await readFile(new URL(file, publicDirectory), 'utf8');
+  assert.match(html, /<a\b[^>]*href="\/download"/, `${file} keeps the default same-origin download`);
+  assert.match(html, /<a\b[^>]*href="\/download\?channel=beta"[^>]*data-download-channel="beta"[^>]*data-i18n="download.beta">Latest Beta<\/a>/, `${file} exposes Beta without JavaScript`);
 }
 
 const basic = await boot();
@@ -114,10 +131,16 @@ assert.equal(live.elements['#release-version'].textContent, newer.version);
 assert.equal(live.build.textContent, newer.build);
 assert.equal(live.published.textContent, newer.publishedDate);
 assert.equal(live.published.attributes.datetime, newer.publishedDate);
-assert(live.tags.every(tag => tag.hidden), 'Stable builds drop the Beta tag');
+assert(live.tags.slice(0, 2).every(tag => tag.hidden), 'Stable builds drop the default Beta tags');
+assert.equal(live.tags[2].hidden, false, 'An explicit Beta tag stays visible with a Stable default');
+assert.equal(live.channelLabel.textContent, 'Stable');
+assert.equal(live.betaDownload.href, '/download?channel=beta');
+assert.equal(live.betaDownload.textContent, en['download.beta']);
 assert.deepEqual(live.changes.children.map(item => item.textContent), newer.notes.en);
 await live.locales[1].listeners.click();
 assert.deepEqual(live.changes.children.map(item => item.textContent), newer.notes['zh-Hans'], 'Runtime notes follow the language switch');
+assert.equal(live.betaDownload.textContent, zh['download.beta'], 'Explicit Beta wording follows locale, not the default channel');
+assert.equal(live.betaDownload.href, '/download?channel=beta', 'Changing locale keeps the explicit download channel');
 assert((await boot({ runtime: { ...newer, channel: 'beta' } })).tags.every(tag => tag.hidden === false), 'Beta builds keep the tag');
 const offline = await boot({ page: 'updates', runtime: null });
 assert.equal(offline.elements['#release-version'].textContent, release.version, 'Failed release fetch keeps the static snapshot');
@@ -128,7 +151,19 @@ const badge = new Element({ i18n: 'hero.badge' });
 stableHome.localized.push(badge);
 await stableHome.locales[1].listeners.click();
 assert.equal(badge.textContent, zh['hero.badge.stable'], 'Stable releases swap beta copy for its stable variant');
-const betaHome = await boot();
+const explicitBetaCopy = new Element({ i18n: 'hero.badge' });
+explicitBetaCopy.parent = stableHome.betaDownload;
+stableHome.localized.push(explicitBetaCopy);
+await stableHome.locales[0].listeners.click();
+assert.equal(explicitBetaCopy.textContent, en['hero.badge'], 'Nested explicit Beta copy ignores default Stable variants');
+const stableOffline = await boot({ runtime: null, snapshotChannel: 'stable' });
+const offlineBadge = new Element({ i18n: 'hero.badge' });
+stableOffline.localized.push(offlineBadge);
+await stableOffline.locales[0].listeners.click();
+assert.equal(offlineBadge.textContent, en['hero.badge.stable'], 'Offline copy uses the static Stable channel');
+assert.equal(stableOffline.channelLabel.textContent, 'Stable');
+assert.equal(stableOffline.betaDownload.textContent, en['download.beta']);
+const betaHome = await boot({ runtime: { ...release, channel: 'beta' } });
 const betaBadge = new Element({ i18n: 'hero.badge' });
 betaHome.localized.push(betaBadge);
 await betaHome.locales[0].listeners.click();
@@ -152,7 +187,8 @@ assert.deepEqual(panel.children[2].children.map(step => step.textContent), [zh['
 assert.equal(panel.children[0].attributes['aria-label'], zh['download.steps.close']);
 steps.document.keydown({ key: 'Escape' });
 assert.equal(panel.hidden, true);
-steps.downloads[1].listeners.click();
+steps.betaDownload.listeners.click();
+assert.equal(panel.hidden, false, 'Beta downloads show the same installation steps');
 assert.equal(steps.document.body.children.length, 1, 'Steps panel is reused');
 await steps.locales[0].listeners.click();
 assert.equal(panel.children[1].textContent, en['download.steps.title'], 'Steps follow the language switch');
@@ -185,4 +221,4 @@ await pending;
 assert.equal(animated.elements['#dictation-pill'].dataset.state, 'idle');
 assert.equal(animated.elements['#demo-output'].textContent, '', 'Escape must prevent insertion');
 assert(basic.requests.every(path => path.startsWith('/locales/') || path === '/release.json'), 'Only same-origin data may be requested');
-console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, same-origin /download, runtime release labels/notes with static fallback, stable copy variants, device notes, download steps, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');
+console.log('PASS: all companion page locales and metadata, cross-page language with blocked storage, same-origin /download, runtime release labels/notes with static fallback, independent Beta links and tags, offline Stable copy, device notes, download steps, browser/stored/query selection, demo completion/cancellation, dictionary highlight, edit preservation and same-origin-only requests');

@@ -12,6 +12,8 @@
     }
   ],
   "main": "src/worker.js",
+  "kv_namespaces": [{ "binding": "RELEASE_CACHE", "id": "a9bd35f394394100ab90ad61bf4078e2" }],
+  "triggers": { "crons": ["0 * * * *"] },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

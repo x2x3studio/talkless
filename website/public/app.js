@@ -17,7 +17,7 @@ let demoRun = 0;
 let demoPlaying = false;
 let noteEdited = false;
 let runtimeNotes = null;
-let releaseChannel = 'beta';
+let releaseChannel = document.body.dataset.releaseChannel === 'stable' ? 'stable' : 'beta';
 
 function preferredLocale(languages) {
   for (const language of languages) {
@@ -37,11 +37,11 @@ function chosenLocale() {
   return preferredLocale(navigator.languages || [navigator.language || 'en']);
 }
 
-function text(key) {
+function text(key, channel = releaseChannel) {
   const note = key.match(/^release\.note\.(\d+)$/);
   if (note && runtimeNotes) return runtimeNotes[currentLocale]?.[note[1]] || runtimeNotes.en[note[1]] || key;
   // Copy that mentions the beta has a ".stable" variant used once a stable release is current.
-  if (releaseChannel === 'stable' && (catalog[`${key}.stable`] || catalogs.get('en')?.[`${key}.stable`])) key = `${key}.stable`;
+  if (channel === 'stable' && (catalog[`${key}.stable`] || catalogs.get('en')?.[`${key}.stable`])) key = `${key}.stable`;
   return catalog[key] || catalogs.get('en')?.[key] || key;
 }
 
@@ -52,10 +52,10 @@ function renderText() {
   document.querySelector('meta[property="og:title"]').content = text(`${metaPrefix}.title`);
   document.querySelector('meta[property="og:description"]').content = text(`${metaPrefix}.description`);
   for (const element of document.querySelectorAll('[data-i18n]')) {
-    element.textContent = text(element.dataset.i18n);
+    element.textContent = text(element.dataset.i18n, element.closest('[data-download-channel]')?.dataset.downloadChannel);
   }
   for (const element of document.querySelectorAll('[data-i18n-aria]')) {
-    element.setAttribute('aria-label', text(element.dataset.i18nAria));
+    element.setAttribute('aria-label', text(element.dataset.i18nAria, element.closest('[data-download-channel]')?.dataset.downloadChannel));
   }
 }
 
@@ -187,7 +187,8 @@ document.addEventListener('keydown', event => {
 });
 
 // Static markup is the deploy-time snapshot and the no-JavaScript fallback. The Worker's
-// /release.json follows the newest published build; /download already redirects to it.
+// /release.json follows the default channel (Stable first); /download redirects to it.
+// Explicit channel links stay independent and use the same-origin /download endpoint.
 async function applyRelease() {
   try {
     const response = await fetch('/release.json');
@@ -201,8 +202,14 @@ async function applyRelease() {
       element.textContent = release.publishedDate;
       element.setAttribute('datetime', release.publishedDate);
     }
-    for (const tag of document.querySelectorAll('.download-link .button-tag')) tag.hidden = release.channel !== 'beta';
-    if (release.channel === 'stable') releaseChannel = 'stable';
+    releaseChannel = release.channel === 'stable' ? 'stable' : 'beta';
+    for (const tag of document.querySelectorAll('.download-link .button-tag')) {
+      const channel = tag.closest('[data-download-channel]')?.dataset.downloadChannel || releaseChannel;
+      tag.hidden = channel !== 'beta';
+    }
+    for (const label of document.querySelectorAll('[data-release-channel-label]')) {
+      label.textContent = releaseChannel === 'stable' ? 'Stable' : 'Beta';
+    }
     const list = document.querySelector('[data-release-changes]');
     const notes = release.notes;
     if (list && Array.isArray(notes?.en) && notes.en.length && notes['zh-Hans']?.length === notes.en.length) {

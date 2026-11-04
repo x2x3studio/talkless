@@ -95,14 +95,14 @@ def main():
         assert all(f'{meta}.{key}' in catalogs['en'] for key in ('title', 'description')), 'Missing localized metadata'
         github = [link['href'] for link in document.anchors if urlsplit(link.get('href', '')).hostname == 'github.com']
         assert github == [REPOSITORY] and document.repository_in_header, f'Exactly one header repository link required: {path.name}'
-        assert all(link == '/download' for link in document.downloads), 'Download links must remain same-origin'
+        assert all(link in ('/download', '/download?channel=stable', '/download?channel=beta') for link in document.downloads), 'Download links must remain same-origin'
         for link in document.anchors:
             target = urlsplit(link.get('href', ''))
             if target.path in ('/', '/guide', '/privacy', '/updates', '/support') and not target.scheme:
                 assert 'data-site-link' in link, f'Navigation must preserve language: {path.name} {link}'
         assert not re.search(r'href="[^"]*(?:/blob/|/issues|/releases/)', html), 'Docs, support and release navigation must stay onsite'
     assert set(documents) == {'/', '/guide', '/privacy', '/updates', '/support'}, 'Expected all four companion routes'
-    assert len(documents['/'].downloads) == 2, 'Landing page needs both download buttons'
+    assert documents['/'].downloads.count('/download') == 2 and '/download?channel=beta' in documents['/'].downloads, 'Landing page needs default download buttons and a separate Beta link'
     assert 'contenteditable="plaintext-only"' in (PUBLIC / 'index.html').read_text(), 'Editable note must not accept rich HTML'
     assert 'prefers-reduced-motion' in css and 'focus-visible' in css, 'Motion and focus support required'
     assert 'prefers-contrast' in css and 'forced-colors' in css, 'Contrast support required'
@@ -142,11 +142,11 @@ def main():
         assert (PUBLIC / path.lstrip('/')).is_file(), f'Missing fetched asset: {path}'
 
     release = json.loads((PUBLIC / 'release.json').read_text())
-    tag = f"v{release['version']}-beta.{release['build']}"
+    tag = f"v{release['version']}" + (f"-beta.{release['build']}" if release['channel'] == 'beta' else '')
     expected_download = f'{REPOSITORY}/releases/download/{tag}/Talkless-{release["version"]}-{release["build"]}-arm64.dmg'
     assert release['downloadURL'] == expected_download, 'Unexpected download path'
     assert release['releaseURL'] == f'{REPOSITORY}/releases/tag/{tag}', 'Release tag mismatch'
-    assert release['channel'] == 'beta' and release['architecture'] == 'arm64' and release['minimumMacOS'] == '26', 'Release platform metadata mismatch'
+    assert release['channel'] in ('stable', 'beta') and release['architecture'] == 'arm64' and release['minimumMacOS'] == '26', 'Release platform metadata mismatch'
     redirects = PUBLIC / '_redirects'
     assert not redirects.exists() or '/download' not in redirects.read_text(), 'The Worker owns /download; a static redirect would pin an old build'
     worker = (ROOT / 'src' / 'worker.js').read_text()
