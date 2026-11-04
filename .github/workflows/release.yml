@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: macos-15
+    runs-on: [self-hosted, macOS, ARM64, talkless-macos-arm64]
+    timeout-minutes: 15
     outputs:
       eligible: ${{ steps.ref.outputs.eligible }}
     steps:
@@ -25,6 +26,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          clean: false
+      - name: Clean workspace, keeping the SwiftPM build caches
+        run: |
+          set -euo pipefail
+          git reset --hard --quiet
+          git clean -ffdx --quiet -e /.build/ -e /Tools/ReleaseTool/.build/
       - name: Validate trusted release ref
         id: ref
         env:
@@ -43,7 +50,7 @@ jobs:
         if: steps.ref.outputs.eligible == 'true'
         run: |
           bash scripts/release-tool.sh check-repository
-          swift test --package-path Tools/ReleaseTool
+          swift test --build-system native --package-path Tools/ReleaseTool
 
   release:
     needs: validate
