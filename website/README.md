@@ -62,4 +62,4 @@ node website/scripts/test-demo.mjs
 node website/scripts/test-worker.mjs
 ```
 
-Website deployment is separate from the macOS release workflow; the Worker serves only releases already present in a published feed.
+Website deployment is separate from the macOS release workflow; the Worker serves only releases already present in a published feed. Pushes to `main` that change only `website/**` skip the macOS release workflow but still run Source checks. Mixed website/app changes still trigger the release workflow, and version-tag pushes are unaffected by the path filter.
