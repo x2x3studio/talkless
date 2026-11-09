@@ -204,9 +204,17 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SP
         if let window = NSApp.keyWindow { windowPlacement.position(window) }
     }
 
-    func standardUserDriverWillShowModalAlert() { windowPlacement.willShowModalAlert() }
-    func standardUserDriverDidShowModalAlert() { windowPlacement.didShowModalAlert() }
-    func standardUserDriverWillFinishUpdateSession() { windowPlacement.finish() }
+    // Sparkle invokes these synchronously on the main thread, but its Objective-C
+    // delegate protocol does not carry actor annotations.
+    nonisolated func standardUserDriverWillShowModalAlert() {
+        MainActor.assumeIsolated { windowPlacement.willShowModalAlert() }
+    }
+    nonisolated func standardUserDriverDidShowModalAlert() {
+        MainActor.assumeIsolated { windowPlacement.didShowModalAlert() }
+    }
+    nonisolated func standardUserDriverWillFinishUpdateSession() {
+        MainActor.assumeIsolated { windowPlacement.finish() }
+    }
 
     // Always use the selected, validated bundle URL, not an old user-default feed override.
     func feedURLString(for updater: SPUUpdater) -> String? {

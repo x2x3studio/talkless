@@ -2,7 +2,7 @@
 import AppKit
 
 @MainActor public protocol SPUUpdaterDelegate: AnyObject {}
-@MainActor public protocol SPUStandardUserDriverDelegate: AnyObject {
+public protocol SPUStandardUserDriverDelegate: AnyObject {
     func standardUserDriverWillShowModalAlert()
     func standardUserDriverDidShowModalAlert()
     func standardUserDriverWillFinishUpdateSession()
