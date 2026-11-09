@@ -526,14 +526,18 @@ private final class NativeAudioRecorder: @unchecked Sendable {
         }
         try checkSession(session)
         if let engine, let baseline {
-            let current = snapshot(engine: engine)
-            if configuredUID != deviceUID {
-                // A user-selected input change starts a fresh route, never a fallback.
+            if configuredUID != deviceUID || baseline.device != device {
+                // Discard the old route before reading its possibly stale input node.
+                log("audio_recovery", fields: ["reason": "device_changed", "stage": "startup"])
                 tearDownAttempt()
-            } else if let reason = current.startupFailure(requested: device, previous: baseline) {
-                log("audio_start_failed", configuration: current, fields: ["reason": reason])
-                throw startupError(reason: reason)
+            } else {
+                let current = snapshot(engine: engine)
+                if let reason = current.startupFailure(requested: device, previous: baseline) {
+                    log("audio_recovery", configuration: current, fields: ["reason": reason, "stage": "startup"])
+                    tearDownAttempt()
+                }
             }
+            try checkSession(session)
         }
         let reused = self.engine != nil
         let engine = self.engine ?? AVAudioEngine()

@@ -1409,6 +1409,8 @@ STARTUP_TESTS = r'''
                 oldSession.onError?("stale failure")
                 precondition(test.state == .recording && test.startupTask != nil && !currentSession.cancelled)
                 precondition(test.hud.model.preview.isEmpty && test.recorder.cancelCalls == 1)
+                precondition(test.hud.model.phase == .listening(handsFree: false),
+                             "A stale startup failure cannot replace the new recording with an error")
                 test.recorder.starts[1].resume()
                 await currentTask.value
                 precondition(test.startupTask == nil && test.state == .recording && test.recorder.stopCalls == 0)
@@ -1487,6 +1489,41 @@ STARTUP_TESTS = r'''
         print("PASS cancelled queued finish cannot stop a newer recording after old startup returns")
 
         for queueFinish in [false, true] {
+            for message in ["Microphone start timed out", "Restart Talkless to use the microphone", nil] as [String?] {
+                let test = StartupHarness()
+                test.recorder.suspendStart = true
+                test.toggleFromMenu()
+                let task = test.startupTask!
+                let session = FakeSession.latest!
+                await wait { test.recorder.starts.count == 1 }
+                if queueFinish { test.toggleFromMenu() }
+                let processing = test.processingTask
+                TextIO.inserted = []
+                LLMClient.calls = 0
+                test.hud.onShow = { phase in
+                    if case .error = phase {
+                        precondition(test.state == .idle && test.session == nil && session.cancelled
+                                     && test.startupTask == nil && test.processingTask == nil
+                                     && test.recorder.cancelCalls == 1 && test.hud.model.phase == .hidden,
+                                     "Startup error is shown only after cancellation has finished cleanup")
+                    }
+                }
+                let failure: Error = message.map {
+                    NSError(domain: "Synthetic", code: 1, userInfo: [NSLocalizedDescriptionKey: $0]) as Error
+                } ?? CancellationError()
+                test.recorder.starts[0].resume(throwing: failure)
+                await task.value
+                await processing?.value
+                precondition(test.state == .idle && test.startupTask == nil && test.processingTask == nil && session.cancelled)
+                precondition(test.hud.model.phase == (message.map { .error($0) } ?? .hidden),
+                             "Actionable startup errors survive cleanup; CancellationError stays silent")
+                precondition(test.hud.model.displayText == (message ?? ""))
+                precondition(test.recorder.stopCalls == 0 && session.finishes == 0 && LLMClient.calls == 0 && TextIO.inserted.isEmpty)
+            }
+        }
+        print("PASS startup timeout/restart guidance survives cleanup; cancellation stays silent; queued finish never recognizes/uploads")
+
+        for queueFinish in [false, true] {
             let test = StartupHarness()
             test.recorder.suspendStart = true
             test.toggleFromMenu()
@@ -1495,17 +1532,15 @@ STARTUP_TESTS = r'''
             await wait { test.recorder.starts.count == 1 }
             if queueFinish { test.toggleFromMenu() }
             let processing = test.processingTask
-            TextIO.inserted = []
-            LLMClient.calls = 0
-            test.recorder.starts[0].resume(throwing: NSError(domain: "Synthetic", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Microphone start timed out"]))
+            test.recorder.onError?("Microphone disconnected")
+            test.recorder.starts[0].resume(throwing: NSError(domain: "Synthetic late failure", code: 1))
             await task.value
             await processing?.value
-            precondition(test.state == .idle && test.startupTask == nil && test.processingTask == nil && session.cancelled)
-            precondition(test.hud.model.phase == .hidden)
-            precondition(test.recorder.stopCalls == 0 && session.finishes == 0 && LLMClient.calls == 0 && TextIO.inserted.isEmpty)
+            precondition(test.state == .idle && test.hud.model.phase == .hidden && session.cancelled,
+                         "Recorder interruptions retain silent cancellation, including late startup errors")
+            precondition(test.recorder.stopCalls == 0 && session.finishes == 0)
         }
-        print("PASS start timeout surfaces actionable error and cancels queued finish without recognition/upload")
+        print("PASS recorder interruptions remain silent during recording and queued finish")
     }
 }
 '''

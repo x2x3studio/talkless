@@ -1,8 +1,7 @@
 import Foundation
 
-/// One native execution boundary for an entire recorder lifetime. A deadline can
-/// release callers, but cannot safely kill a HAL call. Keep its queue/resources
-/// alive and permanently refuse new work rather than spawning replacement workers.
+/// A deadline releases callers but cannot safely kill a HAL call. Keep one worker
+/// and reject new work until timed-out calls return and native cleanup completes.
 final class AudioOperationQueue: @unchecked Sendable {
     static let unresponsive = "The microphone is not responding. Quit and reopen Talkless, then try again."
     private let queue = DispatchQueue(label: "Talkless.native-audio", qos: .userInitiated)
@@ -11,6 +10,8 @@ final class AudioOperationQueue: @unchecked Sendable {
     private var operations: [UUID: Operation] = [:]
     private var cleanupPending = false
     private var poisoned = false
+    private var recoveryCleanupCompleted = false
+    private var notifyingTimeout = false
 
     private final class Operation: @unchecked Sendable {
         let id = UUID()
@@ -42,6 +43,7 @@ final class AudioOperationQueue: @unchecked Sendable {
                             operations.removeValue(forKey: operation.id)
                             let resume = operation.fail != nil
                             operation.fail = nil
+                            recoverIfDrained()
                             return resume
                         }
                         if resume { continuation.resume(with: result) }
@@ -82,6 +84,8 @@ final class AudioOperationQueue: @unchecked Sendable {
                 lock.withLock {
                     operations.removeValue(forKey: operation.id)
                     cleanupPending = false
+                    if poisoned { recoveryCleanupCompleted = true }
+                    recoverIfDrained()
                 }
             }
             return (operation, failures)
@@ -90,11 +94,20 @@ final class AudioOperationQueue: @unchecked Sendable {
         if let operation = result.0 { scheduleDeadline(operation, seconds: 3) }
     }
 
+    /// Called only under lock. A late timeout callback must finish before admission reopens.
+    private func recoverIfDrained() {
+        guard poisoned, recoveryCleanupCompleted, !notifyingTimeout, operations.isEmpty else { return }
+        poisoned = false
+        recoveryCleanupCompleted = false
+    }
+
     private func scheduleDeadline(_ operation: Operation, seconds: TimeInterval) {
         deadlines.asyncAfter(deadline: .now() + seconds) { [self] in
             let result = lock.withLock { () -> (Bool, [@Sendable (Error) -> Void]) in
                 guard operations[operation.id] != nil, !poisoned else { return (false, []) }
                 poisoned = true
+                recoveryCleanupCompleted = false
+                notifyingTimeout = true
                 var failures: [@Sendable (Error) -> Void] = []
                 for pending in operations.values {
                     pending.cancelled = true
@@ -107,6 +120,10 @@ final class AudioOperationQueue: @unchecked Sendable {
             let error = TalklessError.message(L10n.tr(Self.unresponsive))
             result.1.forEach { $0(error) }
             operation.timeout()
+            lock.withLock {
+                notifyingTimeout = false
+                recoverIfDrained()
+            }
         }
     }
 }

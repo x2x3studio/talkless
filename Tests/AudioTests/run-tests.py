@@ -275,6 +275,13 @@ extension AudioRecorder {
     @MainActor fileprivate func testDrain() async throws {
         try await operations.run(timeout: 1, onTimeout: {}) {}
     }
+    @MainActor fileprivate func testWaitForRecovery() async throws {
+        for _ in 0..<1000 {
+            do { try await testDrain(); return }
+            catch { try await Task.sleep(for: .milliseconds(1)) }
+        }
+        fatalError("Audio worker did not recover after native cleanup")
+    }
     @MainActor fileprivate func testProcessPending() async throws {
         try await operations.run(timeout: 1, onTimeout: {}) { [native] in
             let capture = native.lock.withLock { native.capture }
@@ -418,6 +425,29 @@ extension AudioRecorder {
         precondition(TestHardware.enginesCreated == creations + 1 && TestHardware.setCalls == setters + 1)
         print("PASS 20 turns reuse one engine/one setter, stopped while idle, stale per-turn tap rejected, converter/WAV isolation")
         recorder.cancel(); try await recorder.testDrain()
+
+        for change in 0..<4 {
+            try await recorder.start()
+            _ = try await recorder.stop()
+            let created = TestHardware.enginesCreated
+            try await recorder.testNative { engine in
+                switch change {
+                case 0: TestHardware.device = 99
+                case 1: engine.inputNode.actualDevice = 314
+                case 2: engine.inputNode.hardware = format(48_000, 1)
+                default: break
+                }
+            }
+            try await recorder.start(deviceUID: change == 3 ? "usb-mic" : nil)
+            precondition(TestHardware.enginesCreated == created + 1,
+                         "Idle default-device, route, format or explicit-selection change must rebuild in the same start")
+            try await recorder.testNative { $0.deliver() }
+            let switched = try await recorder.stop()
+            precondition(!switched.isEmpty)
+            recorder.cancel(); try await recorder.testDrain()
+            TestHardware.device = 42
+        }
+        print("PASS idle input/route/channel/selection changes rebuild stale engine and record on first attempt")
 
         TestHardware.actualDevice = 99
         let alreadyBound = TestHardware.setCalls
@@ -778,13 +808,50 @@ extension AudioRecorder {
 
         try await testQueueFormats()
 
+        let recoveringQueue = AudioOperationQueue()
+        for _ in 0..<2 {
+            let workGate = DispatchSemaphore(value: 0)
+            let callbackGate = DispatchSemaphore(value: 0)
+            let cleanupFinished = DispatchSemaphore(value: 0)
+            let timedOut = Task { @MainActor in
+                try await recoveringQueue.run(timeout: 0.05, onTimeout: { callbackGate.wait() }) {
+                    workGate.wait()
+                }
+            }
+            await expectFailure("Quit and reopen Talkless") { _ = try await timedOut.value }
+            recoveringQueue.cancel(cleanup: { cleanupFinished.signal() }, onTimeout: {})
+            workGate.signal()
+            func cleanupHasFinished() -> Bool { cleanupFinished.wait(timeout: .now()) == .success }
+            var cleaned = false
+            for _ in 0..<1000 {
+                if cleanupHasFinished() { cleaned = true; break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            precondition(cleaned)
+            await expectFailure("Quit and reopen Talkless") {
+                try await recoveringQueue.run(timeout: 1, onTimeout: {}) {
+                    fatalError("A delayed timeout callback must not overlap new work")
+                }
+            }
+            callbackGate.signal()
+            var recovered = false
+            for _ in 0..<1000 {
+                do {
+                    try await recoveringQueue.run(timeout: 1, onTimeout: {}) {}
+                    recovered = true
+                    break
+                } catch { try await Task.sleep(for: .milliseconds(1)) }
+            }
+            precondition(recovered)
+        }
+        print("PASS cleanup and timeout notification must both finish before recovery, including repeated timeouts")
+
         let oldTimeout = AudioRecorder()
         try await oldTimeout.testOldTimeoutCannotInvalidateNewSession()
         print("PASS expired old-session native deadline never invalidates a new capture generation")
 
-        // A HAL call is intentionally blocked; the MainActor must keep scheduling
-        // heartbeats, cancellation must resolve immediately, and timeout must poison
-        // the SAME serial worker even though the native call cannot be interrupted.
+        // A timed-out HAL call must keep its one worker quarantined until both
+        // the call and teardown return. Healthy retries must not require a new recorder.
         for stage in ["inputNode", "start", "stop"] {
             let hung = AudioRecorder()
             if stage == "stop" { try await hung.start() }
@@ -802,9 +869,36 @@ extension AudioRecorder {
             await expectFailure("Quit and reopen Talkless") { try await hung.start() }
             precondition(TestHardware.enginesCreated == total)
             TestHardware.block = nil; TestHardware.release.signal()
-            await drain()
+            try await hung.testWaitForRecovery()
+            try await hung.start()
+            try await hung.testNative { $0.deliver() }
+            let recovered = try await hung.stop()
+            precondition(!recovered.isEmpty && hung.interruptionError == nil)
+            hung.cancel(); try await hung.testDrain()
         }
-        print("PASS inputNode/start/stop hangs time out independently, UI heartbeat runs, poisoned worker cannot restart")
+        print("PASS inputNode/start/stop timeouts quarantine one worker until cleanup, then the same recorder works")
+
+        let quarantined = AudioRecorder()
+        TestHardware.block = "start"
+        let timedOut = Task { @MainActor in try await quarantined.start() }
+        try await waitForNative()
+        await expectFailure("Quit and reopen Talkless") { try await timedOut.value }
+        TestHardware.block = "stop"; TestHardware.release.signal()
+        try await waitForNative()
+        let beforeCleanup = TestHardware.enginesCreated
+        for _ in 0..<12 {
+            await expectFailure("Quit and reopen Talkless") { try await quarantined.start(deviceUID: "usb-mic") }
+        }
+        precondition(TestHardware.enginesCreated == beforeCleanup,
+                     "Returning from the timed-out call must not reopen admission before teardown finishes")
+        TestHardware.block = nil; TestHardware.release.signal()
+        try await quarantined.testWaitForRecovery()
+        try await quarantined.start(deviceUID: "usb-mic")
+        try await quarantined.testNative { $0.deliver() }
+        let switchedAfterTimeout = try await quarantined.stop()
+        precondition(!switchedAfterTimeout.isEmpty)
+        quarantined.cancel(); try await quarantined.testDrain()
+        print("PASS blocked cleanup keeps retries quarantined without extra engines; device switching works after cleanup")
 
         for stage in ["inputNode", "start", "stop"] {
             let cancelled = AudioRecorder()
@@ -873,10 +967,16 @@ extension AudioRecorder {
         try await Task.sleep(for: .milliseconds(300))
         await expectFailure("Quit and reopen Talkless") { try await stuck.start() }
         TestHardware.block = nil; TestHardware.release.signal()
-        print("PASS cancelled-but-still-hung native operation keeps deadline and poisons recorder")
+        try await stuck.testWaitForRecovery()
+        try await stuck.start(deviceUID: "usb-mic")
+        try await stuck.testNative { $0.deliver() }
+        let afterCancelledTimeout = try await stuck.stop()
+        precondition(!afterCancelledTimeout.isEmpty)
+        stuck.cancel(); try await stuck.testDrain()
+        print("PASS cancelled-but-still-hung native operation keeps deadline, then recovers after cleanup")
 
         let logs = Diagnostics.shared.snapshot()
-        precondition(!logs.contains { $0.0 == "audio_recovery" }, "No automatic recovery attempt is allowed")
+        precondition(logs.contains { $0.0 == "audio_recovery" && $0.1["stage"] == "startup" })
         for event in ["audio_start", "audio_start_configuration", "audio_engine_started", "audio_start_failed",
                       "audio_engine_configuration_change", "audio_first_buffer", "audio_recording_summary",
                       "audio_interruption", "audio_operation_timeout", "audio_engine_reused"] {

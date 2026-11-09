@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fixed
+- Rebuild stale input-device routes and channel configurations within the next recording startup after switching microphones or changing the system default input.
+- Allow recording again after a timed-out native operation returns and cleanup completes, instead of permanently disabling the recorder. Still-blocked audio stays isolated on its existing worker. Startup failures now show the specific error instead of silently cancelling.
 - Save the initial update-channel preference before starting the updater. Beta enrollment now survives installing a Stable package; explicit Stable/Beta choices continue to override package defaults. Existing lost preferences cannot be inferred automatically.
 
 ## 2026.1104.16581 Stable

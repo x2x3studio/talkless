@@ -614,6 +614,8 @@ final class DictationController: ObservableObject {
                 guard self.generation == generation, !Task.isCancelled else { return }
                 operation.record("recording_error", ["error_code": String((error as NSError).code), "reason": "start_failed", "stage": "startup"])
                 self.cancel(reason: "startup_failed")
+                // Cleanup hides the HUD; only actionable startup failures should reveal it again.
+                if !(error is CancellationError) { self.hud.show(.error(error.localizedDescription)) }
             }
         }
     }
