@@ -12,8 +12,12 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
 
 /// Owns Sparkle's standard UI without starting an updater in unconfigured development builds.
 @MainActor
-final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NSMenuItemValidation {
+final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate, NSMenuItemValidation {
     private var standardController: SPUStandardUpdaterController?
+    private let windowPlacement = UpdateWindowPlacement { window in
+        guard let controller = window.windowController else { return false }
+        return Bundle(for: type(of: controller)) == Bundle(for: SPUStandardUpdaterController.self)
+    }
     private let isDictationActive: () -> Bool
     private let configuredFeeds: [UpdateChannel: String]?
     private let defaults: UserDefaults
@@ -72,7 +76,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
         let controller = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: self,
-            userDriverDelegate: nil
+            userDriverDelegate: self
         )
         // Keep Sparkle's standard notice/download/install UI and signature verification,
         // but never run a second scheduler or silently download/install an update.
@@ -194,8 +198,15 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, NS
 
     @objc func checkForUpdates(_ sender: Any?) {
         guard canCheckForUpdates else { return }
+        windowPlacement.begin(sourceWindow: sender as? NSWindow)
         standardController?.checkForUpdates(sender)
+        // Bringing an already-key update forward does not send didBecomeKey again.
+        if let window = NSApp.keyWindow { windowPlacement.position(window) }
     }
+
+    func standardUserDriverWillShowModalAlert() { windowPlacement.willShowModalAlert() }
+    func standardUserDriverDidShowModalAlert() { windowPlacement.didShowModalAlert() }
+    func standardUserDriverWillFinishUpdateSession() { windowPlacement.finish() }
 
     // Always use the selected, validated bundle URL, not an old user-default feed override.
     func feedURLString(for updater: SPUUpdater) -> String? {

@@ -4,6 +4,7 @@ struct UpdateSettingsView: View {
     @ObservedObject private var localization = LocalizationSettings.shared
     @ObservedObject var updater: UpdateController
     @ObservedObject var controller: DictationController
+    @State private var updateSource = UpdateSourceView()
 
     var body: some View {
         Section(L10n.tr("Updates")) {
@@ -35,7 +36,8 @@ struct UpdateSettingsView: View {
             .help(L10n.tr("The time of the last attempt, including checks that did not finish."))
             HStack {
                 Spacer(minLength: 0)
-                Button(updater.checkForUpdatesTitle) { updater.checkForUpdates(nil) }
+                Button(updater.checkForUpdatesTitle) { updater.checkForUpdates(updateSource.window) }
+                    .background(UpdateSourceReader(view: updateSource))
                     .disabled(controller.state != .idle || !updater.canCheckForUpdates)
             }
             if let status = updater.status {
@@ -47,4 +49,14 @@ struct UpdateSettingsView: View {
             }
         }
     }
+}
+
+private final class UpdateSourceView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private struct UpdateSourceReader: NSViewRepresentable {
+    let view: UpdateSourceView
+    func makeNSView(context: Context) -> UpdateSourceView { view }
+    func updateNSView(_ nsView: UpdateSourceView, context: Context) {}
 }

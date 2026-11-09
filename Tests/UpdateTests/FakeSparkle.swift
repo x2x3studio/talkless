@@ -2,6 +2,11 @@
 import AppKit
 
 @MainActor public protocol SPUUpdaterDelegate: AnyObject {}
+@MainActor public protocol SPUStandardUserDriverDelegate: AnyObject {
+    func standardUserDriverWillShowModalAlert()
+    func standardUserDriverDidShowModalAlert()
+    func standardUserDriverWillFinishUpdateSession()
+}
 
 public let SUSparkleErrorDomain = "SUSparkleErrorDomain"
 public enum SUError: Int32 {
@@ -50,12 +55,14 @@ public enum SPUUpdateCheck {
     public func resetUpdateCycle() { cycleResets += 1 }
 }
 
-@MainActor public final class SPUStandardUpdaterController {
+@MainActor public final class SPUStandardUpdaterController: NSObject {
     public static var instances: [SPUStandardUpdaterController] = []
     public let updater = SPUUpdater()
 
     public init(startingUpdater: Bool, updaterDelegate: SPUUpdaterDelegate?, userDriverDelegate: Any?) {
         precondition(!startingUpdater)
+        precondition(userDriverDelegate is SPUStandardUserDriverDelegate)
+        super.init()
         Self.instances.append(self)
     }
 

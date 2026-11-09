@@ -10,6 +10,7 @@ xcrun swiftc -swift-version 6 -emit-library -emit-module -module-name Sparkle \
 xcrun swiftc -swift-version 6 -parse-as-library -I "$WORK" -L "$WORK" -lSparkle \
   -Xlinker -rpath -Xlinker "$WORK" \
   "$ROOT/Sources/Talkless/L10n.swift" \
+  "$ROOT/Sources/Talkless/UpdateWindowPlacement.swift" \
   "$ROOT/Sources/Talkless/UpdateController.swift" \
   "$ROOT/Tests/UpdateTests/UpdateTests.swift" -o "$WORK/update-tests"
 "$WORK/update-tests" "$WORK/fixtures"
@@ -19,7 +20,8 @@ FRAMEWORKS="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm
 if [ -d "$FRAMEWORKS/Sparkle.framework" ]; then
   xcrun swiftc -swift-version 6 -typecheck -F "$FRAMEWORKS" \
     "$ROOT/Sources/Talkless/L10n.swift" \
-    "$ROOT/Sources/Talkless/UpdateController.swift"
+    "$ROOT/Sources/Talkless/UpdateWindowPlacement.swift" \
+  "$ROOT/Sources/Talkless/UpdateController.swift"
   printf '%s\n' 'PASS typecheck against the real pinned Sparkle framework'
 else
   printf '%s\n' 'SKIP real Sparkle typecheck: cached framework is not present (covered by app build)'

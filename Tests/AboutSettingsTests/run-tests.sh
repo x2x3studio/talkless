@@ -73,7 +73,7 @@ assert fallback.count('LabeledContent(L10n.tr("Installed version")') == 1
 updates = (root / 'Sources/Talkless/UpdateSettingsView.swift').read_text()
 assert updates.count('LabeledContent(L10n.tr("Installed version")') == 1
 for preserved in ['updater.selectChannel($0)', 'updater.setAutomaticallyChecksForUpdates($0)',
-                  'updater.checkForUpdates(nil)', 'updater.lastUpdateCheckDate',
+                  'updater.checkForUpdates(updateSource.window)', '.background(UpdateSourceReader(view: updateSource))', 'updater.lastUpdateCheckDate',
                   '.disabled(controller.state != .idle || !updater.canCheckForUpdates)',
                   '.disabled(!updater.canChangeChannel)', '.disabled(!updater.canChangeAutomaticChecks)']:
     assert preserved in updates, preserved

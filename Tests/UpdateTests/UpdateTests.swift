@@ -22,8 +22,83 @@ import Sparkle
     func fire() { active.forEach { $0.action() } }
 }
 
+@MainActor private final class PlacementWindow: NSWindow {
+    var visibleForTest = true
+    override var isVisible: Bool { visibleForTest }
+}
+
 @main struct UpdateTests {
+    @MainActor static func testWindowPlacement() {
+        _ = NSApplication.shared
+        let visible = NSRect(x: -1600, y: 80, width: 1600, height: 900)
+        let anchor = NSRect(x: -1300, y: 200, width: 900, height: 600)
+        let size = NSSize(width: 400, height: 200)
+        precondition(UpdateWindowPlacement.origin(size: size, anchor: anchor, visibleFrame: visible) == NSPoint(x: -1050, y: 400))
+        precondition(UpdateWindowPlacement.origin(size: size, anchor: visible, visibleFrame: visible) == NSPoint(x: -1000, y: 430))
+        let edge = NSRect(x: -2000, y: -400, width: 100, height: 100)
+        precondition(UpdateWindowPlacement.origin(size: size, anchor: edge, visibleFrame: visible) == visible.origin)
+        let upperEdge = NSRect(x: 0, y: 1200, width: 100, height: 100)
+        precondition(UpdateWindowPlacement.origin(size: size, anchor: upperEdge, visibleFrame: visible) == NSPoint(x: -400, y: 780))
+        precondition(UpdateWindowPlacement.origin(size: NSSize(width: 2000, height: 1200), anchor: visible, visibleFrame: visible) == visible.origin)
+
+        let source = PlacementWindow(contentRect: NSRect(x: 200, y: 200, width: 700, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
+        let update = NSWindow(contentRect: NSRect(x: 10, y: 10, width: 300, height: 160), styleMask: [.titled], backing: .buffered, defer: false)
+        let unrelated = NSWindow(contentRect: NSRect(x: 30, y: 30, width: 200, height: 150), styleMask: [.titled], backing: .buffered, defer: false)
+        let modal = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 280, height: 170), styleMask: [.titled], backing: .buffered, defer: false)
+        let placement = UpdateWindowPlacement { $0 === update }
+        let original = update.frame
+        placement.position(update)
+        precondition(update.frame == original, "No placement outside a user-initiated session")
+        placement.begin(sourceWindow: source)
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: update)
+        let screen = source.screen ?? NSScreen.main!
+        precondition(update.frame.origin == UpdateWindowPlacement.origin(size: update.frame.size, anchor: source.frame, visibleFrame: screen.visibleFrame))
+        let unrelatedFrame = unrelated.frame
+        placement.position(unrelated)
+        precondition(unrelated.frame == unrelatedFrame, "Never move another Talkless window")
+        update.setFrameOrigin(NSPoint(x: 70, y: 90))
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: update)
+        precondition(update.frame.origin == NSPoint(x: 70, y: 90), "Refocusing must preserve user placement")
+        placement.willShowModalAlert()
+        let modalFrame = modal.frame
+        placement.position(modal)
+        precondition(modal.frame == modalFrame, "Only the active modal window qualifies")
+        placement.position(modal, isModalWindow: true)
+        precondition(modal.frame.origin == UpdateWindowPlacement.origin(size: modal.frame.size, anchor: source.frame, visibleFrame: screen.visibleFrame))
+        placement.didShowModalAlert()
+        let alert = NSAlert()
+        alert.messageText = "Update placement test"
+        placement.willShowModalAlert()
+        let modalVisibleFrame = screen.visibleFrame
+        let timer = Timer(timeInterval: 0.1, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                let expected = UpdateWindowPlacement.origin(size: alert.window.frame.size, anchor: source.frame, visibleFrame: modalVisibleFrame)
+                precondition(alert.window.frame.origin == expected, "Real NSAlert.runModal must use the source anchor")
+                NSApp.abortModal()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .modalPanel)
+        alert.runModal()
+        alert.window.orderOut(nil)
+        placement.didShowModalAlert()
+        placement.finish()
+        update.setFrameOrigin(NSPoint(x: 100, y: 100))
+        placement.position(update)
+        precondition(update.frame.origin == NSPoint(x: 100, y: 100))
+        placement.begin(sourceWindow: nil, mouseLocation: NSPoint(x: screen.frame.midX, y: screen.frame.midY))
+        placement.position(update)
+        precondition(update.frame.origin == UpdateWindowPlacement.origin(size: update.frame.size, anchor: screen.visibleFrame, visibleFrame: screen.visibleFrame))
+        placement.finish()
+        source.visibleForTest = false
+        placement.begin(sourceWindow: source)
+        placement.position(update)
+        precondition(update.frame.origin == UpdateWindowPlacement.origin(size: update.frame.size, anchor: screen.visibleFrame, visibleFrame: screen.visibleFrame))
+        placement.finish()
+        print("PASS update placement: settings anchor, menu screen, bounds, modal errors, one-time positioning, session cleanup")
+    }
+
     @MainActor static func main() throws {
+        testWindowPlacement()
         let localization = LocalizationSettings(defaults: nil, preferredLanguages: { ["en"] })
         localization.interfaceLanguage = .english
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)

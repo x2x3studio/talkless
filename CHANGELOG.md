@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- Update windows now open centered over the Settings window that initiated the check, or on the pointer's screen for menu-bar checks. Download/install progress and update error alerts use the same anchor, stay inside the visible screen, and preserve manual window moves within the session.
+
+## 2026.1109.28378 Beta
+
+### Fixed
 - Rebuild stale input-device routes and channel configurations within the next recording startup after switching microphones or changing the system default input.
 - Allow recording again after a timed-out native operation returns and cleanup completes, instead of permanently disabling the recorder. Still-blocked audio stays isolated on its existing worker. Startup failures now show the specific error instead of silently cancelling.
 - Save the initial update-channel preference before starting the updater. Beta enrollment now survives installing a Stable package; explicit Stable/Beta choices continue to override package defaults. Existing lost preferences cannot be inferred automatically.
